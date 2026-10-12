@@ -7,14 +7,15 @@
 const { dayNum, isoOf, monthKey, monthIso, decodeCalendar } = require('./codec.js');
 const { MIRRORS, RF_EXACT_UNTIL } = require('./update.js');
 
-const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+// Yahoo answers 429 to unusual user agents (a non-standard Chrome string or curl's), so use a common browser's.
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function getText(url, tries = 4) {
+async function getText(url, tries = 4, headers = {}) {
   let err;
   for (let k = 0; k < tries; k++) {
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: '*/*' }, signal: AbortSignal.timeout(30000) });
+      const res = await fetch(url, { headers: Object.assign({ 'User-Agent': UA }, headers), signal: AbortSignal.timeout(60000) });
       if (res.ok) return await res.text();
       err = new Error(`HTTP ${res.status} from ${url.split('?')[0]}`);
       if (res.status !== 429 && res.status < 500) break; // a 4xx other than "too many requests" will not improve
@@ -24,12 +25,25 @@ async function getText(url, tries = 4) {
   throw err;
 }
 
+// Yahoo's session cookie, fetched once if a plain request is refused
+let yahooCookie = null;
+async function yahooSession() {
+  if (yahooCookie == null) {
+    const r = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': UA }, redirect: 'manual', signal: AbortSignal.timeout(30000) });
+    yahooCookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map(c => c.split(';')[0]).join('; ');
+  }
+  return yahooCookie;
+}
+
 // Yahoo Finance chart API: split-adjusted daily closes plus dividends by ex-date (also split-adjusted).
 async function yahoo(symbol, fromDay, toDay) {
   const qs = `period1=${fromDay * 86400}&period2=${(toDay + 1) * 86400}&interval=1d&events=div%7Csplit&includeAdjustedClose=true`;
   let txt = null, err = null;
   for (const host of ['query1', 'query2']) {
-    try { txt = await getText(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${qs}`); break; } catch (e) { err = e; }
+    try { txt = await getText(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${qs}`, 2); break; } catch (e) { err = e; }
+  }
+  if (txt == null) { // refused: retry with a session cookie
+    try { const cookie = await yahooSession(); txt = await getText(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${qs}`, 3, cookie ? { Cookie: cookie } : {}); } catch (e) { err = e; }
   }
   if (txt == null) throw new Error(`Yahoo ${symbol}: ${err && err.message}`);
   const j = JSON.parse(txt); const r = j.chart && j.chart.result && j.chart.result[0];
@@ -60,6 +74,38 @@ async function fred(id, fromIso, monthly) {
   }
   if (!out.size) throw new Error(`FRED ${id}: no observations`);
   return out;
+}
+
+// U.S. Treasury daily rate files (no key): one CSV per year. type: 'daily_treasury_bill_rates' or 'daily_treasury_yield_curve'.
+// Returns Map('YYYY-MM-DD' -> number|null) for the given column, e.g. '13 WEEKS BANK DISCOUNT' or '10 Yr'.
+async function treasury(type, column, years) {
+  const out = new Map();
+  for (const y of years) {
+    const txt = await getText(`https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=${type}&field_tdr_date_value=${y}&page&_format=csv`);
+    const lines = txt.trim().split(/\r?\n/); const head = lines.shift().split(',').map(x => x.replace(/"/g, '').trim());
+    const c = head.indexOf(column); if (c < 0) throw new Error(`Treasury ${type} ${y}: no "${column}" column`);
+    for (const ln of lines) {
+      const f = ln.split(','); const m = (f[0] || '').replace(/"/g, '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) continue;
+      const v = (f[c] || '').replace(/"/g, '').trim(); const x = v === '' || v === 'N/A' ? null : +v;
+      out.set(`${m[3]}-${m[1]}-${m[2]}`, Number.isFinite(x) ? x : null);
+    }
+  }
+  if (!out.size) throw new Error(`Treasury ${type}: no observations`);
+  return new Map([...out].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+}
+// monthly averages of a daily Map, for months with at least 10 observations (the last month only once it is over)
+function monthlyMean(daily, lastDay) {
+  const acc = new Map(); for (const [d, v] of daily) { if (v == null) continue; const m = d.slice(0, 7); const a = acc.get(m) || [0, 0]; a[0] += v; a[1]++; acc.set(m, a); }
+  const out = new Map(); for (const [m, [s, n]] of acc) if (n >= 10 && monthKey(m) < monthKey(lastDay)) out.set(m, Math.round(s / n * 100) / 100);
+  return out;
+}
+// BLS public API v1 (no key, 25 requests a day): the last three years of a monthly series, e.g. CUUR0000SA0 = CPI-U NSA.
+async function bls(series) {
+  const j = JSON.parse(await getText(`https://api.bls.gov/publicAPI/v1/timeseries/data/${series}`));
+  if (j.status !== 'REQUEST_SUCCEEDED') throw new Error(`BLS ${series}: ${j.status} ${(j.message || []).join(' ')}`);
+  const out = new Map();
+  for (const o of j.Results.series[0].data) { if (!/^M(0[1-9]|1[0-2])$/.test(o.period)) continue; const x = +o.value; out.set(o.year + '-' + o.period.slice(1), Number.isFinite(x) ? x : null); }
+  return new Map([...out].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
 }
 
 async function fetchAll(data, opts = {}) {
