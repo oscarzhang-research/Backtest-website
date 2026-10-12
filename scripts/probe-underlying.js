@@ -25,7 +25,9 @@ const PAIRS = [
   for (const P of PAIRS) {
     const S = Core.S[P.etf]; const s0 = S.s;
     const from = days[s0] - 7, to = days[N - 1] + 2;
-    const [E, X, T] = await Promise.all([yahoo(P.etf, from, to), yahoo(P.ix, from, to), P.tr ? yahoo(P.tr, from, to).catch(() => null) : null]);
+    const [E, X, T0] = await Promise.all([yahoo(P.etf, from, to), yahoo(P.ix, from, to), P.tr ? yahoo(P.tr, from, to).catch((e) => ({ bars: [], err: e.message })) : null]);
+    if (!E.bars.length || !X.bars.length) throw new Error(`no bars: ${P.etf} ${E.bars.length}, ${P.ix} ${X.bars.length}`);
+    const T = T0 && T0.bars.length ? T0 : null; if (T0 && !T) log(`${P.tr}: no bars${T0.err ? ' (' + T0.err + ')' : ''}`);
     const eb = new Map(E.bars.map(b => [dayNum(b.date), b])), xb = new Map(X.bars.map(b => [dayNum(b.date), b])), tb = T ? new Map(T.bars.map(b => [dayNum(b.date), b])) : null;
     log(`## ${P.etf} vs ${P.ix}${T ? ' and ' + P.tr + ' (first ' + T.bars[0].date + ')' : ''}`);
     log(`Yahoo ${P.etf} first ${E.bars[0].date}, ${P.ix} first ${X.bars[0].date}; splits ${E.splits.map(x => x.date + ' ' + x.ratio).join(', ') || 'none'}`);
