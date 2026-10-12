@@ -1,5 +1,5 @@
 /* ============================================================
-   app.js — shell: state, theme, routing, views
+   app.js — shell: state, language, theme, routing, views
    ============================================================ */
 (function (root) {
   'use strict';
@@ -11,17 +11,34 @@
     current: null,
     rendered: {},
     state: {
+      lang: U.store.get('lang', 'en') === 'zh' ? 'zh' : 'en', // English unless the visitor picked Chinese
       theme: U.store.get('theme', 'system'),
+      colors: U.store.get('colors', 'us') === 'cn' ? 'cn' : 'us', // gains green (US) unless the visitor picked red (China); independent of language
     },
   };
   root.App = App;
 
   App.register = function (id, mod) { App.views[id] = mod; };
 
-  App.applyText = function () {
+  App.applyLang = function () {
+    I18N.setLang(App.state.lang);
+    const zh = App.state.lang === 'zh';
+    document.documentElement.lang = zh ? 'zh-CN' : 'en';
+    document.title = t('pageTitle');
     U.$$('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+    const bl = U.$('#btnLang');
+    U.$('#btnLangTxt').textContent = t('tool.lang');
+    bl.lang = zh ? 'en' : 'zh-CN'; // the button names the other language, in that language
+    bl.title = t('tool.langTitle'); bl.setAttribute('aria-label', t('tool.langTitle'));
+    U.$('#btnColor').title = t('tool.colorTitle'); U.$('#btnColor').setAttribute('aria-label', t('tool.colorTitle'));
+    App.applyColors();
     App.applyTheme();
     App.renderFooter();
+  };
+  App.applyColors = function () {
+    const cn = App.state.colors === 'cn';
+    document.documentElement.classList.toggle('cn-colors', cn);
+    U.$('#btnColorTxt').textContent = cn ? t('tool.colorCN') : t('tool.colorUS');
   };
   App.applyTheme = function () {
     const th = App.state.theme;
@@ -55,7 +72,7 @@
     try { App.views[id].render(el); App.rendered[id] = true; }
     catch (e) { console.error(e); el.appendChild(U.h('div', { class: 'empty' }, 'Error: ' + e.message)); }
   };
-  // Re-render all rendered views (theme change)
+  // Re-render all rendered views (language/theme/color change)
   App.rerenderAll = function () {
     const cur = App.current;
     for (const id in App.rendered) { if (id !== cur) App.rendered[id] = false; }
@@ -68,7 +85,15 @@
 
   App.init = function () {
     Core.init(root.__DATA__);
-    App.applyText();
+    App.applyLang();
+    U.$('#btnLang').addEventListener('click', () => {
+      App.state.lang = App.state.lang === 'zh' ? 'en' : 'zh'; U.store.set('lang', App.state.lang);
+      App.applyLang(); App.rerenderAll();
+    });
+    U.$('#btnColor').addEventListener('click', () => {
+      App.state.colors = App.state.colors === 'us' ? 'cn' : 'us'; U.store.set('colors', App.state.colors);
+      App.applyColors(); App.rerenderAll();
+    });
     U.$('#btnTheme').addEventListener('click', () => {
       const order = ['system', 'light', 'dark']; const k = order.indexOf(App.state.theme);
       App.state.theme = order[(k + 1) % 3]; U.store.set('theme', App.state.theme);

@@ -199,7 +199,7 @@
   // Inflation regimes. Each month is classified by the CPI inflation rate (year over year) that was
   // already published before the month began — BLS releases a month's CPI in the middle of the next
   // month, so the default lag is 2 — and by whether that rate was higher than a year earlier.
-  // For each regime: months, separate episodes, annualized real (CPI-deflated) returns of every
+  // For each regime (label in English, zh in Chinese): months, separate episodes, annualized real (CPI-deflated) returns of every
   // long-run asset, a monthly-rebalanced 60/40 and any extra monthly return series, plus the
   // stock–bond and stock–gold correlations of nominal monthly returns.
   // opts: {start:'YYYY-MM', lag:2, cut:0.03, levels:[0.02,0.03,0.05], extra:{name: Float64Array (indexed like D.R)}}
@@ -219,6 +219,7 @@
     const quadOf = (y, d) => (y >= o.cut ? 0 : 2) + (d > 0 ? 0 : 1);
     const cutL = pct(o.cut) + '%';
     const quadLab = ['Above ' + cutL + ' and rising', 'Above ' + cutL + ' and falling', 'Below ' + cutL + ' and rising', 'Below ' + cutL + ' and falling'];
+    const quadZh = ['高于 ' + cutL + ' 且上升', '高于 ' + cutL + ' 且回落', '低于 ' + cutL + ' 且上升', '低于 ' + cutL + ' 且回落'];
     // months: real returns deflated by that month's CPI change; the regime uses only CPI known before the month began
     const months = [];
     const q0 = Math.max(1, keyOf(o.start) - D.K0), q1 = Math.min(D.n - 1, cLast - D.K0);
@@ -235,7 +236,7 @@
       const cv = ab / n - (a1 / n) * (b1 / n), va = a2 / n - (a1 / n) ** 2, vb = b2 / n - (b1 / n) ** 2;
       return va > 0 && vb > 0 ? cv / Math.sqrt(va * vb) : NaN;
     };
-    const stats = (label, pick) => {
+    const stats = (label, pick, zh) => {
       const ms = months.filter(pick); const real = {}; const nominal = {}; const count = {};
       for (const c of cols) {
         let lr = 0, ln = 0, m = 0;
@@ -244,15 +245,15 @@
       }
       let episodes = 0; for (let j = 0; j < ms.length; j++) if (j === 0 || ms[j].k !== ms[j - 1].k + 1) episodes++;
       let ci = 0; for (const x of ms) ci += Math.log(1 + x.infl);
-      return { label, n: ms.length, episodes, infl: ms.length ? Math.exp(ci / ms.length * 12) - 1 : NaN, real, nominal, count,
+      return { label, zh: zh || label, n: ms.length, episodes, infl: ms.length ? Math.exp(ci / ms.length * 12) - 1 : NaN, real, nominal, count,
         corrBL: corr(ms.map(x => D.R.EQ[x.q]), ms.map(x => D.R.BL[x.q])), corrGOLD: corr(ms.map(x => D.R.EQ[x.q]), ms.map(x => D.R.GOLD[x.q])), from: ms.length ? ms[0].k : null };
     };
     const yNow = yoy(cLast), dNow = yNow - yoy(cLast - 12);
     return {
       lag: o.lag, cut: o.cut, cols, start: months.length ? months[0].k : null, end: months.length ? months[months.length - 1].k : null, months,
       level: lvLab.map((lab, j) => Object.assign(stats(lab, (x) => x.level === j), { key: 'L' + j })),
-      quad: quadLab.map((lab, j) => Object.assign(stats(lab, (x) => x.quad === j), { key: 'Q' + j })),
-      all: stats('All months', () => true),
+      quad: quadLab.map((lab, j) => Object.assign(stats(lab, (x) => x.quad === j, quadZh[j]), { key: 'Q' + j })),
+      all: stats('All months', () => true, '全部月份'),
       now: { k: cLast, y: yNow, d: dNow, prev: yoy(cLast - 12), level: levelOf(yNow), quad: quadOf(yNow, dNow) },
     };
   };

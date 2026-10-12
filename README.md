@@ -4,6 +4,8 @@
 
 The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest weekly update); nothing is pre-rendered.
 
+The site opens in English; the **中文** button in the header switches it to Chinese (and back), and a separate button switches the up/down colors between green-up (US) and red-up (China). Both choices are remembered in the browser.
+
 ![Overview](docs/screenshots/overview.jpg)
 
 ## What's inside
@@ -87,7 +89,7 @@ Every push and pull request also runs the [CI workflow](.github/workflows/ci.yml
 ```
 index.html               page shell: header, tabs, view containers
 assets/css/site.css      design tokens (light/dark), layout, components
-assets/js/i18n.js        UI strings and the t()/L() helpers
+assets/js/i18n.js        UI strings in English and Chinese, and the t()/L() helpers
 assets/js/core.js        data decoding, calendar, total-return series, metrics
 assets/js/engine.js      backtest engine: funding plans, 30+ rules, multi-asset runner, XIRR, Monte Carlo
 assets/js/calc.js        research statistics (holding periods, best days, PSR/DSR/PBO, ...)

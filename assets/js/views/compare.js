@@ -87,7 +87,7 @@
       if (k === 'SOXLX') {
         extra.lineStyle = { width: 2, type: [6, 3], color };
         const simEnd = Core.S.SOXL.s;
-        if (simEnd > Math.max(a, i0)) extra.markArea = { silent: true, itemStyle: { color: U.isDark(tk) ? 'rgba(144,133,233,0.10)' : 'rgba(74,58,167,0.06)' }, label: { show: true, position: 'insideTopLeft', color: tk.muted, fontSize: 11, formatter: 'SOXL simulated' }, data: [[{ xAxis: U.ts(Math.max(a, i0)) }, { xAxis: U.ts(simEnd) }]] };
+        if (simEnd > Math.max(a, i0)) extra.markArea = { silent: true, itemStyle: { color: U.isDark(tk) ? 'rgba(144,133,233,0.10)' : 'rgba(74,58,167,0.06)' }, label: { show: true, position: 'insideTopLeft', color: tk.muted, fontSize: 11, formatter: I18N.lang === 'zh' ? 'SOXL 模拟段' : 'SOXL simulated' }, data: [[{ xAxis: U.ts(Math.max(a, i0)) }, { xAxis: U.ts(simEnd) }]] };
       }
       series.push(U.lineSeries(U.assetName(k, true), data, color, extra));
     }
@@ -157,7 +157,7 @@
 
   function statsTable(keys, M, tk) {
     const tbl = h('table', { class: 'data' });
-    const thead = h('thead', null, h('tr', null, h('th', null, 'Metric'),
+    const thead = h('thead', null, h('tr', null, h('th', null, I18N.lang === 'zh' ? '指标' : 'Metric'),
       keys.map(k => h('th', null, h('span', { class: 'th-asset' }, h('i', { style: { background: U.assetColor(k, tk) } }), U.assetName(k, true))))));
     tbl.appendChild(thead);
     const tb = h('tbody');
@@ -193,7 +193,7 @@
     }
     const ys = Array.from(years).sort((a, b) => b - a);
     const tbl = h('table', { class: 'data heat' });
-    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, 'Year'), keys.map(k => h('th', null, h('span', { class: 'th-asset' }, h('i', { style: { background: U.assetColor(k, tk) } }), U.assetName(k, true)))))));
+    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, I18N.lang === 'zh' ? '年份' : 'Year'), keys.map(k => h('th', null, h('span', { class: 'th-asset' }, h('i', { style: { background: U.assetColor(k, tk) } }), U.assetName(k, true)))))));
     const tb = h('tbody');
     for (const y of ys) {
       const tr = h('tr', null, h('td', null, y));
@@ -216,9 +216,9 @@
     const byY = {}; for (const x of mr) { (byY[x.y] = byY[x.y] || {})[x.m] = x; }
     const yMap = {}; for (const x of yr) yMap[x.label] = x;
     const ys = Object.keys(byY).map(Number).sort((p, q) => q - p);
-    const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mNames = I18N.lang === 'zh' ? ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'] : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const tbl = h('table', { class: 'data heat' });
-    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, 'Year'), mNames.map(m => h('th', null, m)), h('th', null, 'Year'))));
+    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, I18N.lang === 'zh' ? '年份' : 'Year'), mNames.map(m => h('th', null, m)), h('th', null, I18N.lang === 'zh' ? '全年' : 'Year'))));
     const tb = h('tbody');
     // averages row
     const avg = Array.from({ length: 12 }, (_, m) => { const a2 = mr.filter(x => x.m === m && x.full).map(x => x.r); return a2.length ? Core.mean(a2) : NaN; });
@@ -232,7 +232,7 @@
       tr.appendChild(yx ? h('td', { style: { background: U.heatBg(yx.r, 0.6, tk), fontWeight: 700 } }, U.pct(yx.r, 1) + (yx.full ? '' : '*')) : h('td', null, ''));
       tb.appendChild(tr);
     }
-    tb.appendChild(h('tr', null, h('td', { style: { fontWeight: 700 } }, 'Avg'), avg.map(x => h('td', { style: { background: U.heatBg(x, 0.15, tk), fontWeight: 700 } }, U.pct(x, 2))), h('td', null, '')));
+    tb.appendChild(h('tr', null, h('td', { style: { fontWeight: 700 } }, I18N.lang === 'zh' ? '平均' : 'Avg'), avg.map(x => h('td', { style: { background: U.heatBg(x, 0.15, tk), fontWeight: 700 } }, U.pct(x, 2))), h('td', null, '')));
     tbl.appendChild(tb);
     return h('div', { class: 'table-wrap tall' }, tbl);
   }
@@ -285,7 +285,7 @@
     c.setOption(U.baseOpt(tk, {
       grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
       tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 },
-        formatter: (p) => { if (p.seriesType === 'scatter') return U.pct(p.value[1], 1); const r = rows[p.dataIndex]; return U.ttHead(U.assetName(r.k, true)) + [['Q3', r.box[3]], [t('cmp.median'), r.box[2]], ['Q1', r.box[1]], ['Mean', r.mean]].map(([n2, v2]) => U.ttRow(U.assetColor(r.k, tk), n2, U.pct(v2, 2))).join('') + `<div>n=${r.n}</div>`; } },
+        formatter: (p) => { if (p.seriesType === 'scatter') return U.pct(p.value[1], 1); const r = rows[p.dataIndex]; return U.ttHead(U.assetName(r.k, true)) + [['Q3', r.box[3]], [t('cmp.median'), r.box[2]], ['Q1', r.box[1]], [I18N.lang === 'zh' ? '均值' : 'Mean', r.mean]].map(([n2, v2]) => U.ttRow(U.assetColor(r.k, tk), n2, U.pct(v2, 2))).join('') + `<div>n=${r.n}</div>`; } },
       xAxis: U.catAxis(tk, rows.map(r => U.assetName(r.k, true))),
       yAxis: U.valAxis(tk, { axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => (v * 100).toFixed(0) + '%' } }),
       series: [
@@ -349,7 +349,7 @@
     V.el = el; const tk = U.tokens();
     el.appendChild(h('div', { class: 'section-head' }, h('div', { class: 'eyebrow' }, t('asOf', { d: Core.asOf })), h('h2', null, t('cmp.title')), h('p', { class: 'lede' }, t('cmp.lede'))));
     // Controls
-    const chipsE = h('div', { class: 'chips', role: 'group', 'aria-label': t('cmp.assets') }), chipsS = h('div', { class: 'chips', role: 'group', 'aria-label': 'Chip stocks' });
+    const chipsE = h('div', { class: 'chips', role: 'group', 'aria-label': t('cmp.assets') }), chipsS = h('div', { class: 'chips', role: 'group', 'aria-label': I18N.lang === 'zh' ? '芯片个股' : 'Chip stocks' });
     for (const k of ALL) {
       const on = CS.assets.includes(k);
       const b = h('button', { type: 'button', class: 'chip', 'aria-pressed': String(on), style: { '--c': U.assetColor(k, tk) }, title: t('a.' + k + '.d') }, h('span', { class: 'sw' }), U.assetName(k, true));
@@ -360,7 +360,7 @@
       });
       (STOCKS.indexOf(k) >= 0 ? chipsS : chipsE).appendChild(b);
     }
-    const chips = h('div', { class: 'stack', style: { gap: '6px' } }, chipsE, h('span', { class: 'lbl xs muted' }, 'Chip stocks (total return, mostly from 1995)'), chipsS);
+    const chips = h('div', { class: 'stack', style: { gap: '6px' } }, chipsE, h('span', { class: 'lbl xs muted' }, I18N.lang === 'zh' ? '芯片个股（全收益，大多 1995 年起）' : 'Chip stocks (total return, mostly from 1995)'), chipsS);
     const presets = [['ytd', t('ytd')], ['1', '1Y'], ['3', '3Y'], ['5', '5Y'], ['10', '10Y'], ['20', '20Y'], ['common', CS.align === 'common' ? t('cmp.common') : t('cmp.max')], ['custom', t('cmp.custom')]];
     const presetSeg = U.seg('cmpPreset', presets, CS.preset, (v) => { CS.preset = v; if (v === 'custom' && !CS.start) { const R = resolveRange(orderedAssets()); CS.start = Core.iso(R.i0); CS.end = Core.iso(R.i1); } save(); V.update(true); });
     const dStart = U.dateInput('cmpStart', CS.start || '', Core.iso(0), Core.asOf, (v) => { CS.start = v; CS.preset = 'custom'; save(); V.update(true); });
@@ -408,7 +408,7 @@
     el.appendChild(h('div', { class: 'grid-2' },
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('cmp.rollTitle')), h('span', { class: 'sub' }, t('cmp.rollSub')), h('span', { class: 'right' }, distSeg)), V.parts.rollChart, V.parts.rollTable),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('cmp.distTitle'))), V.parts.mdist,
-        h('p', { class: 'note' }, 'Boxes span the 25th–75th percentiles, the line is the median, whiskers reach 1.5× IQR and grey dots are extreme months.'))));
+        h('p', { class: 'note' }, I18N.lang === 'zh' ? '箱体为 25%–75% 分位，横线为中位数，须线为 1.5 倍四分位距，灰点为极端月份。' : 'Boxes span the 25th–75th percentiles, the line is the median, whiskers reach 1.5× IQR and grey dots are extreme months.'))));
     // Corr + scatter
     const corrSeg = U.seg('cmpCorrF', [['D', t('cmp.daily')], ['M', t('cmp.monthly')]], CS.corrFreq, (v) => { CS.corrFreq = v; save(); V.updateCorr(); });
     V.parts.corr = h('div', { class: 'chart short' }); V.parts.scatter = h('div', { class: 'chart short' });
