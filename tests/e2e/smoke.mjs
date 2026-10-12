@@ -117,6 +117,39 @@ for (const [lang, live, must] of [
   report(`live ${lang || 'en'}${live.closed ? ' closed' : ''}`, problems);
   await ctx.close();
 }
+// SOXL S6 comparison table: several statistics at once and a percentile of one's own, stacked in each cell and
+// remembered after a reload
+{
+  const { ctx, page, errors } = await open(null, 'soxl');
+  const ready = async () => { for (let k = 0; k < 120; k++) { await page.waitForTimeout(250); if (await page.$('#dipCmpStats')) return true; } return false; };
+  const read = () => page.evaluate(() => {
+    const t = document.querySelector('table.dip-cmp'), rows = [...t.querySelectorAll('tbody tr')];
+    return { head: (t.querySelector('thead th.st') || {}).textContent, labels: [...rows[0].querySelectorAll('td.st div')].map(d => d.textContent),
+      stacks: rows.map(r => [...r.querySelectorAll('td.stk:not(.st)')].map(td => td.children.length)).flat(), text: t.innerText };
+  });
+  const problems = [];
+  if (!(await ready())) problems.push('no statistics for the comparison table');
+  else {
+    const one = await read();
+    if (one.head || one.labels.length) problems.push('a statistic column with a single statistic');
+    for (const lab of ['P10', 'P90']) await page.click(`#dipCmpStats button.chip:text-is("${lab}")`);
+    await page.fill('#dipCmpPN', '33'); await page.click('#dipCmpStats button:text-is("+ Add")');
+    const r = await read();
+    if (r.head !== 'Statistic') problems.push('no statistic column');
+    if (r.labels.join() !== 'P10,P33,Median,P90') problems.push('statistics: ' + r.labels.join());
+    if (!r.stacks.length || r.stacks.some(n => n !== 4)) problems.push('cells without four values');
+    if (/\bNaN\b|undefined/.test(r.text)) problems.push('NaN/undefined in the comparison table');
+    await page.click('#dipCmpStats button:text-is("Same as above")');
+    const r2 = await read();
+    if (r2.labels.join() !== 'Mean,P25,Median,P75') problems.push('"Same as above" gave ' + r2.labels.join());
+    await page.reload({ waitUntil: 'load' });
+    if (!(await ready())) problems.push('not rendered after the reload');
+    else { const r3 = await read(); if (r3.labels.join() !== r2.labels.join()) problems.push('not remembered: ' + r3.labels.join()); }
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('soxl stats', problems);
+  await ctx.close();
+}
 await browser.close();
 server.close();
 process.exit(failed ? 1 : 0);

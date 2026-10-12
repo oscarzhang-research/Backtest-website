@@ -233,7 +233,8 @@
   const DIP_MA = [20, 50, 100, 200];
   const DIP_STATS = ['mean', 'p50', 'p25', 'p75', 'p10', 'p90', 'p5', 'p95', 'min', 'max', 'pos'];
   const DIP_CONDS = ['dd', 'reb', 'fear', 'trend', 'mkt'];
-  const DIP_CMP = ['p50', 'mean', 'p25', 'p75', 'pos'];
+  const dipStatOk = (k) => typeof k === 'string' && /^(mean|min|max|pos|p\d+(\.\d)?)$/.test(k);
+  const dipStatList = (a) => (Array.isArray(a) ? Array.from(new Set(a.filter(dipStatOk))) : []);
   const dipNum = (x, lo, hi, def) => (typeof x === 'number' && isFinite(x) && x >= lo && x <= hi ? x : def);
   // one combination of conditions, with defaults for anything missing or invalid
   const dipClean = (c) => {
@@ -260,13 +261,15 @@
   };
   const DS = (() => {
     const st = U.store.get('soxlDip', {}) || {};
-    const d = Object.assign({ key: 'SOXL', sim: false, first: false, wFall: false, ann: false, hz: [1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'], cmp: 'p50' }, st);
+    const d = Object.assign({ key: 'SOXL', sim: false, first: false, wFall: false, ann: false, hz: [1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'] }, st);
     d.c = dipClean(st.c || (st.lo != null ? { ref: st.ref, win: st.win, dd: { lo: st.lo, hi: st.hi } } : null)); // earlier versions kept the fall at the top level
     for (const k of ['lo', 'hi', 'ref', 'win']) delete d[k];
     if (!DIP_KEYS.includes(d.key)) d.key = 'SOXL';
     d.hz = Array.isArray(d.hz) ? d.hz.filter(m => Number.isInteger(m) && m >= 1 && m <= 360) : []; if (!d.hz.length) d.hz = [12];
-    d.stats = Array.isArray(d.stats) ? d.stats.filter(k => /^(mean|min|max|pos|p\d+(\.\d)?)$/.test(k)) : []; if (!d.stats.length) d.stats = ['p50'];
-    if (!DIP_CMP.includes(d.cmp)) d.cmp = 'p50';
+    d.stats = dipStatList(d.stats); if (!d.stats.length) d.stats = ['p50'];
+    // the comparison table's statistics (earlier versions kept a single one in d.cmp)
+    d.cmpStats = Array.isArray(d.cmpStats) ? dipStatList(d.cmpStats) : dipStatOk(d.cmp) ? [d.cmp] : []; if (!d.cmpStats.length) d.cmpStats = ['p50'];
+    delete d.cmp;
     for (const k of ['sim', 'first', 'wFall', 'ann']) d[k] = !!d[k];
     return d;
   })();
@@ -574,22 +577,43 @@
       }
       const adopt = (c2) => { DS.c = dipCopy(c2); redo(); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
       const nameIn = h('input', { type: 'text', id: 'dipSaveName', maxlength: '60', placeholder: comboTxt(c, true) }); nameIn.style.minWidth = '220px';
+      const cN = U.numInput('dipCmpPN', 90, () => {}, { min: 1, max: 99, step: 1 }); cN.style.width = '72px';
       out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '条件组合对比' : 'Comparing combinations of conditions'));
-      out.appendChild(h('div', { class: 'controls' },
-        U.ctl(Z ? '显示' : 'Show', U.seg('dipCmp', DIP_CMP.map(k => [k, statLab(k)]), DS.cmp, (vv) => { DS.cmp = vv; saveD(); draw(); })),
-        U.ctl(Z ? '把当前条件存为一个组合' : 'Save the current conditions', h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, nameIn,
-          h('button', { type: 'button', class: 'btn small', onclick: () => { DSAVED.push({ name: nameIn.value.trim().slice(0, 60) || null, c: dipCopy(c) }); saveD(); draw(); } }, Z ? '保存' : 'Save')))));
-      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data dip-cmp' },
-        h('thead', null, h('tr', null, h('th', null, Z ? '条件组合' : 'Conditions'), h('th', { title: Z ? `${hzLab(months[h1])}的样本数` : `Samples at ${hzLab(months[h1])}` }, Z ? '样本' : 'Samples'), h('th', null, Z ? '轮数' : 'Falls'),
-          months.map(m => h('th', null, hzLab(m) + (DS.ann && m < 12 ? '*' : ''))), h('th', null, ''))),
-        h('tbody', null, combos.map(x => h('tr', { class: x.kind === 'cur' ? 'hl' : x.nEp != null && x.nEp < 3 ? 'muted' : '' },
-          h('td', { class: 'lbl' }, h('b', null, x.name), x.kind !== 'base' && x.kind !== 'cur' && x.name !== comboTxt(x.c, true) ? h('div', { class: 'xs muted' }, comboTxt(x.c, true)) : x.kind === 'cur' ? h('div', { class: 'xs muted' }, comboTxt(c, true)) : null),
-          h('td', null, x.n.toLocaleString('en-US')), h('td', null, x.nEp == null ? '—' : String(x.nEp) + (x.nEp < 3 ? ' †' : '')),
-          x.cells.map(st => { const y = st.n ? statVal(st, DS.cmp) : NaN; return DS.cmp === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y) }, fmtR(y)); }),
-          h('td', { class: 'nowrap' }, x.kind === 'alt' || x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', onclick: () => adopt(x.c) }, Z ? '采用' : 'Use') : null,
-            x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', title: Z ? '删除这个组合' : 'Delete this combination', 'aria-label': Z ? '删除' : 'Delete', style: { marginLeft: '4px' }, onclick: () => { DSAVED.splice(x.j, 1); saveD(); draw(); } }, '×') : null)))))));
-      out.appendChild(h('p', { class: 'note' }, Z ? `每一行是一组条件；买入的标的、数据、取样、权重、收益口径和时间跨度都与上面相同。「样本」和「轮数」是 ${hzLab(months[h1])} 的数字；轮数不足 3 的组合标 †，只能当作个例。点「采用」把这一行设为当前条件。条件越多、样本越少——同时开太多条件、或者反复换条件直到结果好看，很容易过度拟合。`
-        : `Each row is one set of conditions; the instrument, data, sampling, weights, returns and horizons are the same as above. Samples and falls are for ${hzLab(months[h1])}; rows with fewer than three falls are marked † and are anecdotes. “Use” makes a row the current conditions. More conditions mean fewer samples, and trying combinations until one looks good is a quick way to overfit.`));
+      const cmpHost = h('div', { class: 'stack' }); out.appendChild(cmpHost);
+      // the statistics are chosen like the table's above (several at once, or any percentile) and stacked in each cell;
+      // changing them redraws this table only
+      const cmpTable = () => {
+        U.clear(cmpHost);
+        const sel = DS.cmpStats.slice().sort((a, c2) => statRank(a) - statRank(c2)), many = sel.length > 1;
+        const setS = (fn) => { fn(); saveD(); cmpTable(); };
+        const addCP = () => { const x = Math.round(parseFloat(cN.value) * 10) / 10; if (x >= 1 && x <= 99 && !DS.cmpStats.includes('p' + x)) setS(() => DS.cmpStats.push('p' + x)); };
+        const same = DS.stats.length === DS.cmpStats.length && DS.stats.every(k => DS.cmpStats.includes(k));
+        const cell = (st, k) => { const y = st.n ? statVal(st, k) : NaN; return { cls: k === 'pos' ? null : U.signCls(y), txt: k === 'pos' ? U.pct(y, 0) : fmtR(y), bold: many && (k === 'p50' || k === 'mean') }; };
+        cmpHost.appendChild(h('div', { class: 'controls' },
+          U.ctl(Z ? '统计量（可多选，每格从上到下依次显示；也可自定义分位）' : 'Statistics (pick several to stack them in each cell, or add a percentile)', h('div', { class: 'chips', id: 'dipCmpStats', style: { alignItems: 'center' } },
+            Array.from(new Set(DIP_STATS.concat(DS.cmpStats))).sort((a, c2) => statRank(a) - statRank(c2)).map(k => chip(statLab(k), DS.cmpStats.includes(k), () => setS(() => flip(DS.cmpStats, k)))),
+            h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, h('span', { class: 'muted', style: { fontSize: '13px' } }, 'P'), cN, h('button', { type: 'button', class: 'btn small ghost', onclick: addCP }, Z ? '+ 添加' : '+ Add')),
+            same ? null : h('button', { type: 'button', class: 'btn small ghost', title: Z ? '改成和上方表格相同的统计量' : 'Use the statistics of the table above', onclick: () => setS(() => { DS.cmpStats = DS.stats.slice(); }) }, Z ? '同上方表格' : 'Same as above'))),
+          U.ctl(Z ? '把当前条件存为一个组合' : 'Save the current conditions', h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, nameIn,
+            h('button', { type: 'button', class: 'btn small', onclick: () => { DSAVED.push({ name: nameIn.value.trim().slice(0, 60) || null, c: dipCopy(c) }); saveD(); draw(); } }, Z ? '保存' : 'Save')))));
+        cmpHost.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data dip-cmp' },
+          h('thead', null, h('tr', null, h('th', null, Z ? '条件组合' : 'Conditions'), h('th', { title: Z ? `${hzLab(months[h1])}的样本数` : `Samples at ${hzLab(months[h1])}` }, Z ? '样本' : 'Samples'), h('th', null, Z ? '轮数' : 'Falls'),
+            many ? h('th', { class: 'st' }, Z ? '统计量' : 'Statistic') : null,
+            months.map(m => h('th', null, hzLab(m) + (DS.ann && m < 12 ? '*' : ''))), h('th', null, ''))),
+          h('tbody', null, combos.map(x => h('tr', { class: x.kind === 'cur' ? 'hl' : x.nEp != null && x.nEp < 3 ? 'muted' : '' },
+            h('td', { class: 'lbl' }, h('b', null, x.name), x.kind !== 'base' && x.kind !== 'cur' && x.name !== comboTxt(x.c, true) ? h('div', { class: 'xs muted' }, comboTxt(x.c, true)) : x.kind === 'cur' ? h('div', { class: 'xs muted' }, comboTxt(c, true)) : null),
+            h('td', null, x.n.toLocaleString('en-US')), h('td', null, x.nEp == null ? '—' : String(x.nEp) + (x.nEp < 3 ? ' †' : '')),
+            many ? h('td', { class: 'stk st' }, sel.map(k => h('div', null, statLab(k)))) : null,
+            x.cells.map(st => {
+              if (!many) { const q = cell(st, sel[0]); return h('td', { class: q.cls }, q.txt); }
+              return h('td', { class: 'stk' }, sel.map(k => { const q = cell(st, k); return h('div', { class: q.cls, style: q.bold ? { fontWeight: 700 } : null }, q.txt); }));
+            }),
+            h('td', { class: 'nowrap' }, x.kind === 'alt' || x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', onclick: () => adopt(x.c) }, Z ? '采用' : 'Use') : null,
+              x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', title: Z ? '删除这个组合' : 'Delete this combination', 'aria-label': Z ? '删除' : 'Delete', style: { marginLeft: '4px' }, onclick: () => { DSAVED.splice(x.j, 1); saveD(); draw(); } }, '×') : null)))))));
+        cmpHost.appendChild(h('p', { class: 'note' }, Z ? `每一行是一组条件；买入的标的、数据、取样、权重、收益口径和时间跨度都与上面相同。统计量可以多选，每格从上到下依次显示，顺序与「统计量」一列相同。「样本」和「轮数」是 ${hzLab(months[h1])} 的数字；轮数不足 3 的组合标 †，只能当作个例。点「采用」把这一行设为当前条件。条件越多、样本越少——同时开太多条件、或者反复换条件直到结果好看，很容易过度拟合。`
+          : `Each row is one set of conditions; the instrument, data, sampling, weights, returns and horizons are the same as above. Pick several statistics to see them stacked in each cell, in the order of the Statistic column. Samples and falls are for ${hzLab(months[h1])}; rows with fewer than three falls are marked † and are anecdotes. “Use” makes a row the current conditions. More conditions mean fewer samples, and trying combinations until one looks good is a quick way to overfit.`));
+      };
+      cmpTable();
       if (!R.days.length) return;
       // ---- where the samples come from ----
       const el2 = h('div', { class: 'chart short' }); out.appendChild(el2);
