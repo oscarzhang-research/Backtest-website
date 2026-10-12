@@ -299,10 +299,10 @@
       if (!R.days.length) { out.appendChild(h('div', { class: 'empty' }, zh() ? '所选区间内没有一天符合条件，换一个跌幅或参照高点试试。' : 'No day in the selected history met the condition; try another fall or reference high.')); return; }
       const sel = DS.stats.slice().sort((a, c) => statRank(a) - statRank(c));
       const rows = R.H.map(H => {
-        const stA = Calc.summary(H.r), stN = Calc.summary(H.ann), bsA = Calc.summary(H.base), bsN = Calc.summary(H.baseAnn);
+        const stA = Calc.summary(H.r), stN = Calc.summary(H.ann), bsA = Calc.summary(H.base), bsN = Calc.summary(H.baseAnn), rsA = Calc.summary(H.rest), rsN = Calc.summary(H.restAnn);
         const cnt = new Map(); for (const k of H.ep) cnt.set(k, (cnt.get(k) || 0) + 1);
         let big = null; for (const [k, c] of cnt) if (!big || c > big.c) big = { ep: k, c };
-        return { H, st: DS.ann ? stN : stA, bs: DS.ann ? bsN : bsA, stA, stN, bsA, bsN, big, thin: H.nEp < 3 || stA.n < (DS.first ? 5 : 20) };
+        return { H, st: DS.ann ? stN : stA, bs: DS.ann ? bsN : bsA, rs: DS.ann ? rsN : rsA, stA, stN, bsA, bsN, big, thin: H.nEp < 3 || stA.n < (DS.first ? 5 : 20) };
       });
       // ---- chart: distribution by horizon (log scale of the growth multiple) ----
       const g = (x) => U.isNum(x) ? Math.max(1e-3, 1 + x) : null;
@@ -342,6 +342,15 @@
       if (DS.ann && months.some(m => m < 12)) notes.push(zh() ? '* 不足一年的收益年化后会被放大很多倍，只适合相互比较。' : '* Annualizing horizons under a year magnifies them many times over; compare them with each other only.');
       if (rows.some(x => x.thin)) notes.push(zh() ? '† 独立下跌不足 3 轮或样本太少：只能当作个例，不是统计规律。' : '† Fewer than three separate falls, or too few samples: anecdotes, not statistics.');
       out.appendChild(h('p', { class: 'note' }, notes.join(' ')));
+      const r1 = rows.find(x => x.H.m === 12 && x.st.n) || rows.find(x => x.st.n);
+      // ---- how to read the table: the median of the qualifying days vs the median of any day ----
+      if (r1) {
+        const an = DS.ann && r1.H.m !== 12, st = r1.st, hz = hzLab(r1.H.m), n = st.n.toLocaleString('en-US'), nb = r1.bs.n.toLocaleString('en-US'), nr = r1.rs.n.toLocaleString('en-US');
+        const up = st.mean > st.q(0.5);
+        out.appendChild(h('div', { class: 'callout', html: zh()
+          ? `<b>怎么读这张表</b>：「中位数」只统计符合条件的日子——${DS.first ? `这里是每轮下跌里第一次符合条件的那一天，共 ${n} 天` : `这里是收盘比${refTxt}低 ${U.esc(condIn)}的 ${n} 个交易日`}。每一天都买入、持有 ${hz}，把这些${an ? '年化' : ''}收益从低到高排好，取正中间那个（一半比它高、一半比它低），得到 ${b(fmtR(st.q(0.5)))}。「任意一天·中位数」把同一段历史里的每个交易日（${nb} 天）都当作买入日、完全不挑时机，得到 ${b(fmtR(r1.bs.q(0.5)))}，它是对照组。两者之差，就是“等跌到这个程度再买”在历史上多赚（或少赚）的部分${DS.first ? '' : `；去掉符合条件的这 ${n} 天，其余 ${nr} 天的中位数是 ${fmtR(r1.rs.q(0.5))}`}。平均值会被少数${up ? '暴涨' : '暴跌'}的样本拉${up ? '高' : '低'}，所以同样这些天的平均是 ${fmtR(st.mean)}。`
+          : `<b>How to read the table.</b> “Median” counts only the qualifying days — ${DS.first ? `here the first qualifying day of each fall, ${n} days in all` : `here the ${n} trading days on which ${nmH} closed ${U.esc(cond)} below ${refTxt}`}. Buy on each of them, hold ${hz}, sort the ${an ? 'annualized ' : ''}returns and take the middle one (half did better, half worse): ${b(fmtR(st.q(0.5)))}. “Any day: median” treats every trading day of the same history (${nb} days) as a purchase date, with no timing at all: ${b(fmtR(r1.bs.q(0.5)))}. That is the baseline. The gap between the two is what waiting for this fall added (or cost) in the past${DS.first ? '' : `; leaving out the ${n} qualifying days, the other ${nr} days had a median of ${fmtR(r1.rs.q(0.5))}`}. The mean is pulled ${up ? 'up by a few huge gains' : 'down by a few deep losses'}, so the same days average ${fmtR(st.mean)}.` }));
+      }
       // ---- takeaway ----
       const y0 = Core.iso(s).slice(0, 4); const epDates = R.eps.map(p => Core.iso(p.i).slice(0, 7));
       const dates = epDates.length <= 10 ? epDates.join(zh() ? '、' : ', ') : null;
@@ -350,7 +359,6 @@
           : `Since ${y0}, ${nmH} closed ${cond} below ${refTxt} in ${b(String(R.eps.length))} separate falls${dates ? `, each counted once, on its first qualifying day (${dates})` : ''}. `)
         : (zh() ? `${y0} 年以来，${nmH} 收盘比${refTxt}跌了 ${condIn}的交易日共 ${b(R.days.length.toLocaleString('en-US') + ' 天')}（占 ${U.pct(R.days.length / (e - s + 1), 0)}），分属 ${b(R.eps.length + ' 轮')}独立的下跌${dates ? `（首次符合条件：${dates}）` : ''}。`
           : `Since ${y0}, ${nmH} closed ${cond} below ${refTxt} on ${b(R.days.length.toLocaleString('en-US'))} trading days (${U.pct(R.days.length / (e - s + 1), 0)} of all days), spread over ${b(String(R.eps.length))} separate falls${dates ? ` (first qualifying days: ${dates})` : ''}. `);
-      const r1 = rows.find(x => x.H.m === 12 && x.st.n) || rows.find(x => x.st.n);
       if (r1) {
         const st = r1.st, an = DS.ann && r1.H.m !== 12;
         txt += zh() ? `之后 ${hzLab(r1.H.m)}的${an ? '年化' : ''}收益：平均 ${b(fmtR(st.mean))}，中位数 ${b(fmtR(st.q(0.5)))}（P25 ${fmtR(st.q(0.25))}，P75 ${fmtR(st.q(0.75))}），${U.pct(st.pos, 0)} 为正；同期任意一天买入的中位数为 ${fmtR(r1.bs.q(0.5))}。`

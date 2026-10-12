@@ -67,6 +67,9 @@ test('forward returns, annualizing and the any-day baseline', () => {
     }
     let nb = 0; for (let i = S.s; i <= S.e; i++) if (Core.addYearsDay(Core.days[i], H.m / 12) <= Core.days[S.e]) nb++;
     assert.equal(H.base.length, nb, 'baseline uses every day with a full horizon');
+    assert.equal(H.rest.length + H.r.length, H.base.length, 'every baseline day is either a sample or one of the rest');
+    const days = new Set(H.at); const rest = []; for (let i = S.s; i < S.s + nb; i++) if (!days.has(i)) rest.push(S.v[Core.idxOnOrBefore(Core.addYearsDay(Core.days[i], H.m / 12))] / S.v[i] - 1);
+    close(Calc.summary(H.rest).q(0.5), Calc.summary(rest).q(0.5), 1e-12, 'median of the other days');
     assert.ok(H.nEp >= 1 && H.nEp <= R.eps.length);
   }
   assert.ok(R.H[3].r.length < R.H[0].r.length, 'longer horizons have fewer samples');
