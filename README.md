@@ -2,7 +2,7 @@
 
 **A century of market data and backtests, computed live in your browser.**
 
-The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest weekly update); nothing is pre-rendered.
+The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest close, plus the current session while the market is open); nothing is pre-rendered.
 
 The site opens in English; the **中文** button in the header switches it to Chinese (and back), and a separate button switches the up/down colors between green-up (US) and red-up (China). Both choices are remembered in the browser.
 
@@ -52,16 +52,20 @@ Full details are on the Methodology tab.
 
 All data is embedded in [`data/market-data.js`](data/market-data.js) in a compact delta encoding and decoded by [`assets/js/core.js`](assets/js/core.js).
 
-## Weekly data updates
+## Daily data updates
 
-Every Saturday the [Update market data](.github/workflows/update-data.yml) workflow:
+After every US market close (23:17 UTC: 19:17 in New York in summer, 18:17 in winter) and again before the next open (11:17 UTC, to catch up anything the evening run missed), the [Update market data](.github/workflows/update-data.yml) workflow:
 
-1. downloads the week's sessions from Yahoo Finance (the S&P 500, VIX, USD/CNY and every ETF and stock: closes, dividends, splits), the U.S. Treasury (T-bill rate, 10-year yield) and the BLS (CPI). FRED refuses connections from GitHub's servers;
+1. downloads the new sessions from Yahoo Finance (the S&P 500, VIX, USD/CNY and every ETF and stock: closes, dividends, splits), the U.S. Treasury (T-bill rate, 10-year yield) and the BLS (CPI). FRED refuses connections from GitHub's servers;
 2. recomputes the last 20 stored sessions of every series from the new download and stops if they disagree;
 3. appends the new sessions to `data/market-data.js` and rebuilds values that were provisional (the latest T-bill rate and exchange rate, the S&P 500 dividend of the current month);
 4. runs the unit tests and the browser smoke test on the result, commits it to `main` and redeploys the site.
 
-If any step fails, nothing is committed and the site keeps the previous week's data; GitHub emails a notice of the failed run. To run it by hand: **Actions → Update market data → Run workflow** (tick *check only* to download and verify without committing). Locally: `node scripts/update-data.js --check`.
+A session counts once it is 18:00 in New York, two hours after the close. If any step fails, nothing is committed and the site keeps the previous data; GitHub emails a notice of the failed run. To run it by hand: **Actions → Update market data → Run workflow** (tick *check only* to download and verify without committing). Locally: `node scripts/update-data.js --check`.
+
+### Intraday prices
+
+While the market is open, the [Pages deployment](.github/workflows/pages.yml) runs every 30 minutes (13:07–21:37 UTC on weekdays) and adds the session that is still trading to the deployed copy of the data with `node scripts/update-data.js --live --out _site/data/market-data.js`. That session is provisional: its prices are Yahoo's latest quotes, the T-bill rate and exchange rate are carried forward, and a banner on every tab gives the time of the prices ("Intraday data: prices for … are as of 13:45 New York time"). After the close it is labelled a preliminary close until the evening update commits the official data and redeploys. Provisional prices are never committed: `--live` refuses to write into `data/market-data.js`, and the updater refuses to build on a file that contains them. A scheduled run that finds nothing newer than the committed data (before the open, on holidays, or when Yahoo cannot be reached) leaves the deployed site as it is.
 
 Not updated automatically: hand-written facts (fund profiles, the market snapshot, the timeline, the current CAPE) and the long-run CAPE and World Bank gold histories. Each carries its date.
 
@@ -98,7 +102,7 @@ assets/js/facts.js       sourced fund facts, market snapshot, timeline, literatu
 assets/js/ui.js, app.js  DOM and chart helpers, routing, theme
 assets/js/views/*.js     one module per tab
 data/market-data.js      embedded market data
-scripts/update-data.js   weekly data update (scripts/data/: download, verify, append)
+scripts/update-data.js   daily data update and intraday prices (scripts/data/: download, verify, append)
 tests/                   node:test suites and the Playwright smoke test
 ```
 

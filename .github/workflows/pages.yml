@@ -1,10 +1,16 @@
 name: Deploy to GitHub Pages
 
-# Publishes the site whenever main changes. One-time setup: Settings → Pages → Source: "GitHub Actions".
+# Publishes the site whenever main changes, and every 30 minutes while the US market is open so that the day's
+# session shows up as it trades. Every deployment adds the session that is still trading — or that closed but is not
+# final yet — to the deployed copy of data/market-data.js, marked provisional (the site says so on every tab);
+# nothing is committed. update-data.yml commits the official data after each close and then redeploys.
+# One-time setup: Settings → Pages → Source: "GitHub Actions".
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '7,37 13-21 * * 1-5'   # every 30 minutes, 13:07–21:37 UTC: 09:07–17:37 EDT / 08:07–16:37 EST
 
 permissions:
   contents: read
@@ -16,8 +22,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,21 +34,44 @@ jobs:
           node-version: 22
       - run: npm test
 
+      - name: Assemble the static site (no build step)
+        run: |
+          mkdir _site
+          cp -r index.html assets data _site/
+
+      - name: Add the session that is still trading (provisional, best effort)
+        id: live
+        continue-on-error: true   # without it the committed data are deployed
+        run: node scripts/update-data.js --live --out _site/data/market-data.js --summary "$GITHUB_STEP_SUMMARY" --outputs "$GITHUB_OUTPUT"
+
+      - name: Decide whether to deploy
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CHANGED: ${{ steps.live.outputs.changed }}
+        run: |
+          # a scheduled run deploys only when it has prices the committed data lack
+          if [ "$EVENT" != "schedule" ] || [ "$CHANGED" = "true" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing newer than the committed data (or the download failed): the deployed site is left as it is." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/configure-pages@v5
+        if: steps.decide.outputs.deploy == 'true'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.decide.outputs.deploy == 'true'
+        with:
+          path: _site
+
   deploy:
-    needs: test
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Assemble the static site (no build step)
-        run: |
-          mkdir _site
-          cp -r index.html assets data _site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

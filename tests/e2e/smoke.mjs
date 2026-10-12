@@ -1,5 +1,6 @@
 // Browser smoke test: in English and in Chinese, every tab renders, draws its charts, throws no errors and shows
-// no text from the other language; the language and color buttons switch the page.
+// no text from the other language; the language and color buttons switch the page; provisional (intraday) data are
+// labelled as such.
 // Run with: npm run test:e2e   (needs: npx playwright install chromium)
 import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
@@ -25,10 +26,16 @@ const report = (name, problems, extra) => {
   console.log((problems.length ? 'FAIL ' : 'ok   ') + name.padEnd(12) + (extra || '') + (problems.length ? ' — ' + problems.join('; ') : ''));
   if (problems.length) failed++;
 };
-async function open(lang, hash) {
+async function open(lang, hash, live) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (lang) await ctx.addInitScript((lg) => { try { localStorage.setItem('longrun.lang', JSON.stringify(lg)); } catch (e) { /* ignore */ } }, lang);
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort()); // keep the test offline and deterministic
+  if (live) { // the deployed data as the intraday deployment builds them: the last session marked provisional
+    await ctx.route(/data\/market-data\.js$/, async (r) => {
+      const res = await r.fetch(); const body = (await res.text()).trimEnd().replace(/;$/, '');
+      await r.fulfill({ response: res, body: body + `;window.__DATA__.live=Object.assign({day:window.__DATA__.asOf},${JSON.stringify(live)});\n` });
+    });
+  }
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -47,6 +54,7 @@ for (const lang of ['en', 'zh']) {
       stable = !st.busy && st.t === text && st.t.length > 200 ? stable + 1 : 0; text = st.t;
     }
     const charts = await page.evaluate((id) => document.querySelectorAll('#view-' + id + ' .chart canvas').length, tab);
+    const liveBar = await page.evaluate(() => !document.getElementById('liveBar').hidden);
     const htmlLang = await page.evaluate(() => document.documentElement.lang);
     const cjk = (text.match(/[㐀-鿿＀-￯]/g) || []).length;
     const problems = [];
@@ -57,6 +65,7 @@ for (const lang of ['en', 'zh']) {
     if (lang === 'zh' && cjk < 200) problems.push(`only ${cjk} CJK characters — not translated?`);
     if (htmlLang !== (lang === 'en' ? 'en' : 'zh-CN')) problems.push('html lang = ' + htmlLang);
     if (/\bNaN\b|undefined/.test(text)) problems.push('NaN/undefined in text');
+    if (liveBar) problems.push('the provisional-data banner shows with committed data');
     for (const s of MUST[lang][tab] || []) if (!text.includes(s)) problems.push(`missing “${s}”`);
     report(`${lang} ${tab}`, problems, ` ${String(text.length).padStart(6)} chars, ${charts} charts`);
     await ctx.close();
@@ -86,6 +95,26 @@ for (const lang of ['en', 'zh']) {
   if (s4.lang !== 'en' || s4.tab !== 'Overview' || !s4.cn) problems.push('switching back to English failed or reset the colors: ' + JSON.stringify(s4));
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('buttons', problems);
+  await ctx.close();
+}
+// provisional data: a banner above every tab, and the SOXL page says "intraday" instead of "close"
+for (const [lang, live, must] of [
+  ['zh', { et: '13:45', closed: false }, ['盘中数据：', '美东时间 13:45', '盘中（美东 13:45）', '最新价（盘中）']],
+  [null, { et: '13:45', closed: false }, ['Intraday data: prices for', '13:45 New York time', 'Latest (intraday)']],
+  [null, { et: '16:00', closed: true }, ['Closing prices for', 'are still preliminary', '(preliminary)', 'Close (preliminary)']],
+]) {
+  const { ctx, page, errors } = await open(lang, 'soxl', live);
+  let text = '';
+  for (let k = 0; k < 120; k++) { // until the S6 study has rendered its status line
+    await page.waitForTimeout(250);
+    text = await page.evaluate(() => document.getElementById('liveBar').innerText + '\n' + document.getElementById('view-soxl').innerText);
+    if (/盘中（美东|Intraday \d|Close of \d/.test(text) && !/Computing…|正在计算/.test(text)) break;
+  }
+  const problems = [];
+  if (await page.evaluate(() => document.getElementById('liveBar').hidden)) problems.push('no banner');
+  for (const s of must) if (!text.includes(s)) problems.push(`missing “${s}”`);
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report(`live ${lang || 'en'}${live.closed ? ' closed' : ''}`, problems);
   await ctx.close();
 }
 await browser.close();

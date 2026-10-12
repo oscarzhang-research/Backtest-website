@@ -129,6 +129,7 @@
     Core.lrRaw = DATA.lr || null;      // monthly 10y yields + gold for the long-run test (lr.js)
     Core.cpiRaw = DATA.cpi || null;
     Core.updated = DATA.updated || null;     // last run of scripts/update-data.js: {at, sessions}
+    Core.live = DATA.live || null;           // the newest session is provisional (still trading, or not yet final): {day, et, closed}
     Core.rfThrough = DATA.rfThrough || null; // last T-bill rate published by FRED; later sessions carry it forward
     // USD/CNY (CNY per USD), forward-filled on the calendar; NaN before 1981
     if (DATA.fx && DATA.fx.cny) {

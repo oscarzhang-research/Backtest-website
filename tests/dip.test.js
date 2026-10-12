@@ -6,7 +6,7 @@ const { Core, Calc, idx } = require('./helpers/site.js');
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''} expected ${b}, got ${a}`);
 const S = Core.S.SOXL, X = Core.S.SOXX;
-const CUT = idx('2026-09-30'); // later sessions may still be revised by the weekly update
+const CUT = idx('2026-09-30'); // later sessions may still be revised by the daily update
 
 // the fall condition alone, measured on v itself (the original S6 study)
 function fall(v, s, e, o) {

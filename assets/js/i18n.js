@@ -26,6 +26,11 @@
   add('theme.light', '浅色', 'Light');
   add('theme.dark', '深色', 'Dark');
   add('asOf', '数据截至 {d}', 'Data through {d}');
+  add('live.open', '盘中数据：{d} 的价格截至美东时间 {t}，交易时段内约每 30 分钟刷新一次；收盘后自动换成正式收盘价。', 'Intraday data: prices for {d} are as of {t} New York time and refresh about every 30 minutes while the market is open; the official close replaces them after the close.');
+  add('live.closed', '{d} 的收盘价还是初步数据（美东时间 {t}），当晚会自动换成正式收盘数据。', 'Closing prices for {d} are still preliminary (as of {t} New York time); the official closing data replace them that evening.');
+  add('px.close', '最新收盘', 'Last close');
+  add('px.intraday', '最新价（盘中）', 'Latest (intraday)');
+  add('px.prelim', '收盘（初步）', 'Close (preliminary)');
   add('loading', '正在计算…', 'Computing…');
 
   // ---- Assets ----
@@ -425,7 +430,7 @@
   add('md.lede', '数据从哪里来、怎样构建、如何校验、指标怎样定义，以及这些结果不能说明什么。', 'Where the data comes from, how it is built and checked, how every metric is defined — and what these results cannot tell you.');
 
   add('footer1', '本站仅用于研究与教育，不构成投资建议。历史回测不代表未来表现；ETF 的实际收益还受税费、买卖价差与跟踪误差影响。', 'For research and education only; not investment advice. Past or back-tested results do not predict future returns; real-world ETF returns also depend on taxes, spreads and tracking error.');
-  add('footer2', '数据截至 {d}，每周更新。价格与股息数据来自 Yahoo Finance、S&P/Shiller、FRED、BLS 与 CBOE（部分经由公开数据集），并与发行商官方数字交叉核对，详见「方法与数据」。', 'Data through {d}, updated weekly. Prices and dividends come from Yahoo Finance, S&P/Shiller, FRED, BLS and CBOE (partly via public datasets), cross-checked against issuers\' official figures — see Methodology.');
+  add('footer2', '数据截至 {d}。每个交易日收盘后自动更新，交易时段内约每 30 分钟刷新一次盘中价格。价格与股息数据来自 Yahoo Finance、S&P/Shiller、FRED、BLS 与 CBOE（部分经由公开数据集），并与发行商官方数字交叉核对，详见「方法与数据」。', 'Data through {d}. Updated automatically after every US market close, with intraday prices refreshed about every 30 minutes while the market is open. Prices and dividends come from Yahoo Finance, S&P/Shiller, FRED, BLS and CBOE (partly via public datasets), cross-checked against issuers\' official figures — see Methodology.');
 
   // =================== v3 additions: SOXL, more strategies, high-Sharpe strategy ===================
   add('brandSub', '标普500 · 纳指100 · SMH · SOXX · VGT · SOXL', 'S&P 500 · Nasdaq-100 · SMH · SOXX · VGT · SOXL');

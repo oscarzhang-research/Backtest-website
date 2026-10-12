@@ -33,7 +33,7 @@
     let pk = -Infinity; for (let i = s.s; i <= s.e; i++) pk = Math.max(pk, s.v[i]);
     const cur = s.v[s.e] / pk - 1;
     const kv = h('div', { class: 'kv sx-kv' },
-      h('div', null, h('span', null, zh() ? '最新收盘' : 'Last close'), h('b', null, px ? '$' + px.toFixed(2) : '—'), h('span', null, Core.lastPx.SOXL_d || '')),
+      h('div', null, h('span', null, U.lastPxLabel()), h('b', null, px ? '$' + px.toFixed(2) : '—'), h('span', null, (Core.lastPx.SOXL_d || '') + (U.live() ? (zh() ? ' 美东 ' : ' ') + U.live().et + (zh() ? '' : ' NY') : ''))),
       h('div', null, h('span', null, zh() ? '上市以来年化' : 'CAGR since listing'), h('b', null, U.pct(m.cagr, 1)), h('span', null, (zh() ? '价格口径，' : 'price basis, ') + Core.iso(s.s).slice(0, 7) + '→')),
       h('div', null, h('span', null, zh() ? '年化波动' : 'Volatility'), h('b', null, U.pct(m.vol, 0)), h('span', null, zh() ? 'SOXX 的约 3 倍' : '≈3× SOXX')),
       h('div', null, h('span', null, zh() ? '最大回撤（真实）' : 'Max drawdown (actual)'), h('b', { class: 'neg' }, U.pct(m.mdd, 1)), h('span', null, Core.iso(m.mddPeakI).slice(0, 7) + ' → ' + Core.iso(m.mddTroughI).slice(0, 7))),
@@ -447,7 +447,9 @@
       const epWord = c.dd.on ? (Z ? '轮下跌' : 'falls') : (Z ? '个时段' : 'spells');
       // ---- today ----
       const stt = statusOf(c), allOk = stt.every(x => x.ok);
-      out.appendChild(h('div', { class: 'callout', html: (Z ? `<b>${Core.iso(e)} 收盘</b>：` : `<b>Close of ${Core.iso(e)}</b>: `) + (stt.length
+      const lv = e === Core.N - 1 ? U.live() : null; // the newest session may still be trading
+      const when = !lv ? (Z ? `${Core.iso(e)} 收盘` : `Close of ${Core.iso(e)}`) : lv.closed ? (Z ? `${Core.iso(e)} 收盘（初步）` : `Close of ${Core.iso(e)} (preliminary)`) : (Z ? `${Core.iso(e)} 盘中（美东 ${lv.et}）` : `Intraday ${Core.iso(e)} (${lv.et} New York time)`);
+      out.appendChild(h('div', { class: 'callout', html: (Z ? `<b>${when}</b>：` : `<b>${when}</b>: `) + (stt.length
         ? stt.map(x => `${x.ok ? '✓' : '✗'} ${U.esc(x.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(x.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? `。${allOk ? b('今天符合全部条件') : '今天不符合全部条件'}。` : `. ${allOk ? b('All conditions hold today') : 'Not all conditions hold today'}.`)
         : (Z ? '没有勾选任何条件，下面的结果就是任意一天买入。' : 'No condition is ticked, so the results below are simply buying on any day.')) }));
       const R = run(c, { cmp: cmpKey ? Core.S[cmpKey].v : null, mae: true, rest: true });
