@@ -355,6 +355,17 @@ details.more summary { cursor: pointer; font-size: 13px; color: var(--accent); f
 .sh-hero .seg { flex-wrap: wrap; }
 .sh-params { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); }
 .sh-params .ctl input[type="number"], .sh-params .ctl input[type="date"], .sh-params .ctl select { width: 100%; }
+/* SOXL S6: condition cards and the comparison of combinations */
+.dip-conds { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.dip-cond { border: 1px solid var(--rule-strong); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface); display: grid; gap: 8px; align-content: start; }
+.dip-cond.off { background: var(--surface-2); border-style: dashed; }
+.dip-cond.off .dip-body { opacity: 0.6; }
+.dip-head { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 14px; cursor: pointer; color: var(--ink); }
+.dip-head input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent-line); cursor: pointer; }
+.dip-body { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.dip-f { display: grid; gap: 3px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.dip-f input[type="number"] { width: 76px; }
+.dip-cmp td.lbl { white-space: normal; min-width: 190px; max-width: 320px; }
 .sh-h4 { font-family: var(--font-body); font-size: 14.5px; font-weight: 700; margin: 14px 0 8px; padding-top: 12px; border-top: 1px dashed var(--rule-strong); line-height: 1.4; }
 .sh-h4:first-of-type { border-top: 0; margin-top: 2px; padding-top: 0; }
 .sh-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; counter-reset: none; }

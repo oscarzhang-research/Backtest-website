@@ -8,12 +8,12 @@ const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, ch
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
     sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
-    soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'The falls one by one'],
+    soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
   },
   zh: {
     sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
-    soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '逐轮明细'],
+    soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
   },
 };
