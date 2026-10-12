@@ -246,11 +246,13 @@
     const D = Core.days;
     const endOf = (i, m) => { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) return -1; const j = Core.idxOnOrBefore(t); return j > i && D[j] >= t - 7 ? j : -2; };
     const samples = o.first ? eps.map((p, k) => [p.i, k]) : days.map((i, k) => [i, epOf[k]]);
+    const isSample = new Uint8Array(n); for (const [i] of samples) isSample[i - s] = 1;
     const H = (o.months || []).map(m => {
-      const r = [], ann = [], ep = [], at = [], base = [];
+      const r = [], ann = [], ep = [], at = [], base = [], rest = [];
       for (const [i, k] of samples) { const j = endOf(i, m); if (j < 0) continue; const x = v[j] / v[i] - 1; r.push(x); ann.push(Math.pow(1 + x, 12 / m) - 1); ep.push(k); at.push(i); }
-      for (let i = s; i <= e; i++) { const j = endOf(i, m); if (j === -1) break; if (j >= 0) base.push(v[j] / v[i] - 1); }
-      return { m, r, ann, ep, at, base, baseAnn: base.map(x => Math.pow(1 + x, 12 / m) - 1), nEp: new Set(ep).size };
+      // baseline: every day of [s, e] with a full horizon; rest: the same without the sample days
+      for (let i = s; i <= e; i++) { const j = endOf(i, m); if (j === -1) break; if (j >= 0) { const x = v[j] / v[i] - 1; base.push(x); if (!isSample[i - s]) rest.push(x); } }
+      return { m, r, ann, ep, at, base, baseAnn: base.map(x => Math.pow(1 + x, 12 / m) - 1), rest, restAnn: rest.map(x => Math.pow(1 + x, 12 / m) - 1), nEp: new Set(ep).size };
     });
     return { s, e, dd, hiAt, eps, days, epOf, H, endOf };
   };
