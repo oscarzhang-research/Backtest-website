@@ -11,7 +11,7 @@ const { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, MIR
 
 const N = Core.N;
 const clone = (x) => JSON.parse(JSON.stringify(x));
-const NOW = new Date('2026-09-29T12:00:00Z'); // 08:00 in New York: the 09-28 session is the last closed one
+const NOW = new Date(Date.parse(DATA.asOf + 'T12:00:00Z') + 864e5); // 08:00 in New York the next day: the last stored session has closed
 
 // The data as it would have looked k sessions earlier.
 function truncate(data, k) {
@@ -20,6 +20,7 @@ function truncate(data, k) {
   for (const key in d.etf) d.etf[key].r = d.etf[key].r.slice(0, -k);
   for (const key in d.meta) d.meta[key] = Object.assign({}, d.meta[key], { last, n: d.meta[key].n - k });
   d.fx.cny.dv = d.fx.cny.dv.slice(0, -k); if (d.fx.cny.last > last) d.fx.cny.last = last;
+  if (d.rfThrough && d.rfThrough > last) d.rfThrough = last;
   return d;
 }
 // SPY goes ex-dividend on the third Friday of Mar/Jun/Sep/Dec (or the next session when that is a holiday)
@@ -79,9 +80,9 @@ test('cutting off the last week and updating again reproduces the stored data', 
 });
 
 test('with nothing new, the data is returned unchanged', () => {
-  // the first run only records how far the T-bill rate is confirmed by DTB3
+  // a run may still record that DTB3 now confirms the T-bill rate up to the last session
   const first = applyUpdate(DATA, fixtures(N - 31, N - 1), { now: NOW });
-  assert.equal(first.changed, true);
+  assert.equal(first.changed, DATA.rfThrough !== DATA.asOf);
   assert.deepEqual(Object.assign({}, first.data, { rfThrough: undefined, updated: undefined }), Object.assign({}, DATA, { rfThrough: undefined, updated: undefined }));
   assert.equal(first.data.rfThrough, DATA.asOf);
   const later = Object.assign(clone(DATA), { rfThrough: DATA.asOf });
@@ -160,9 +161,10 @@ test('T-bill rate and USD/CNY: provisional values are rebuilt from the latest ob
   const r2 = applyUpdate(truncate(DATA, k), src2, { now: NOW });
   assert.ok(r2.report.warnings.some(w => /^DTB3 unavailable/.test(w)));
   const rf2 = codec.cumsum(r2.data.rf); assert.deepEqual(new Set(rf2.slice(-k)), new Set([rf2[N - 1 - k]]));
-  assert.equal(r2.data.rfThrough, '2025-12-19');
+  const thru = truncate(DATA, k).rfThrough || '2025-12-19';
+  assert.equal(r2.data.rfThrough, thru);
   // a stored rate that disagrees with DTB3 before its last confirmed date stops the update
-  const src3 = fixtures(N - 1 - k - 30, N - 1); for (const d of [...src3.dtb3.keys()].filter(d => d <= '2025-12-19').slice(-5)) src3.dtb3.set(d, 9.99);
+  const src3 = fixtures(N - 1 - k - 30, N - 1); for (const d of [...src3.dtb3.keys()].filter(d => d <= thru).slice(-5)) src3.dtb3.set(d, 9.99);
   assert.throws(() => applyUpdate(truncate(DATA, k), src3, { now: NOW }), /DTB3 disagrees/);
 });
 
@@ -187,9 +189,11 @@ test('the data file round-trips through the writer, and validate() catches a bro
   assert.equal(txt, fs.readFileSync(path.join(ROOT, 'data/market-data.js'), 'utf8'), 'same bytes as the committed file');
   assert.deepEqual(codec.readDataFile(f), DATA);
   validate(DATA);
-  const bad = clone(DATA); bad.etf.GLD.r.push(-1e6); bad.cal += '1'; bad.spx.pxd.push(0); bad.rf.push(0); bad.vix.v.push(1500); bad.fx.cny.dv.push(0);
+  // one more session (the next weekday) in which GLD loses everything
+  let next = codec.dayNum(DATA.asOf) + 1; while ([0, 6].includes(new Date(next * 864e5).getUTCDay())) next++;
+  const bad = clone(DATA); bad.etf.GLD.r.push(-1e6); bad.cal += codec.encodeGap(next - codec.dayNum(DATA.asOf)); bad.spx.pxd.push(0); bad.rf.push(0); bad.vix.v.push(1500); bad.fx.cny.dv.push(0);
   for (const k in bad.etf) if (k !== 'GLD') bad.etf[k].r.push(0);
-  bad.asOf = codec.isoOf(codec.dayNum(DATA.asOf) + 1);
+  bad.asOf = codec.isoOf(next);
   assert.throws(() => validate(bad), /GLD: bad value/);
 });
 
