@@ -217,7 +217,8 @@ const nyTime = (hm, iso = DATA.asOf) => {
 test('a live update adds the session that is still trading, marked provisional', () => {
   const src = fixtures(N - 1 - 1 - 30, N - 1); src.tbill = src.cny = src.cpi = src.gs10 = null; // what a live download holds
   const t = truncate(DATA, 1);
-  assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:29'))), t.asOf);
+  // a calendar date, not a session: at 09:29 on a Monday it is the Sunday before
+  assert.equal(lastOpenedDay(nyTime('09:29')), Core.days[N - 1] - 1);
   assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:30'))), DATA.asOf);
   // the ordinary update leaves the session out until it has closed
   assert.equal(applyUpdate(t, src, { now: nyTime('14:05') }).report.added.length, 0);
