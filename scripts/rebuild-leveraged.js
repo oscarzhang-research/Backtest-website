@@ -15,7 +15,8 @@
 //   TQQQ*: QQQ's daily total return (QQQ has tracked the Nasdaq-100 since 1999, as TQQQ does), from 1999-03-10.
 // c is set so that the model matches the real fund's cumulative return over the span it tracked that index (SOXL: its
 // launch to 2021-08-24; TQQQ: its launch to the last session). Also stored, for the site's leverage studies: c for
-// 3 × the unleveraged ETF (SOXX, QQQ) over the fund's whole life.
+// 3 × the unleveraged ETF (SOXX, QQQ) over the fund's whole life, and for SOXL the index-based 1× returns of the simulated
+// stretch (baseR, millionths), which the site splices with SOXX at the launch as the 1× series behind SOXL*.
 //
 //   node scripts/rebuild-leveraged.js                 report only
 //   node scripts/rebuild-leveraged.js --write         also rewrite data/market-data.js
@@ -147,6 +148,8 @@ const FUNDS = [
       basis: 'total return', sub, simCagr: r5(main.cagr), simMdd: r4(main.dd),
       etf: { key: F.etf, c: r5(cE), monthlyCorr: r4(tE.corr), monthlyTE: r5(tE.te) }, alt,
     };
+    // the 1× series the simulation is 3× of, when it is not the ETF itself (the site splices it with the ETF at the launch)
+    if (F.index) { const br = []; for (let i = x0 + 1; i <= s; i++) br.push(m6(base[i])); data[F.cal].baseR = br; }
     if (data.lastPx) { const last = bar.get(days[N - 1]); if (last) { data.lastPx[F.key] = Math.round(last.close * 100) / 100; data.lastPx[F.key + '_d'] = data.asOf; } }
   }
   validate(data);
