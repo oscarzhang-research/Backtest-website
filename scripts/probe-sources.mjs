@@ -1,23 +1,23 @@
-// TEMPORARY: which market-data endpoints answer from a GitHub-hosted runner? (removed before merging)
-const UAS = { browser: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36', curl: 'curl/8.5.0', none: null };
-const show = async (label, url, headers = {}) => {
-  try { const r = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(20000) }); const t = await r.text(); console.log(`${label}: ${r.status} ${t.slice(0, 160).replace(/\s+/g, ' ')}`); return { r, t }; }
-  catch (e) { console.log(`${label}: ERROR ${e.message}`); return null; }
+// TEMPORARY: which endpoints answer from a GitHub-hosted runner? (removed before merging)
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const show = async (label, url, headers = {}, ms = 45000) => {
+  const t0 = Date.now();
+  try { const r = await fetch(url, { headers: Object.assign({ 'User-Agent': UA }, headers), signal: AbortSignal.timeout(ms) }); const t = await r.text(); console.log(`${label}: ${r.status} in ${Date.now() - t0} ms: ${t.slice(0, 220).replace(/\s+/g, ' ')}`); }
+  catch (e) { console.log(`${label}: ERROR after ${Date.now() - t0} ms: ${e.message}${e.cause ? ' (' + (e.cause.code || e.cause.message) + ')' : ''}`); }
 };
-const chart = 'https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=5d&interval=1d&events=div%7Csplit';
-for (const [k, ua] of Object.entries(UAS)) await show(`yahoo chart, UA=${k}`, chart, ua ? { 'User-Agent': ua } : {});
-// cookie + crumb flow
-try {
-  const r1 = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': UAS.browser }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
-  const cookie = (r1.headers.getSetCookie ? r1.headers.getSetCookie() : []).map(c => c.split(';')[0]).join('; ');
-  console.log(`fc.yahoo.com: ${r1.status}, cookie ${cookie ? cookie.slice(0, 30) + '…' : 'none'}`);
-  const g = await show('getcrumb', 'https://query1.finance.yahoo.com/v1/test/getcrumb', { 'User-Agent': UAS.browser, Cookie: cookie });
-  const crumb = g && g.r.ok ? g.t.trim() : '';
-  await show('yahoo chart with cookie+crumb', chart + '&crumb=' + encodeURIComponent(crumb), { 'User-Agent': UAS.browser, Cookie: cookie });
-  await show('yahoo chart with cookie only', chart, { 'User-Agent': UAS.browser, Cookie: cookie });
-} catch (e) { console.log('cookie flow: ERROR ' + e.message); }
-await show('stooq SPY', 'https://stooq.com/q/d/l/?s=spy.us&i=d&d1=20260901&d2=20261012', { 'User-Agent': UAS.browser });
-await show('nasdaq SPY', 'https://api.nasdaq.com/api/quote/SPY/historical?assetclass=etf&fromdate=2026-09-01&todate=2026-10-12&limit=5', { 'User-Agent': UAS.browser, Accept: 'application/json' });
-await show('nasdaq SPY dividends', 'https://api.nasdaq.com/api/quote/SPY/dividends?assetclass=etf', { 'User-Agent': UAS.browser, Accept: 'application/json' });
-await show('cboe VIX', 'https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv', { 'User-Agent': UAS.browser });
-for (const id of ['DTB3', 'SP500', 'VIXCLS', 'NASDAQ100', 'CPIAUCNS']) await show('fred ' + id, `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}&cosd=2026-09-01`, { 'User-Agent': UAS.browser });
+// Yahoo: the updater's old user agent vs the one that worked
+await show('yahoo ^GSPC, old UA', 'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d', { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36', Accept: '*/*' });
+await show('yahoo ^GSPC, Windows UA', 'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d');
+await show('yahoo ^IRX (13-week bill)', 'https://query1.finance.yahoo.com/v8/finance/chart/%5EIRX?range=1mo&interval=1d');
+await show('yahoo CNY=X', 'https://query1.finance.yahoo.com/v8/finance/chart/CNY%3DX?range=5d&interval=1d');
+// FRED again, longer timeout, different paths
+await show('fred graph csv DTB3', 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3&cosd=2026-09-01', {}, 60000);
+await show('fred series page', 'https://fred.stlouisfed.org/series/DTB3', {}, 30000);
+await show('fred api (no key)', 'https://api.stlouisfed.org/fred/series/observations?series_id=DTB3&file_type=json', {}, 30000);
+// official sources without keys
+await show('treasury bill rates csv', 'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2026/all?type=daily_treasury_bill_rates&field_tdr_date_value=2026&page&_format=csv', {}, 45000);
+await show('treasury yield curve csv', 'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2026/all?type=daily_treasury_yield_curve&field_tdr_date_value=2026&page&_format=csv', {}, 45000);
+await show('bls api v1 CPI (CUUR0000SA0)', 'https://api.bls.gov/publicAPI/v1/timeseries/data/CUUR0000SA0', {}, 45000);
+await show('fed H.15 DDP (3-month bill)', 'https://www.federalreserve.gov/datadownload/Output.aspx?rel=H15&series=bf17364827e38702b42a58cf8eaa3f78&lastobs=20&from=&to=&filetype=csv&label=include&layout=seriescolumn', {}, 45000);
+await show('fed H.10 DDP (CNY)', 'https://www.federalreserve.gov/datadownload/Output.aspx?rel=H10&series=4ef3f8d3a7d2a3a5ae2c8f6a1b0b7fd4&lastobs=20&from=&to=&filetype=csv&label=include&layout=seriescolumn', {}, 45000);
+await show('fed H.10 release page', 'https://www.federalreserve.gov/releases/h10/current/default.htm', {}, 45000);

@@ -17,23 +17,8 @@ jobs:
       - name: Node fetch
         continue-on-error: true
         run: node scripts/probe-sources.mjs
-      - name: curl
+      - name: curl to FRED and Treasury
         continue-on-error: true
         run: |
-          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
-          for u in "https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=5d&interval=1d" "https://query2.finance.yahoo.com/v8/finance/chart/SPY?range=5d&interval=1d"; do
-            code=$(curl -s -o /tmp/out -w '%{http_code}' -A "$UA" --max-time 20 "$u"); echo "== $code $u"; head -c 200 /tmp/out; echo; done
-      - name: yfinance (curl_cffi browser impersonation)
-        continue-on-error: true
-        run: |
-          pip install --quiet yfinance
-          python - <<'PY'
-          import yfinance as yf
-          print('yfinance', yf.__version__)
-          for s in ['SPY', '^GSPC', 'TLT', '^VIX', 'SOXL']:
-              try:
-                  h = yf.Ticker(s).history(start='2026-09-01', interval='1d', auto_adjust=False, actions=True)
-                  print(s, len(h), 'rows'); print(h[['Close', 'Dividends', 'Stock Splits']].tail(4).to_string())
-              except Exception as e:
-                  print(s, 'ERROR', repr(e)[:300])
-          PY
+          for u in "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3&cosd=2026-09-01" "https://home.treasury.gov/"; do
+            curl -sS -o /tmp/out -w "== %{http_code} connect %{time_connect}s total %{time_total}s  $u\n" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" --max-time 60 "$u" || echo "curl failed: $u"; head -c 200 /tmp/out 2>/dev/null; echo; done
