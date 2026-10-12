@@ -86,6 +86,10 @@ data/market-data.js      embedded market data
 tests/                   node:test suites and the Playwright smoke test
 ```
 
+## Roadmap
+
+What was added most recently and what could come next (data refresh, a live track record, costs and taxes, inflation-resistant assets, withdrawal rules): see [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Disclaimer
 
 For research and education only; this is not investment advice. Backtests describe the past under simplifying assumptions (no taxes, idealised execution) and do not predict future returns. Real-world ETF returns also depend on taxes, spreads and tracking error.
