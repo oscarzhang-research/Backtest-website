@@ -1,4 +1,4 @@
-// The weekly data updater (scripts/update-data.js), tested offline: the "downloads" are rebuilt from the stored data,
+// The data updater (scripts/update-data.js), tested offline: the "downloads" are rebuilt from the stored data,
 // so cutting the last sessions off and updating again must reproduce the file exactly.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { Core, DATA, ROOT } = require('./helpers/site.js');
 const codec = require('../scripts/data/codec.js');
-const { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, MIRRORS, PRICE_ONLY, SPY_FEE } = require('../scripts/data/update.js');
+const { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, SPY_FEE } = require('../scripts/data/update.js');
 
 const N = Core.N;
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -108,7 +108,7 @@ test('a download that disagrees with the stored returns stops the update', () =>
   const src = fixtures(N - 41, N - 1); const bars = src.etf.QQQ.bars;
   const b = bars[bars.length - 12]; b.close *= 1.01; // 11 sessions back: inside the verification window
   assert.throws(() => applyUpdate(truncate(DATA, 1), src, { now: NOW }), /QQQ: return on/);
-  const src2 = fixtures(N - 41, N - 1); src2.gspc.bars[src2.gspc.bars.length - 5].close += 1;
+  const src2 = fixtures(N - 41, N - 1); src2.gspc.bars[src2.gspc.bars.length - 12].close += 1;
   assert.throws(() => applyUpdate(truncate(DATA, 1), src2, { now: NOW }), /\^GSPC close/);
   const src3 = fixtures(N - 41, N - 1); src3.gspc.bars.splice(src3.gspc.bars.length - 6, 1);
   assert.throws(() => applyUpdate(truncate(DATA, 1), src3, { now: NOW }), /disagree with the stored calendar/);
@@ -126,6 +126,21 @@ test('a dividend posted late is corrected in the newest stored sessions only', (
   // the same dividend further back is outside the revision window: the update stops instead
   const src2 = fixtures(N - 1 - k - 30, N - 1); const b2 = src2.etf.TLT.bars[src2.etf.TLT.bars.length - 1 - k - 10]; b2.div = b2.close * 0.004;
   assert.throws(() => applyUpdate(truncate(DATA, k), src2, { now: NOW }), /TLT: return on/);
+});
+
+test('a revised S&P 500 close is corrected in the newest stored sessions only', () => {
+  const k = 1; const src = fixtures(N - 1 - k - 30, N - 1); const bars = src.gspc.bars;
+  const b = bars[bars.length - 1 - k - 2]; b.close = Math.round(b.close * 1.002 * 100) / 100; // two sessions before the old last one
+  const { data, report } = applyUpdate(truncate(DATA, k), src, { now: NOW });
+  assert.equal(report.revisions.length, 1);
+  assert.match(report.revisions[0], new RegExp('^S&P 500 ' + b.date));
+  const px = codec.cumsum(data.spx.pxd); const i = Core.days.indexOf(codec.dayNum(b.date));
+  assert.equal(px[i], Math.round(b.close * 100));
+  for (const j of [i - 1, i + 1, N - 1]) assert.equal(px[j], Math.round(Core.spxPrice[j] * 100));
+  validate(data);
+  // further back the update stops instead
+  const src2 = fixtures(N - 1 - k - 30, N - 1); src2.gspc.bars[src2.gspc.bars.length - 1 - k - 10].close += 1;
+  assert.throws(() => applyUpdate(truncate(DATA, k), src2, { now: NOW }), /\^GSPC close on/);
 });
 
 test('a missing bar on a new session counts as a flat day that the next session catches up', () => {
@@ -185,6 +200,51 @@ test('CPI: new months are appended, an unpublished one is interpolated, a publis
   assert.ok(report.warnings.some(w => /was not published/.test(w)));
 });
 
+// h:mm in New York on the day of the last stored session
+const nyTime = (hm, iso = DATA.asOf) => {
+  const off = nyClock(new Date(iso + 'T12:00:00Z')).min === 8 * 60 ? 4 : 5; // EDT or EST
+  const [H, M] = hm.split(':').map(Number); return new Date(Date.parse(iso + 'T00:00:00Z') + ((H + off) * 60 + M) * 60e3);
+};
+
+test('a live update adds the session that is still trading, marked provisional', () => {
+  const src = fixtures(N - 1 - 1 - 30, N - 1); src.tbill = src.cny = src.cpi = src.gs10 = null; // what a live download holds
+  const t = truncate(DATA, 1);
+  assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:29'))), t.asOf);
+  assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:30'))), DATA.asOf);
+  // the ordinary update leaves the session out until it has closed
+  assert.equal(applyUpdate(t, src, { now: nyTime('14:05') }).report.added.length, 0);
+  const r = applyUpdate(t, src, { now: nyTime('14:05'), live: true });
+  assert.deepEqual(r.report.added, [DATA.asOf]);
+  assert.deepEqual(r.data.live, { day: DATA.asOf, et: '14:05', closed: false });
+  assert.equal(r.data.cal, DATA.cal); assert.deepEqual(r.data.spx.pxd, DATA.spx.pxd); assert.deepEqual(r.data.vix, DATA.vix);
+  for (const key in DATA.etf) assert.deepEqual(r.data.etf[key].r, DATA.etf[key].r, key);
+  // rates and USD/CNY are carried forward, quietly
+  const rf = codec.cumsum(r.data.rf); assert.equal(rf[N - 1], rf[N - 2]);
+  assert.ok(!r.report.warnings.some(w => /unavailable/.test(w)), r.report.warnings.join('; '));
+  validate(r.data);
+  assert.match(reportMarkdown(r.report), /\*\*Provisional:\*\* \S+ prices as of 14:05 New York time/);
+  // the time of Yahoo's quote, when it comes with one
+  src.gspc.time = Math.round(nyTime('13:58').getTime() / 1000);
+  assert.equal(applyUpdate(t, src, { now: nyTime('14:05'), live: true }).data.live.et, '13:58');
+  // after 16:00 the prices are a preliminary close; from 18:00 the session is final
+  assert.equal(applyUpdate(t, src, { now: nyTime('16:20'), live: true }).data.live.closed, true);
+  const fin = applyUpdate(t, src, { now: nyTime('18:30'), live: true });
+  assert.deepEqual(fin.report.added, [DATA.asOf]); assert.equal(fin.data.live, undefined);
+  // before the open there is nothing to add
+  assert.equal(applyUpdate(t, src, { now: nyTime('09:10'), live: true }).report.added.length, 0);
+  // provisional data are never built on
+  assert.throws(() => applyUpdate(r.data, src, { now: nyTime('14:35'), live: true }), /provisional session/);
+});
+
+test('the command line refuses to write provisional prices into the data file', () => {
+  const { spawnSync } = require('child_process');
+  const script = path.join(ROOT, 'scripts/update-data.js');
+  for (const extra of [[], ['--out', path.join(ROOT, 'data/market-data.js')]]) {
+    const r = spawnSync(process.execPath, [script, '--live', ...extra], { encoding: 'utf8' });
+    assert.equal(r.status, 1); assert.match(r.stderr, /--live needs --out/);
+  }
+});
+
 test('the data file round-trips through the writer, and validate() catches a broken series', () => {
   const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lr-')), 'market-data.js');
   codec.writeDataFile(f, DATA);
@@ -238,4 +298,31 @@ test('the downloaders read Yahoo chart JSON, Treasury CSV and BLS JSON, and the 
   for (const key in DATA.etf) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);
   sameExceptNew(data, DATA, ['cal', 'asOf', 'rf', 'vix', 'fx', 'cpi']);
   assert.deepEqual(data.lr.y10, DATA.lr.y10);
+});
+
+test('a live download asks Yahoo only, and the quote fills the bar Yahoo has not posted yet', async () => {
+  const { fetchAll, yahoo } = require('../scripts/data/sources.js');
+  const src = fixtures(N - 1 - 1 - 30, N - 1);
+  const tq = codec.dayNum(DATA.asOf) * 86400 + 18 * 3600; // early afternoon in New York
+  const calls = []; const realFetch = global.fetch;
+  global.fetch = async (url) => {
+    calls.push(url);
+    const y = url.match(/finance\.yahoo\.com\/v8\/finance\/chart\/([^?]+)\?/);
+    const sym = y && decodeURIComponent(y[1]); const s2 = !y ? null : sym === '^GSPC' ? src.gspc : sym === '^VIX' ? src.vix : src.etf[sym];
+    if (!s2) return { ok: false, status: 404, text: async () => '' };
+    const bars = s2.bars.slice(0, -1), last = s2.bars[s2.bars.length - 1]; // the daily bars stop the day before; the quote is today's
+    return { ok: true, status: 200, text: async () => JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, regularMarketTime: tq, regularMarketPrice: last.close }, timestamp: bars.map(b => codec.dayNum(b.date) * 86400 + 13.5 * 3600), indicators: { quote: [{ close: bars.map(b => b.close) }] } }], error: null } }) };
+  };
+  let got, plain;
+  try {
+    got = await fetchAll(truncate(DATA, 1), { now: NOW, delay: 0, light: true });
+    plain = await yahoo('QQQ', codec.dayNum(DATA.asOf) - 40, codec.dayNum(DATA.asOf) + 1);
+  } finally { global.fetch = realFetch; }
+  assert.ok(calls.every(u => /finance\.yahoo\.com\/v8\/finance\/chart\//.test(u)), 'Yahoo only');
+  assert.ok(!calls.some(u => /%5ENDX|CNY%3DX/.test(u)), 'no ^NDX or USD/CNY');
+  for (const key of ['tbill', 'gs10', 'cpi', 'cny', 'ndx']) assert.equal(got[key], null, key);
+  assert.equal(got.gspc.time, tq);
+  assert.equal(got.gspc.bars[got.gspc.bars.length - 1].date, DATA.asOf);
+  assert.deepEqual(got.etf.QQQ.bars.slice(-1), src.etf.QQQ.bars.slice(-1));
+  assert.notEqual(plain.bars[plain.bars.length - 1].date, DATA.asOf, 'without fill: the daily bars only');
 });

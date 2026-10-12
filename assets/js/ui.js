@@ -73,6 +73,10 @@
   };
   U.signCls = (x) => !isNum(x) ? '' : x > 0 ? 'pos' : x < 0 ? 'neg' : '';
   U.date = (i) => (i == null || i < 0) ? '—' : root.Core.iso(i);
+  // The newest session while it is provisional — the deployed site adds it every 30 minutes while New York trades, and
+  // the official close replaces it in the evening: {day, et: 'HH:MM' New York time, closed: the market has closed}
+  U.live = () => (root.Core && root.Core.live && root.Core.live.day === root.Core.asOf ? root.Core.live : null);
+  U.lastPxLabel = () => { const L = U.live(); return t(!L ? 'px.close' : L.closed ? 'px.prelim' : 'px.intraday'); };
 
   // ---------- Theme tokens ----------
   U.tokens = function () {

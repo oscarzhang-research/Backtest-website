@@ -50,6 +50,9 @@
     const f = U.$('#footer'); U.clear(f);
     f.appendChild(U.h('div', null, t('footer1')));
     f.appendChild(U.h('div', null, t('footer2', { d: Core.asOf })));
+    // the newest session is provisional (intraday, or closed but not yet final): say so above every tab
+    const bar = U.$('#liveBar'), L = U.live();
+    if (bar) { U.clear(bar); bar.hidden = !L; if (L) bar.append(U.h('span', { class: 'dot' }), U.h('span', null, t(L.closed ? 'live.closed' : 'live.open', { d: L.day, t: L.et }))); }
   };
 
   App.show = function (id, opts) {

@@ -1,10 +1,12 @@
-// Downloads for the weekly data update, all reachable from GitHub-hosted runners without an API key:
+// Downloads for the data update, all reachable from GitHub-hosted runners without an API key:
 // Yahoo Finance daily bars (prices, dividends, USD/CNY), the U.S. Treasury's daily rate files (T-bill rate,
 // 10-year yield) and the BLS API (CPI). FRED's web endpoints refuse connections from the runners.
 // Output format (what update.js expects):
 //   { gspc, vix, ndx: {bars: [{date: 'YYYY-MM-DD', close, div}]}, etf: {SPY: {bars}, ...},
 //     tbill, cny: Map('YYYY-MM-DD' -> number|null), cpi, gs10: Map('YYYY-MM' -> number|null), plus a label per source }
 // Required series throw when they cannot be downloaded; optional ones (rates, CPI, USD/CNY, ^NDX) come back as null.
+// opts.light (the intraday update) downloads the Yahoo series only: rates are carried forward for a provisional session,
+// and the BLS allows 25 requests a day.
 'use strict';
 const { dayNum, isoOf, monthKey, monthIso, decodeCalendar } = require('./codec.js');
 const { MIRRORS, RF_EXACT_UNTIL } = require('./update.js');
@@ -37,8 +39,10 @@ async function yahooSession() {
   return yahooCookie;
 }
 
-// Yahoo Finance chart API: split-adjusted daily closes plus dividends by ex-date (also split-adjusted).
-async function yahoo(symbol, fromDay, toDay) {
+// Yahoo Finance chart API: split-adjusted daily closes plus dividends by ex-date (also split-adjusted). While a session
+// is trading, its bar holds the latest price; `time` is the time of that price (seconds). opt.fill adds that bar from
+// the quote itself when the daily bars do not have it yet.
+async function yahoo(symbol, fromDay, toDay, opt = {}) {
   const qs = `period1=${fromDay * 86400}&period2=${(toDay + 1) * 86400}&interval=1d&events=div%7Csplit&includeAdjustedClose=true`;
   let txt = null, err = null;
   for (const host of ['query1', 'query2']) {
@@ -58,9 +62,14 @@ async function yahoo(symbol, fromDay, toDay) {
   const q = r.indicators.quote[0] || {}; const ts = r.timestamp || [];
   const byDate = new Map();
   for (let i = 0; i < ts.length; i++) { const c = q.close && q.close[i]; if (c == null || !(c > 0)) continue; const d = dateOf(ts[i]); byDate.set(d, { date: d, close: c, div: divs.get(d) || 0 }); }
+  const m = r.meta || {}; const time = m.regularMarketTime > 0 ? m.regularMarketTime : null;
+  if (opt.fill && time && m.regularMarketPrice > 0) {
+    const d = dateOf(time); const wd = new Date(dayNum(d) * 864e5).getUTCDay();
+    if (wd > 0 && wd < 6 && !byDate.has(d) && [...byDate.keys()].every(x => x < d)) byDate.set(d, { date: d, close: m.regularMarketPrice, div: divs.get(d) || 0 });
+  }
   const bars = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
   const orphanDivs = [...divs.keys()].filter(d => !byDate.has(d));
-  return { symbol, bars, splits, orphanDivs };
+  return { symbol, bars, splits, orphanDivs, time };
 }
 
 // U.S. Treasury daily rate files (no key): one CSV per year. type: 'daily_treasury_bill_rates' or 'daily_treasury_yield_curve'.
@@ -103,21 +112,23 @@ async function fetchAll(data, opts = {}) {
   const from = last - 45; // about 30 sessions: the verification window plus a margin
   const src = { etf: {}, issues: [] };
   const optional = async (name, fn) => { try { return await fn(); } catch (e) { src.issues.push(`${name}: ${e.message}`); log(`  ${name} unavailable: ${e.message}`); return null; } };
+  const light = !!opts.light, yo = { fill: light };
 
   log('Yahoo Finance:');
-  src.gspc = await yahoo('^GSPC', from, to); log(`  ^GSPC ${src.gspc.bars.length} bars, last ${src.gspc.bars[src.gspc.bars.length - 1].date}`);
-  src.vix = await yahoo('^VIX', from, to);
-  src.ndx = await optional('^NDX', () => yahoo('^NDX', from, to));
+  src.gspc = await yahoo('^GSPC', from, to, yo); log(`  ^GSPC ${src.gspc.bars.length} bars, last ${src.gspc.bars[src.gspc.bars.length - 1].date}${src.gspc.time ? ', quote time ' + new Date(src.gspc.time * 1000).toISOString().slice(0, 16) + 'Z' : ''}`);
+  src.vix = await yahoo('^VIX', from, to, yo);
+  src.ndx = light ? null : await optional('^NDX', () => yahoo('^NDX', from, to));
   for (const k of Object.keys(data.etf)) {
     if (MIRRORS[k]) continue;
     // SPY needs two years for the trailing 12-month dividends and their check against the stored values
-    src.etf[k] = await yahoo(k, k === 'SPY' ? last - 800 : from, to);
+    src.etf[k] = await yahoo(k, k === 'SPY' ? last - 800 : from, to, yo);
     const x = src.etf[k]; const nd = x.bars.filter(b => b.div && b.date > isoOf(last - 45)).length;
     log(`  ${k} ${x.bars.length} bars${nd ? `, ${nd} dividend(s)` : ''}${x.splits.length ? `, splits ${x.splits.map(s => s.date + ' ' + s.ratio).join(', ')}` : ''}${x.orphanDivs.length ? `, dividends without a bar: ${x.orphanDivs.join(', ')}` : ''}`);
     if (x.orphanDivs.length) src.issues.push(`${k}: dividends on days without a bar (${x.orphanDivs.join(', ')}) were ignored`);
     await sleep(opts.delay == null ? 300 : opts.delay);
   }
 
+  if (light) { src.tbill = src.gs10 = src.cpi = src.cny = null; return src; }
   const years = (a, b) => { const out = []; for (let y = +isoOf(a).slice(0, 4); y <= +isoOf(b).slice(0, 4); y++) out.push(y); return out; };
   log('Rates, CPI and USD/CNY:');
   // T-bill rate: the Treasury's 13-week bill rate on a discount basis (FRED's DTB3 until 2025-12-19)

@@ -297,8 +297,8 @@
     snap.appendChild(h('div', { class: 'table-wrap' }, tbl));
     const stale = Core.asOf > FACTS.snapshotAsOf;
     snap.appendChild(h('p', { class: 'note', style: { marginTop: '8px' } }, I18N.lang === 'zh'
-      ? '估值与宏观数据来自第三方，发布时点各不相同；不同机构的市盈率口径（远期/历史）不可直接比较。' + (stale ? `此表写于 ${FACTS.snapshotAsOf}；本站其他地方的价格、图表和统计每周更新（数据截至 ${Core.asOf}）。` : '')
-      : 'Valuation and macro figures come from third parties with different release dates; forward and trailing P/Es from different providers are not directly comparable.' + (stale ? ` This table was written on ${FACTS.snapshotAsOf}; prices, charts and statistics elsewhere on the site are updated weekly (data through ${Core.asOf}).` : '')));
+      ? '估值与宏观数据来自第三方，发布时点各不相同；不同机构的市盈率口径（远期/历史）不可直接比较。' + (stale ? `此表写于 ${FACTS.snapshotAsOf}；本站其他地方的价格、图表和统计每个交易日自动更新（数据截至 ${Core.asOf}）。` : '')
+      : 'Valuation and macro figures come from third parties with different release dates; forward and trailing P/Es from different providers are not directly comparable.' + (stale ? ` This table was written on ${FACTS.snapshotAsOf}; prices, charts and statistics elsewhere on the site are updated every trading day (data through ${Core.asOf}).` : '')));
     const tl = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('ov.eventsTitle')), h('span', { class: 'sub' }, t('ov.eventsLede'))),
       h('div', { class: 'timeline' }, FACTS.timeline.map(([d, txt]) => h('div', { class: 'tl-item' }, h('div', { class: 'tl-date' }, d), h('div', null, L(txt))))));
     el.appendChild(h('div', { class: 'grid-2' }, snap, tl));

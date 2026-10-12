@@ -1,14 +1,16 @@
 name: Update market data
 
-# Every Saturday: download the week's sessions (Yahoo Finance; T-bill rate and 10-year yield from the U.S. Treasury;
-# CPI from the BLS), append them to data/market-data.js,
-# run all tests on the result, commit to main and redeploy the site. Nothing is committed if a download or a
-# check fails; the site then keeps last week's data.
+# After every US market close: download the day's session (Yahoo Finance; T-bill rate and 10-year yield from the U.S.
+# Treasury; CPI from the BLS), append it to data/market-data.js, run all tests on the result, commit to main and
+# redeploy the site. A second run before the next open catches up anything the evening run missed. Nothing is
+# committed if a download or a check fails; the site then keeps the previous data.
+# Intraday prices are never committed: the Pages deployment (pages.yml) adds them to the deployed copy only.
 # "Run workflow" does the same on demand (tick "check only" to download and verify without committing).
-# Pull requests that change the updater run it as a check only.
+# Pull requests that change the updater run it as a check only, in both modes.
 on:
   schedule:
-    - cron: '17 12 * * 6'   # Saturdays 12:17 UTC, after Friday's close
+    - cron: '17 23 * * 1-5'   # Mon–Fri 23:17 UTC = 19:17 EDT / 18:17 EST: a session counts once it is 18:00 in New York
+    - cron: '17 11 * * 2-6'   # Tue–Sat 11:17 UTC = 07:17 EDT / 06:17 EST: catch-up before the next open
   workflow_dispatch:
     inputs:
       check_only:
@@ -20,6 +22,7 @@ on:
       - scripts/update-data.js
       - scripts/data/**
       - .github/workflows/update-data.yml
+      - .github/workflows/pages.yml
 
 permissions:
   contents: write   # commit the updated data
@@ -43,6 +46,10 @@ jobs:
 
       - name: Download new sessions and update data/market-data.js
         run: node scripts/update-data.js --summary "$GITHUB_STEP_SUMMARY" --commit-message "$RUNNER_TEMP/commit-message.txt"
+
+      - name: Intraday mode, as the Pages deployment runs it (check only)
+        if: github.event_name == 'pull_request'
+        run: node scripts/update-data.js --live --out "$RUNNER_TEMP/live-data.js" --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Unit tests on the updated data
         run: npm test

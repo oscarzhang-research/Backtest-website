@@ -477,10 +477,10 @@
         graphic: [{ type: 'text', left: 'center', top: narrow ? '39%' : '46%', style: { text: cashW < -1e-9 ? U.pct(sumW, 0) : U.moneyShort(SS.capital), fill: tk.ink, fontSize: 16, fontWeight: 700, fontFamily: tk.font } }],
       }, true);
     });
-    return section('sh-today', 'A', { zh: '今天该怎么配？', en: 'What to hold today' }, { zh: '以最新收盘数据计算的目标仓位', en: 'Target weights from the latest close' },
+    return section('sh-today', 'A', { zh: '今天该怎么配？', en: 'What to hold today' }, U.live() && !U.live().closed ? { zh: '以最新盘中价格计算的目标仓位', en: 'Target weights from the latest intraday prices' } : { zh: '以最新收盘数据计算的目标仓位', en: 'Target weights from the latest close' },
       h('div', { class: 'grid-2 sh-alloc' }, donut, h('div', { class: 'stack' }, take(txt))), tbl,
       (() => { const ds = R.univ.filter(k => DIV[k]); if (!ds.length) return null; return h('p', { class: 'note' }, ZE('分散资产（发行商官网，2026-09-30）：', 'Diversifiers (issuer fund pages, 2026-09-30): '), ds.map((k, q) => [q ? ZE('；', '; ') : '', h('a', { href: DIV[k].url, target: '_blank', rel: 'noopener' }, L(DIV[k]))]), ZE('。', '.')); })(),
-      h('p', { class: 'note' }, ZE(`股数按 ${Core.lastPx.date || Core.asOf} 收盘价估算并向下取整；“相对均线”用全收益序列计算；SOXL 的趋势信号用 SOXX 判断。“基础权重”来自所选权重方式，“趋势系数”= 均线过滤（及回撤加仓）带来的倍数。这是规则的机械输出，不是投资建议。`, `Share counts use the ${Core.lastPx.date || Core.asOf} close, rounded down; MA gaps use total-return series; SOXL's trend signal comes from SOXX. “Base weight” comes from the weighting method; “trend factor” is the multiplier from the moving-average filter (and any dip add). This is the rule's mechanical output, not investment advice.`)),
+      h('p', { class: 'note' }, ZE(`股数按 ${Core.lastPx.date || Core.asOf} ${U.live() ? '美东 ' + U.live().et + ' 的' + (U.live().closed ? '初步收盘价' : '盘中价格') : '收盘价'}估算并向下取整；“相对均线”用全收益序列计算；SOXL 的趋势信号用 SOXX 判断。“基础权重”来自所选权重方式，“趋势系数”= 均线过滤（及回撤加仓）带来的倍数。这是规则的机械输出，不是投资建议。`, `Share counts use the ${Core.lastPx.date || Core.asOf} ${U.live() ? (U.live().closed ? 'preliminary close' : 'intraday prices') + ' as of ' + U.live().et + ' New York time' : 'close'}, rounded down; MA gaps use total-return series; SOXL's trend signal comes from SOXX. “Base weight” comes from the weighting method; “trend factor” is the multiplier from the moving-average filter (and any dip add). This is the rule's mechanical output, not investment advice.`)),
       divMonitor(R, tk));
   }
 

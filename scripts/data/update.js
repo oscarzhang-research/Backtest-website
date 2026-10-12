@@ -10,6 +10,9 @@
 //    their last published observation, and the S&P 500 dividend of a month that was still running.
 //  * Monthly series (CPI, 10-year yield) gain the months published since.
 //  * Anything suspicious throws, so nothing is written.
+//  * opts.live also adds the session that is still trading in New York (after 09:30) with its latest prices. That
+//    session is provisional (data.live says so): rates are carried forward, and the result is only ever deployed,
+//    never committed. The committed data are rebuilt from closed sessions each evening.
 'use strict';
 const path = require('path');
 const { encodeGap, decodeCalendar, dayNum, isoOf, monthKey, monthIso, cumsum, diffs } = require('./codec.js');
@@ -26,13 +29,18 @@ const LEVERAGED = new Set(['SOXL', 'TQQQ', 'SOXLX']);
 const RF_EXACT_UNTIL = '2025-12-19';            // last FRED DTB3 value in the original build (then the Fed funds target midpoint)
 const SPY_FEE = 0.000945;                       // SPY's expense ratio, added back to its yield to estimate the index yield
 
-// The last New York date whose session has certainly closed (it is 18:00 or later in New York).
-function lastClosedDay(now) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+const OPEN_MIN = 9 * 60 + 30, CLOSE_MIN = 16 * 60, FINAL_MIN = 18 * 60; // New York clock, minutes after midnight
+// The New York date (day number) and time of day (minutes) at `now`.
+function nyClock(now) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
   const get = (t) => parts.find(p => p.type === t).value;
-  const d = dayNum(get('year') + '-' + get('month') + '-' + get('day'));
-  return +get('hour') >= 18 ? d : d - 1;
+  return { day: dayNum(get('year') + '-' + get('month') + '-' + get('day')), min: +get('hour') * 60 + +get('minute') };
 }
+const hhmm = (min) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+// The last New York date whose session has certainly closed (it is 18:00 or later in New York).
+function lastClosedDay(now) { const c = nyClock(now); return c.min >= FINAL_MIN ? c.day : c.day - 1; }
+// The last New York date whose session has started (09:30 in New York): what a live update may show.
+function lastOpenedDay(now) { const c = nyClock(now); return c.min >= OPEN_MIN ? c.day : c.day - 1; }
 function barsOf(item, name) {
   if (!item || !Array.isArray(item.bars) || !item.bars.length) throw new Error(name + ': no data downloaded');
   const m = new Map();
@@ -43,9 +51,10 @@ const round2 = (x) => Math.round(x * 100) / 100;
 const fmtPct = (x) => (x * 100).toFixed(2) + '%';
 
 function applyUpdate(data0, src, opts = {}) {
+  if (data0.live) throw new Error(`the stored data end with a provisional session (${data0.live.day}); start from the committed file`);
   const data = JSON.parse(JSON.stringify(data0));
   const now = opts.now || new Date();
-  const rep = { from: data0.asOf, to: data0.asOf, added: [], series: [], revisions: [], warnings: [], checks: [] };
+  const rep = { from: data0.asOf, to: data0.asOf, added: [], series: [], revisions: [], warnings: [], checks: [], live: null };
   const warn = (m) => rep.warnings.push(m);
   const check = (m) => rep.checks.push(m);
 
@@ -60,7 +69,7 @@ function applyUpdate(data0, src, opts = {}) {
     const extra = seen.filter(d => !stored.includes(d)).map(isoOf), lack = stored.filter(d => !seen.includes(d)).map(isoOf);
     throw new Error(`^GSPC sessions disagree with the stored calendar (extra: ${extra.join(', ') || 'none'}; missing: ${lack.join(', ') || 'none'})`);
   }
-  const cutoff = lastClosedDay(now);
+  const cutoff = opts.live ? lastOpenedDay(now) : lastClosedDay(now);
   const newDays = [...gspc.keys()].filter(d => d > last0 && d <= cutoff).sort((a, b) => a - b);
   for (const d of newDays) { const wd = new Date(d * 864e5).getUTCDay(); if (wd === 0 || wd === 6) throw new Error('^GSPC has a weekend session on ' + isoOf(d)); }
   let prev = last0; for (const d of newDays) { data.cal += encodeGap(d - prev); prev = d; }
@@ -72,14 +81,19 @@ function applyUpdate(data0, src, opts = {}) {
   // ---------- 2. S&P 500 price index (cents, delta-encoded) ----------
   const pxC = cumsum(data.spx.pxd);
   {
-    let n = 0, maxD = 0;
+    let n = 0, maxD = 0, rev = 0;
     for (let i = Math.max(0, N0 - VERIFY_DAYS); i < N0; i++) {
       const b = gspc.get(days[i]); if (!b) continue;
-      const d = Math.abs(Math.round(b.close * 100) - pxC[i]); n++; maxD = Math.max(maxD, d);
+      const c = Math.round(b.close * 100), d = Math.abs(c - pxC[i]);
+      if (d > 1 && i >= N0 - REVISE_DAYS && d <= REVISE_MAX * pxC[i]) { // a close revised after it was stored
+        rep.revisions.push(`S&P 500 ${isoOf(days[i])}: ${pxC[i] / 100} → ${c / 100}`); pxC[i] = c; rev++; continue;
+      }
+      n++; maxD = Math.max(maxD, d);
       if (d > 1) throw new Error(`^GSPC close on ${isoOf(days[i])} is ${b.close}, stored ${pxC[i] / 100}`);
     }
+    if (rev) data.spx.pxd = diffs(pxC);
     for (const d of newDays) { const c = Math.round(gspc.get(d).close * 100); data.spx.pxd.push(c - pxC[pxC.length - 1]); pxC.push(c); }
-    rep.series.push({ k: 'S&P 500', last: pxC[N - 1] / 100, ret: pxC[N - 1] / pxC[N0 - 1] - 1, n, maxD: maxD / 100, unit: 'points' });
+    rep.series.push({ k: 'S&P 500', last: pxC[N - 1] / 100, ret: pxC[N - 1] / pxC[N0 - 1] - 1, n, maxD: maxD / 100, unit: 'points', revised: rev });
   }
 
   // ---------- 3. ETFs and stocks: daily returns in millionths ----------
@@ -178,7 +192,7 @@ function applyUpdate(data0, src, opts = {}) {
       if (lastObs != null && lastObs > t0) data.rfThrough = isoOf(Math.min(lastObs, days[N - 1]));
       else if (!data.rfThrough) data.rfThrough = thru0;
       check(`T-bill rate (${src.tbillName || 'download'}) known through ${data.rfThrough}${n ? `; within 2 bp of the stored rate on ${n - bad} of ${n} earlier days` : ''}${changedOld ? `; ${changedOld} provisional stored days replaced` : ''}; latest ${(rfB[N - 1] / 100).toFixed(2)}%`);
-    } else { warn('T-bill rates unavailable: the rate is carried forward and will be revised next time'); if (!data.rfThrough) data.rfThrough = thru0; }
+    } else { if (!opts.live) warn('T-bill rates unavailable: the rate is carried forward and will be revised next time'); if (!data.rfThrough) data.rfThrough = thru0; }
     for (const x of rfB) if (!(x > -100 && x < 2500)) throw new Error('T-bill rate out of range: ' + x + ' bp');
     data.rf = diffs(rfB);
   }
@@ -202,7 +216,7 @@ function applyUpdate(data0, src, opts = {}) {
       }
       if (lastObs != null && lastObs > lastF) f.last = isoOf(Math.min(lastObs, days[N - 1]));
       check(`USD/CNY known through ${f.last}${n ? `; matched the stored rate on ${n - bad} of ${n} earlier days` : ''}; latest ${(vals[vals.length - 1] / 1e4).toFixed(4)}`);
-    } else warn('USD/CNY unavailable: carried forward and will be revised next time');
+    } else if (!opts.live) warn('USD/CNY unavailable: carried forward and will be revised next time');
     f.dv = diffs(vals.slice(1), vals[0]);
   }
 
@@ -244,7 +258,7 @@ function applyUpdate(data0, src, opts = {}) {
     for (let q = Math.max(1, lastM - m0 - 1); q < c.v.length; q++) if (!(Math.abs(c.v[q] / c.v[q - 1] - 1) < 0.05)) throw new Error('CPI: implausible change in ' + monthIso(m0 + q));
     c.filled = [...filled].sort();
     check(`CPI-U through ${monthIso(m0 + c.v.length - 1)}`);
-  } else warn('CPI unavailable this time');
+  } else if (!opts.live) warn('CPI unavailable this time');
 
   // ---------- 9. 10-year Treasury yield (monthly average, ×100) ----------
   if (data.lr && data.lr.y10 && src.gs10 && src.gs10.size) {
@@ -252,7 +266,7 @@ function applyUpdate(data0, src, opts = {}) {
     for (let m = lastM - 5; m <= lastM; m++) { const x = src.gs10.get(monthIso(m)); if (x != null && Math.abs(Math.round(x * 100) - y.v[m - m0]) > 1) throw new Error(`10-year yield ${monthIso(m)} is ${x} in the download but ${y.v[m - m0] / 100} stored`); }
     for (let m = lastM + 1; src.gs10.get(monthIso(m)) != null; m++) y.v.push(Math.round(src.gs10.get(monthIso(m)) * 100));
     check(`10-year Treasury yield through ${monthIso(m0 + y.v.length - 1)}`);
-  } else if (data.lr && data.lr.y10) warn('10-year yield unavailable this time');
+  } else if (data.lr && data.lr.y10 && !opts.live) warn('10-year yield unavailable this time');
 
   // ---------- 10. Nasdaq-100 year-end levels ----------
   if (src.ndx && src.ndx.bars && data.ndxA) {
@@ -266,6 +280,13 @@ function applyUpdate(data0, src, opts = {}) {
 
   // ---------- 11. done ----------
   data.asOf = isoOf(days[N - 1]);
+  if (opts.live && newDays.length && days[N - 1] > lastClosedDay(now)) {
+    // the newest session is still trading (or closed less than two hours ago): label its prices with their time
+    const clk = nyClock(now); const t = src.gspc.time ? nyClock(new Date(src.gspc.time * 1000)) : null;
+    const et = t && t.day === days[N - 1] ? Math.min(t.min, clk.min) : clk.min;
+    data.live = { day: data.asOf, et: hhmm(et), closed: clk.min >= CLOSE_MIN };
+    rep.live = data.live;
+  }
   const strip = (x) => { const y = Object.assign({}, x); delete y.updated; return JSON.stringify(y); };
   const changed = strip(data) !== strip(data0);
   if (changed) data.updated = { at: now.toISOString().slice(0, 16) + 'Z', sessions: newDays.length };
@@ -294,6 +315,7 @@ function validate(data) {
 function reportMarkdown(rep) {
   const L = [];
   L.push(rep.added.length ? `### Market data ${rep.from} → ${rep.to} (+${rep.added.length} session${rep.added.length > 1 ? 's' : ''})` : `### Market data: no new sessions after ${rep.from}`);
+  if (rep.live) L.push('', `**Provisional:** ${rep.live.day} ${rep.live.closed ? 'closing prices before they are final' : 'prices'} as of ${rep.live.et} New York time — deployed only, not committed.`);
   L.push('', '| Series | Latest close | Change over the new sessions | Sessions verified | Largest difference | Corrected |', '| --- | ---: | ---: | ---: | ---: | ---: |');
   for (const s of rep.series) L.push(`| ${s.k} | ${Number.isFinite(s.last) ? s.last.toFixed(2) : '—'} | ${Number.isFinite(s.ret) && rep.added.length ? fmtPct(s.ret) : '—'} | ${s.n} | ${s.unit ? s.maxD.toFixed(2) + ' ' + s.unit : (s.maxD * 100).toFixed(3) + ' pp'}${s.soft ? ` (${s.soft} above ${TOL_OK * 100} pp)` : ''} | ${s.revised || 0} |`);
   if (rep.checks.length) L.push('', ...rep.checks.map(x => '- ' + x));
@@ -310,4 +332,4 @@ function commitMessage(rep) {
   return L.join('\n') + '\n';
 }
 
-module.exports = { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, MIRRORS, PRICE_ONLY, VERIFY_DAYS, REVISE_DAYS, RF_EXACT_UNTIL, SPY_FEE };
+module.exports = { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, VERIFY_DAYS, REVISE_DAYS, RF_EXACT_UNTIL, SPY_FEE };
