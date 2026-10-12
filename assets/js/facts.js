@@ -208,6 +208,7 @@
   ];
 
   // ---------------- Market snapshot ----------------
+  F.snapshotAsOf = '2026-09-30'; // written by hand; the overview says so once the data moves past this date
   F.snapshot = [
     { k: 'S&P 500', v: '7,683.69', d: 'Close 2026-09-28; −1.5% from the 7,798.99 record of 2026-08-13; YTD +12.2% (+13.2% TR)', src: 'https://fred.stlouisfed.org/series/SP500' },
     { k: 'Nasdaq-100', v: '30,276.81', d: '2026-09-28; record close 30,732.40 on Sep 22; YTD ~+19.9%', src: F.sources.nasdaqNDX },

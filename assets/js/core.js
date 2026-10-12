@@ -128,6 +128,8 @@
     Core.soxlCal = DATA.soxlCal || null;
     Core.lrRaw = DATA.lr || null;      // monthly 10y yields + gold for the long-run test (lr.js)
     Core.cpiRaw = DATA.cpi || null;
+    Core.updated = DATA.updated || null;     // last run of scripts/update-data.js: {at, sessions}
+    Core.rfThrough = DATA.rfThrough || null; // last T-bill rate published by FRED; later sessions carry it forward
     // USD/CNY (CNY per USD), forward-filled on the calendar; NaN before 1981
     if (DATA.fx && DATA.fx.cny) {
       const f = DATA.fx.cny; const fx = new Float64Array(n); fx.fill(NaN); let x = f.v0; fx[f.s] = x / 1e4;

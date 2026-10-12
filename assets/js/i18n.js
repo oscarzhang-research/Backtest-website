@@ -432,7 +432,7 @@
   add('md.lede', 'Where the data comes from, how it is built and checked, how every metric is defined — and what these results cannot tell you.');
 
   add('footer1', 'For research and education only; not investment advice. Past or back-tested results do not predict future returns; real-world ETF returns also depend on taxes, spreads and tracking error.');
-  add('footer2', 'Data through {d}. Prices and dividends come from public datasets (originating from Yahoo Finance, S&P/Shiller, FRED, BLS and CBOE) cross-checked against issuers\' official figures — see Methodology.');
+  add('footer2', 'Data through {d}, updated weekly. Prices and dividends come from Yahoo Finance, S&P/Shiller, FRED, BLS and CBOE (partly via public datasets), cross-checked against issuers\' official figures — see Methodology.');
 
   // =================== v3 additions: SOXL, more strategies, high-Sharpe strategy ===================
   add('brandSub', 'S&P 500 · Nasdaq-100 · SMH · SOXX · VGT · SOXL');

@@ -1,0 +1,66 @@
+name: Update market data
+
+# Every Saturday: download the week's sessions from Yahoo Finance and FRED, append them to data/market-data.js,
+# run all tests on the result, commit to main and redeploy the site. Nothing is committed if a download or a
+# check fails; the site then keeps last week's data.
+# "Run workflow" does the same on demand (tick "check only" to download and verify without committing).
+# Pull requests that change the updater run it as a check only.
+on:
+  schedule:
+    - cron: '17 12 * * 6'   # Saturdays 12:17 UTC, after Friday's close
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: Download and verify, but do not commit
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - scripts/update-data.js
+      - scripts/data/**
+      - .github/workflows/update-data.yml
+
+permissions:
+  contents: write   # commit the updated data
+  actions: write    # start the Pages deployment (pushes made with this token do not trigger workflows)
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Download new sessions and update data/market-data.js
+        run: node scripts/update-data.js --summary "$GITHUB_STEP_SUMMARY" --commit-message "$RUNNER_TEMP/commit-message.txt"
+
+      - name: Unit tests on the updated data
+        run: npm test
+
+      - name: Browser smoke test on the updated data
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+      - name: Commit and redeploy the site
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.check_only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- data/market-data.js; then echo "No new data."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/market-data.js
+          git commit -F "$RUNNER_TEMP/commit-message.txt"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_NAME" = "main" ]; then gh workflow run pages.yml --ref main; fi

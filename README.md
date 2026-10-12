@@ -2,7 +2,7 @@
 
 **A century of market data and backtests, computed live in your browser.**
 
-The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 → 2026-09-28); nothing is pre-rendered.
+The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest weekly update); nothing is pre-rendered.
 
 ![Overview](docs/screenshots/overview.jpg)
 
@@ -39,7 +39,7 @@ Full details are on the Methodology tab.
 
 | Series | Coverage | Source |
 | --- | --- | --- |
-| S&P 500 price index (daily) | 1927-12-30 → 2026-09-28 | Yahoo Finance ^GSPC via public GitHub datasets |
+| S&P 500 price index (daily) | 1927-12-30 → present | Yahoo Finance ^GSPC via public GitHub datasets |
 | S&P 500 dividends (monthly) | 1928 → 2023-06, then SPY-implied | Robert Shiller via datahub.io |
 | SPY, QQQ, SOXX, TLT, IEF, GLD | from 1995 / 1999 / 2001 / 2002 / 2004 | Yahoo closes + dividends + splits (Johnbrick123/sp500-data) |
 | SMH, VGT | from 2006-09-29 | yfinance adjusted closes (public cache) |
@@ -50,6 +50,19 @@ Full details are on the Methodology tab.
 
 All data is embedded in [`data/market-data.js`](data/market-data.js) in a compact delta encoding and decoded by [`assets/js/core.js`](assets/js/core.js).
 
+## Weekly data updates
+
+Every Saturday the [Update market data](.github/workflows/update-data.yml) workflow:
+
+1. downloads the week's sessions from Yahoo Finance (the S&P 500, VIX and every ETF and stock: closes, dividends, splits) and FRED (T-bill rate, CPI, 10-year yield, USD/CNY);
+2. recomputes the last 20 stored sessions of every series from the new download and stops if they disagree;
+3. appends the new sessions to `data/market-data.js` and rebuilds values that were provisional (the latest T-bill rate and exchange rate, the S&P 500 dividend of the current month);
+4. runs the unit tests and the browser smoke test on the result, commits it to `main` and redeploys the site.
+
+If any step fails, nothing is committed and the site keeps the previous week's data; GitHub emails a notice of the failed run. To run it by hand: **Actions → Update market data → Run workflow** (tick *check only* to download and verify without committing). Locally: `node scripts/update-data.js --check`.
+
+Not updated automatically: hand-written facts (fund profiles, the market snapshot, the timeline, the current CAPE) and the long-run CAPE and World Bank gold histories. Each carries its date.
+
 ## Running it
 
 The site has no build step and no runtime dependencies (ECharts is bundled in `assets/vendor`).
@@ -58,7 +71,7 @@ The site has no build step and no runtime dependencies (ECharts is bundled in `a
 # open index.html directly, or serve the folder:
 npm run serve            # http://127.0.0.1:8080/
 
-npm test                 # 43 unit tests: data, metrics, engine, no-look-ahead, replications
+npm test                 # 54 unit tests: data, metrics, engine, no-look-ahead, replications, data updater
 npx playwright install chromium && npm run test:e2e   # renders every tab in a headless browser
 ```
 
@@ -83,12 +96,13 @@ assets/js/facts.js       sourced fund facts, market snapshot, timeline, literatu
 assets/js/ui.js, app.js  DOM and chart helpers, routing, theme
 assets/js/views/*.js     one module per tab
 data/market-data.js      embedded market data
+scripts/update-data.js   weekly data update (scripts/data/: download, verify, append)
 tests/                   node:test suites and the Playwright smoke test
 ```
 
 ## Roadmap
 
-What was added most recently and what could come next (data refresh, a live track record, costs and taxes, inflation-resistant assets, withdrawal rules): see [docs/ROADMAP.md](docs/ROADMAP.md).
+What was added most recently and what could come next (a live track record, costs and taxes, inflation-resistant assets, withdrawal rules): see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Disclaimer
 

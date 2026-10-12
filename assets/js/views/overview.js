@@ -292,7 +292,7 @@
       h('td', { style: { fontWeight: 700 } }, r.v),
       h('td', { style: { whiteSpace: 'normal', textAlign: 'left', color: 'var(--ink-2)', fontSize: '12.5px', minWidth: '220px' } }, L(r.d), ' ', h('a', { href: r.src, target: '_blank', rel: 'noopener' }, t('source')))))));
     snap.appendChild(h('div', { class: 'table-wrap' }, tbl));
-    snap.appendChild(h('p', { class: 'note', style: { marginTop: '8px' } }, 'Valuation and macro figures come from third parties with different release dates; forward and trailing P/Es from different providers are not directly comparable.'));
+    snap.appendChild(h('p', { class: 'note', style: { marginTop: '8px' } }, 'Valuation and macro figures come from third parties with different release dates; forward and trailing P/Es from different providers are not directly comparable.' + (Core.asOf > FACTS.snapshotAsOf ? ` This table was written on ${FACTS.snapshotAsOf}; prices, charts and statistics elsewhere on the site are updated weekly (data through ${Core.asOf}).` : '')));
     const tl = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('ov.eventsTitle')), h('span', { class: 'sub' }, t('ov.eventsLede'))),
       h('div', { class: 'timeline' }, FACTS.timeline.map(([d, txt]) => h('div', { class: 'tl-item' }, h('div', { class: 'tl-date' }, d), h('div', null, L(txt))))));
     el.appendChild(h('div', { class: 'grid-2' }, snap, tl));
