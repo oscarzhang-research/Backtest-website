@@ -4,6 +4,10 @@ import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 
 const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 5, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const MUST = { // text that must appear once a tab has finished rendering
+  sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
+  research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
+};
 const server = await serve(0);
 const base = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch();
@@ -29,6 +33,7 @@ for (const [tab, minCharts] of Object.entries(TABS)) {
   if (charts < minCharts) problems.push(`only ${charts} charts (expected ≥ ${minCharts})`);
   if (cjk) problems.push(cjk + ' untranslated CJK characters');
   if (/\bNaN\b|undefined/.test(text)) problems.push('NaN/undefined in text');
+  for (const s of MUST[tab] || []) if (!text.includes(s)) problems.push(`missing “${s}”`);
   console.log((problems.length ? 'FAIL ' : 'ok   ') + tab.padEnd(9) + ` ${String(text.length).padStart(6)} chars, ${charts} charts` + (problems.length ? ' — ' + problems.join('; ') : ''));
   if (problems.length) failed++;
   await page.close();

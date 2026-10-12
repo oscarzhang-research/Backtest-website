@@ -196,6 +196,67 @@
       vol: Math.sqrt(Math.max(0, (sr2 - m * (sr / m) ** 2) / (m - 1)) * 12), sharpe: sd > 0 ? mean / sd * Math.sqrt(12) : NaN, mdd, worst, worstY, uwMonths: uwMax, months: m };
   };
 
+  // Inflation regimes. Each month is classified by the CPI inflation rate (year over year) that was
+  // already published before the month began — BLS releases a month's CPI in the middle of the next
+  // month, so the default lag is 2 — and by whether that rate was higher than a year earlier.
+  // For each regime: months, separate episodes, annualized real (CPI-deflated) returns of every
+  // long-run asset, a monthly-rebalanced 60/40 and any extra monthly return series, plus the
+  // stock–bond and stock–gold correlations of nominal monthly returns.
+  // opts: {start:'YYYY-MM', lag:2, cut:0.03, levels:[0.02,0.03,0.05], extra:{name: Float64Array (indexed like D.R)}}
+  LR.REGIME_COLS = ['EQ', 'BL', 'B10', 'GOLD', 'CASH', 'P6040'];
+  LR.regimes = function (opts) {
+    const D = LR.data(); const raw = Core.cpiRaw; if (!D || !raw) return null;
+    const o = Object.assign({ start: '1973-01', lag: 2, cut: 0.03, levels: [0.02, 0.03, 0.05], extra: {} }, opts || {});
+    const c0 = keyOf(raw.m0), cLast = c0 + raw.v.length - 1;
+    const cpi = (k) => (k >= c0 && k <= cLast ? raw.v[k - c0] : NaN);
+    const yoy = (k) => cpi(k) / cpi(k - 12) - 1;
+    const ser = { EQ: D.R.EQ, BL: D.R.BL, B10: D.R.B10, GOLD: D.R.GOLD, CASH: D.R.CASH, P6040: D.R.EQ.map((x, q) => 0.6 * x + 0.4 * D.R.B10[q]) };
+    for (const nm in o.extra) ser[nm] = o.extra[nm];
+    const cols = Object.keys(ser);
+    const pct = (x) => +(x * 100).toFixed(1);
+    const lvLab = o.levels.map((x, j) => j === 0 ? '< ' + pct(x) + '%' : pct(o.levels[j - 1]) + '–' + pct(x) + '%').concat(['≥ ' + pct(o.levels[o.levels.length - 1]) + '%']);
+    const levelOf = (y) => { let j = 0; while (j < o.levels.length && y >= o.levels[j]) j++; return j; };
+    const quadOf = (y, d) => (y >= o.cut ? 0 : 2) + (d > 0 ? 0 : 1);
+    const cutL = pct(o.cut) + '%';
+    const quadLab = ['Above ' + cutL + ' and rising', 'Above ' + cutL + ' and falling', 'Below ' + cutL + ' and rising', 'Below ' + cutL + ' and falling'];
+    // months: real returns deflated by that month's CPI change; the regime uses only CPI known before the month began
+    const months = [];
+    const q0 = Math.max(1, keyOf(o.start) - D.K0), q1 = Math.min(D.n - 1, cLast - D.K0);
+    for (let q = q0; q <= q1; q++) {
+      const k = D.K0 + q, a = k - o.lag;
+      const y = yoy(a), d = y - yoy(a - 12), infl = cpi(k) / cpi(k - 1) - 1;
+      if (!isFinite(y) || !isFinite(d) || !isFinite(infl)) continue;
+      months.push({ q, k, y, d, infl, level: levelOf(y), quad: quadOf(y, d) });
+    }
+    const corr = (xs, ys) => {
+      let n = 0, a1 = 0, a2 = 0, b1 = 0, b2 = 0, ab = 0;
+      for (let j = 0; j < xs.length; j++) { const x = xs[j], y = ys[j]; if (!isFinite(x) || !isFinite(y)) continue; n++; a1 += x; a2 += x * x; b1 += y; b2 += y * y; ab += x * y; }
+      if (n < 12) return NaN;
+      const cv = ab / n - (a1 / n) * (b1 / n), va = a2 / n - (a1 / n) ** 2, vb = b2 / n - (b1 / n) ** 2;
+      return va > 0 && vb > 0 ? cv / Math.sqrt(va * vb) : NaN;
+    };
+    const stats = (label, pick) => {
+      const ms = months.filter(pick); const real = {}; const nominal = {}; const count = {};
+      for (const c of cols) {
+        let lr = 0, ln = 0, m = 0;
+        for (const x of ms) { const r = ser[c][x.q]; if (!isFinite(r)) continue; lr += Math.log((1 + r) / (1 + x.infl)); ln += Math.log(1 + r); m++; }
+        real[c] = m >= 12 ? Math.exp(lr / m * 12) - 1 : NaN; nominal[c] = m >= 12 ? Math.exp(ln / m * 12) - 1 : NaN; count[c] = m;
+      }
+      let episodes = 0; for (let j = 0; j < ms.length; j++) if (j === 0 || ms[j].k !== ms[j - 1].k + 1) episodes++;
+      let ci = 0; for (const x of ms) ci += Math.log(1 + x.infl);
+      return { label, n: ms.length, episodes, infl: ms.length ? Math.exp(ci / ms.length * 12) - 1 : NaN, real, nominal, count,
+        corrBL: corr(ms.map(x => D.R.EQ[x.q]), ms.map(x => D.R.BL[x.q])), corrGOLD: corr(ms.map(x => D.R.EQ[x.q]), ms.map(x => D.R.GOLD[x.q])), from: ms.length ? ms[0].k : null };
+    };
+    const yNow = yoy(cLast), dNow = yNow - yoy(cLast - 12);
+    return {
+      lag: o.lag, cut: o.cut, cols, start: months.length ? months[0].k : null, end: months.length ? months[months.length - 1].k : null, months,
+      level: lvLab.map((lab, j) => Object.assign(stats(lab, (x) => x.level === j), { key: 'L' + j })),
+      quad: quadLab.map((lab, j) => Object.assign(stats(lab, (x) => x.quad === j), { key: 'Q' + j })),
+      all: stats('All months', () => true),
+      now: { k: cLast, y: yNow, d: dNow, prev: yoy(cLast - 12), level: levelOf(yNow), quad: quadOf(yNow, dNow) },
+    };
+  };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = LR;
   else root.LR = LR;
 })(typeof window !== 'undefined' ? window : globalThis);

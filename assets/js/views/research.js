@@ -6,7 +6,7 @@
   const { U, I18N, Core, App, Calc, Engine, FACTS } = root;
   const t = (k, v) => I18N.t(k, v);const L = (o) => I18N.L(o);
   const h = U.h;
-  const RS = Object.assign({ hold: 'SPX', best: 'SPX', bestPer: '2006', timing: 'SPX', timingH: 20, ls: 'SPX', lsH: 10, lsM: 12, fwd: 'SPX', fwdY: 1, season: 'SPX', lev: 'SOXX', levStart: 'full', vixH: 252, semi: 'SOXX' }, U.store.get('research', {}));
+  const RS = Object.assign({ hold: 'SPX', best: 'SPX', bestPer: '2006', timing: 'SPX', timingH: 20, ls: 'SPX', lsH: 10, lsM: 12, fwd: 'SPX', fwdY: 1, season: 'SPX', lev: 'SOXX', levStart: 'full', vixH: 252, semi: 'SOXX', inflBy: 'quad' }, U.store.get('research', {}));
   const save = () => U.store.set('research', RS);
   const CORE6 = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY'];
   const assetOpts = (list) => (list || CORE6).map(k => [k, U.assetName(k, true) + ' (' + Core.iso(Core.S[k].s).slice(0, 4) + '+)']);
@@ -359,7 +359,57 @@
       take(`Since 1928, a dollar in the S&P 500 grew to about ${b('$' + Math.round(pr[n - 1]))} on price alone but ${b('$' + Math.round(tr[n - 1]).toLocaleString('en-US'))} with dividends reinvested — roughly 35× more, all from about ${(100 * (trC - prC)).toFixed(1)}% a year of reinvested dividends. The other force is inflation: the 1970s returned about 5.8% a year nominally but less than zero in real terms, and in purchasing-power terms the two longest spells under water were ${uwTxt}. Today's ETF yields are low (SMH ~0.2%, SOXX ~0.3%, VGT ~0.3%, SPY ~1%), so their returns depend almost entirely on price gains.`)));
   }
 
-  // ---------------- R11 Decades for all ----------------
+  // ---------------- R11 Inflation regimes ----------------
+  function inflation(host) {
+    const tk = U.tokens(); const LR = root.LR; const ctl = h('div', { class: 'controls' }); const out = h('div', { class: 'stack' });
+    const D = LR.data();
+    // the High-Sharpe 2.0 rules on the long-run monthly data (same proxy as the High-Sharpe page, section F)
+    const extra = {}; const SV = App.views.sharpe;
+    if (D && SV && SV.lrSpecOf) {
+      const res = LR.run(SV.lrSpecOf(SV.presets.x2), LR.keyOf('1973-01'), D.K1);
+      if (!res.error) { const a = new Float64Array(D.n).fill(NaN); for (let j = 1; j < res.n; j++) a[res.i0 + j] = res.nav[j] / res.nav[j - 1] - 1; extra.X2 = a; }
+    }
+    const G = LR.regimes({ extra });
+    if (!G) { host.appendChild(study('r-infl', 'R11', 'Inflation regimes: what held up when prices rose?', null, h('div', { class: 'empty' }, 'Long-run data missing.'))); return; }
+    // [key, legend name, table header, colour]
+    const COLS = [['EQ', 'Stocks (S&P 500)', 'Stocks', tk.s[6]], ['BL', 'Long Treasuries', 'Long bonds', tk.s[8]], ['B10', '10-year Treasuries', '10-yr bonds', tk.s[5]], ['GOLD', 'Gold', 'Gold', U.assetColor('GLD', tk)], ['CASH', 'T-bills', 'T-bills', tk.s[0]], ['P6040', '60/40', '60/40', tk.s[7]], ['X2', 'High-Sharpe 2.0 (long-run proxy)', '2.0 proxy', tk.s[1]]].filter(c => G.cols.includes(c[0]));
+    const inChart = COLS.filter(c => c[0] !== 'B10');
+    const draw = () => {
+      U.disposeIn(out); U.clear(out);
+      const groups = RS.inflBy === 'level' ? G.level : G.quad;
+      const curKey = RS.inflBy === 'level' ? 'L' + G.now.level : 'Q' + G.now.quad;
+      const el = h('div', { class: 'chart' }); out.appendChild(el); const narrow = (root.innerWidth || 1200) < 640;
+      requestAnimationFrame(() => { const c = U.chart(el); if (!c) return; c.setOption(U.baseOpt(tk, {
+        tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, axisPointer: { type: 'shadow' },
+          formatter: (ps) => { const g = groups[ps[0].dataIndex]; let s = U.ttHead(g.label + ' · ' + g.n + ' months'); ps.forEach(p => { s += U.ttRow(p.color, p.seriesName, U.pct(p.value, 1, true)); }); return s; } },
+        legend: { top: 0, type: narrow ? 'scroll' : 'plain', textStyle: { color: tk.ink2, fontSize: 11.5 }, itemWidth: 12, itemHeight: 8, icon: 'roundRect' },
+        grid: { left: 8, right: 16, top: narrow ? 58 : 56, bottom: 8, containLabel: true },
+        xAxis: U.catAxis(tk, groups.map(g => (g.key === curKey ? '▶ ' : '') + g.label), { axisLabel: { color: tk.ink2, fontSize: narrow ? 10 : 11.5, interval: 0, width: narrow ? 66 : 110, overflow: 'break' } }),
+        yAxis: U.valAxis(tk, { scale: false, name: 'Real return, % a year', nameTextStyle: { color: tk.muted, fontSize: 11, align: 'left' }, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => (v * 100).toFixed(0) + '%' } }),
+        series: inChart.map(([k, nm, , col]) => ({ name: nm, type: 'bar', barMaxWidth: 16, itemStyle: { color: col, borderRadius: 2 }, data: groups.map(g => g.real[k]) })),
+      }), true); });
+      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data heat' },
+        h('thead', null, h('tr', null, h('th', null, 'Inflation at month start'), h('th', null, 'Months'), COLS.map(([, nm, th, col]) => h('th', { title: nm }, h('span', { class: 'th-asset' }, h('i', { style: { background: col } }), th))), h('th', { title: 'Correlation of monthly stock and long-Treasury returns' }, 'Stock–bond corr.'))),
+        h('tbody', null, groups.concat([G.all]).map(g => h('tr', { class: g.key === curKey ? 'hl' : g === G.all ? 'sum-row' : '' },
+          h('td', { style: { whiteSpace: 'normal', minWidth: '130px' } }, g.label, g.key === curKey ? h('span', { class: 'hint' }, '← now') : null),
+          h('td', null, String(g.n), h('span', { class: 'hint' }, g === G.all ? 'all' : g.episodes + ' spells')),
+          COLS.map(([k]) => h('td', { style: { background: U.heatBg(g.real[k], 0.12, tk) } }, U.pct(g.real[k], 1))),
+          h('td', null, U.num(g.corrBL, 2))))))));
+      const q = G.quad; const hiUp = q[0], hiDn = q[1]; const lv = G.level; const top = lv[lv.length - 1], bot = lv[0];
+      const nowG = (RS.inflBy === 'level' ? G.level : G.quad).find(g => g.key === curKey);
+      const x2 = G.cols.includes('X2');
+      const hiMonths = G.months.filter(m => m.y >= G.cut); const early = hiMonths.length ? hiMonths.filter(m => m.k <= LR.keyOf('1991-12')).length / hiMonths.length : NaN;
+      out.appendChild(take(`Since ${LR.label(G.start).slice(0, 4)}, in months that began with inflation ${b(hiUp.label.toLowerCase())} (${hiUp.n} months), stocks returned ${b(U.pct(hiUp.real.EQ, 1))} a year after inflation, long Treasuries ${U.pct(hiUp.real.BL, 1)}, a 60/40 mix ${U.pct(hiUp.real.P6040, 1)} and gold ${b(U.pct(hiUp.real.GOLD, 1))}${x2 ? `; the High-Sharpe 2.0 rules (long-run proxy) ${U.pct(hiUp.real.X2, 1)}` : ''}. Once high inflation started to fall, the picture flipped: stocks ${U.pct(hiDn.real.EQ, 1)}, long Treasuries ${b(U.pct(hiDn.real.BL, 1))}, gold ${U.pct(hiDn.real.GOLD, 1)}. ` +
+        `The stock–bond correlation also rises with inflation, from ${U.num(bot.corrBL, 2)} in the “${bot.label}” months to ${b(U.num(top.corrBL, 2))} in the “${top.label}” months: bonds hedge stocks worst exactly when inflation is high — one reason the High-Sharpe 2.0 rules lagged equities before 2000 (High-Sharpe page, F3). ` +
+        `Today: CPI inflation was ${b(U.pct(G.now.y, 1))} in ${LR.label(G.now.k)} (${U.pct(G.now.prev, 1)} a year earlier), i.e. “${nowG.label.toLowerCase()}”. Read this as a description of the past, not a forecast: the months above ${U.pct(G.cut, 0)} come from a few long spells — ${U.pct(early, 0)} of them fall in ${LR.label(G.start).slice(0, 4)}–91 — so the next inflationary episode could look quite different.`));
+      out.appendChild(h('p', { class: 'note' }, `Months ${LR.label(G.start)} → ${LR.label(G.end)}. Each month is classified by the CPI-U year-over-year inflation rate already published before it began (BLS publishes a month's CPI around the middle of the next month, so the reading is two months old) and by whether that rate was higher than a year earlier. Returns are deflated by the same month's CPI change and annualized geometrically. Assets as in the High-Sharpe 50-year test: S&P 500 total return, long and 10-year Treasuries synthesized from 10-year yields until 2002-09 and then TLT / IEF, World Bank gold until 2005 and then GLD, T-bills; monthly average prices. 60/40 = S&P 500 / 10-year Treasuries, rebalanced monthly. “Spells” = separate runs of consecutive months.`));
+    };
+    ctl.appendChild(U.ctl('Group by', U.seg('rsInfl', [['quad', 'Level and direction'], ['level', 'Level only']], RS.inflBy, (v) => { RS.inflBy = v; save(); draw(); })));
+    host.appendChild(study('r-infl', 'R11', 'Inflation regimes: what held up when prices rose?', 'Real returns since 1973, grouped by the inflation rate known before each month began', ctl, out));
+    requestAnimationFrame(draw);
+  }
+
+  // ---------------- R12 Decades for all ----------------
   function decades(host) {
     const tk = U.tokens(); const keys = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY'];
     const per = keys.map(k => { const s = Core.S[k]; const m = {}; for (const d of Calc.byDecade(s.v, s.s, s.e)) m[d.decade] = d; return m; });
@@ -367,11 +417,11 @@
     const tbl = h('table', { class: 'data heat' },
       h('thead', null, h('tr', null, h('th', null, 'Decade'), keys.map(k => h('th', null, h('span', { class: 'th-asset' }, h('i', { style: { background: U.assetColor(k, tk) } }), U.assetName(k, true)))))),
       h('tbody', null, decs.map(d => h('tr', null, h('td', null, d + 's'), per.map(m => { const x = m[d]; return x ? h('td', { style: { background: U.heatBg(x.cagr, 0.35, tk) } }, U.pct(x.cagr, 1) + (x.full ? '' : '*')) : h('td', { class: 'na' }, '—'); })))));
-    host.appendChild(study('r-decade', 'R11', 'By decade: no permanent winner', 'Annualized return by decade (total return; * = partial decade or data)', h('div', { class: 'table-wrap' }, tbl),
+    host.appendChild(study('r-decade', 'R12', 'By decade: no permanent winner', 'Annualized return by decade (total return; * = partial decade or data)', h('div', { class: 'table-wrap' }, tbl),
       take(`In the 2000s the S&P 500 returned about −1% a year and the Nasdaq-100 (QQQ) was also negative; in the 2010s and 2020s tech and semis led by wide margins. Even a decade can land entirely inside a de-rating from high valuations.`)));
   }
 
-  // ---------------- R12 VIX ----------------
+  // ---------------- R13 VIX ----------------
   function vix(host) {
     const tk = U.tokens(); const ctl = h('div', { class: 'controls' }); const out = h('div', { class: 'stack' });
     const B = [[0, 12], [12, 16], [16, 20], [20, 25], [25, 30], [30, 40], [40, 200]];
@@ -388,11 +438,11 @@
       out.appendChild(take(`Since 1990, buying the S&P 500 with the VIX above 30 was followed by clearly higher average ${RS.vixH === 252 ? '1-year' : RS.vixH === 63 ? '3-month' : '3-year'} returns than calm periods — higher expected returns as compensation for bearing fear. But high-VIX days cluster in a few episodes such as 2008 and 2020, so the samples are far from independent.`));
     };
     ctl.appendChild(U.ctl('Forward', U.seg('rsVix', [['63', '3M'], ['252', '1Y'], ['756', '3Y']], String(RS.vixH), (v) => { RS.vixH = +v; save(); draw(); })));
-    host.appendChild(study('r-vix', 'R12', 'Is a high VIX a buying signal?', 'S&P 500 forward return grouped by the VIX on the purchase day (since 1990)', ctl, out));
+    host.appendChild(study('r-vix', 'R13', 'Is a high VIX a buying signal?', 'S&P 500 forward return grouped by the VIX on the purchase day (since 1990)', ctl, out));
     requestAnimationFrame(draw);
   }
 
-  // ---------------- R13 CAPE ----------------
+  // ---------------- R14 CAPE ----------------
   function cape(host) {
     const tk = U.tokens(); const el = h('div', { class: 'chart' });
     const cs = Calc.capeScatter(root.__DATA__, 10); const cur = 41.48;
@@ -410,12 +460,12 @@
             markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.accentLine, width: 1.5, type: 'solid' }, label: { color: tk.ink, formatter: 'Now ' + cur }, data: [{ xAxis: cur }] } },
         ],
       }), true); });
-    host.appendChild(study('r-cape', 'R13', 'Valuation and the next decade: what CAPE says', 'Monthly Shiller CAPE vs the S&P 500\'s next-10-year real annualized return (starts 1928–2016)', el,
+    host.appendChild(study('r-cape', 'R14', 'Valuation and the next decade: what CAPE says', 'Monthly Shiller CAPE vs the S&P 500\'s next-10-year real annualized return (starts 1928–2016)', el,
       take(`Historically, higher starting valuations were followed by lower 10-year real returns (log regression R² ≈ ${b(cs.r2.toFixed(2))}). As of 2026-09-25 CAPE was ${b('41.5')}, second only to December 1999's 44.2; extrapolating the historical fit implies roughly ${b(U.pct(pred, 1))} a year real over the next decade. But: (1) the fit explains only about a third of the variation: with CAPE between 20 and 30, the next decade's real return ranged from −4% to +15% a year; (2) earnings are growing fast (FactSet expects +32% S&P 500 EPS in 2026) and the forward P/E of 19.2 is not extreme; (3) valuation bases (forward vs trailing) differ widely for high-growth sectors like semis. CAPE calibrates long-run expectations; it is not a timing tool.`),
       h('p', { class: 'note' }, 'CAPE data: Shiller (via datahub.io, to 2023-09); current value: multpl.com.')));
   }
 
-  // ---------------- R14 Concentration ----------------
+  // ---------------- R15 Concentration ----------------
   function conc(host) {
     const tk = U.tokens(); const el = h('div', { class: 'chart short' });
     const funds = FACTS.funds.filter(f => f.top10);
@@ -430,11 +480,11 @@
         { name: 'NVIDIA weight', type: 'bar', barMaxWidth: 14, itemStyle: { color: tk.s[1], borderRadius: [0, 3, 3, 0] }, data: nv, label: { show: true, position: 'right', fontSize: 11, color: tk.ink2, formatter: (p) => p.value.toFixed(1) + '%' } },
       ],
     }), true); });
-    host.appendChild(study('r-conc', 'R14', 'Concentration: how much NVIDIA do you really own?', 'Top-10 weight and NVIDIA weight (issuer disclosures, Aug–Sep 2026)', el,
+    host.appendChild(study('r-conc', 'R15', 'Concentration: how much NVIDIA do you really own?', 'Top-10 weight and NVIDIA weight (issuer disclosures, Aug–Sep 2026)', el,
       take(`Holding SPY, QQQ, SMH and VGT together looks diversified, but their top positions overlap heavily: NVIDIA is about ${b('19%')} of SMH, ${b('18%')} of VGT and ${b('8%')} of QQQ and SPY. SMH and SOXX are both semis funds, yet SOXX caps single names, so NVIDIA is only ~7% there. Real portfolio risk is the look-through exposure to individual stocks, not the number of funds.`)));
   }
 
-  // ---------------- R15 NDX since 1985 ----------------
+  // ---------------- R16 NDX since 1985 ----------------
   function ndx(host) {
     const tk = U.tokens(); const el = h('div', { class: 'chart short' });
     const A = Core.ndxAnnual; const ys = Object.keys(A).map(Number).sort((a, c) => a - c);
@@ -451,21 +501,21 @@
         { name: 'S&P 500 (price)', type: 'bar', barMaxWidth: 10, itemStyle: { color: tk.s[1] }, data: ndxR.map(x => spxMap[x[0]] == null ? null : spxMap[x[0]]) },
       ],
     }), true); });
-    host.appendChild(study('r-ndx', 'R15', 'Every Nasdaq-100 year since 1985', 'Price return (no dividends); year-end levels from Yahoo history', el,
+    host.appendChild(study('r-ndx', 'R16', 'Every Nasdaq-100 year since 1985', 'Price return (no dividends); year-end levels from Yahoo history', el,
       take(`From end-1985 to end-2025 (${yrs} years) the Nasdaq-100 price index rose from 132 to 25,250, about ${b(U.pct(Math.pow(cum, 1 / yrs) - 1, 1))} a year, against roughly ${b(U.pct(Math.pow(cumS, 1 / yrs) - 1, 1))} for the S&P 500 price index. It saw the +102% mania of 1999 and a three-year collapse in 2000–2002 of ${U.pct(A[2002] / A[1999] - 1, 0)} year-end to year-end (about −83% peak to trough). The site's daily Nasdaq-100 data starts with QQQ in 1999; 1985–1998 can only be shown annually.`)));
   }
 
-  // ---------------- R16 Literature ----------------
+  // ---------------- R17 Literature ----------------
   function lit(host) {
-    host.appendChild(study('r-lit', 'R16', 'What the research says', 'Classic studies that cross-check this site\'s numbers (with links)',
+    host.appendChild(study('r-lit', 'R17', 'What the research says', 'Classic studies that cross-check this site\'s numbers (with links)',
       h('div', { class: 'lit' }, FACTS.lit.map(x => h('div', { class: 'lit-item' }, h('b', null, L(x.t)), h('p', { class: 'ink2', style: { fontSize: '14px' } }, L(x.d)), h('span', { class: 'src' }, x.src + ' · ', h('a', { href: x.url, target: '_blank', rel: 'noopener' }, 'Source')))))));
   }
 
   V.render = function (el) {
     el.appendChild(h('div', { class: 'section-head' }, h('div', { class: 'eyebrow' }, t('asOf', { d: Core.asOf })), h('h2', null, t('rs.title')), h('p', { class: 'lede' }, t('rs.lede'))));
-    const toc = [['r-holding', 'Holding period'], ['r-bestdays', 'Best days'], ['r-timing', 'Timing'], ['r-lsdca', 'Lump vs staged'], ['r-fwd', 'Buy the dip?'], ['r-season', 'Seasonality'], ['r-lev', 'Leverage'], ['r-semi', 'Semi cycle'], ['r-crisis', 'Crises'], ['r-div', 'Dividends & inflation'], ['r-decade', 'Decades'], ['r-vix', 'VIX'], ['r-cape', 'CAPE'], ['r-conc', 'Concentration'], ['r-ndx', 'NDX 1985+'], ['r-lit', 'Literature']];
+    const toc = [['r-holding', 'Holding period'], ['r-bestdays', 'Best days'], ['r-timing', 'Timing'], ['r-lsdca', 'Lump vs staged'], ['r-fwd', 'Buy the dip?'], ['r-season', 'Seasonality'], ['r-lev', 'Leverage'], ['r-semi', 'Semi cycle'], ['r-crisis', 'Crises'], ['r-div', 'Dividends & inflation'], ['r-infl', 'Inflation regimes'], ['r-decade', 'Decades'], ['r-vix', 'VIX'], ['r-cape', 'CAPE'], ['r-conc', 'Concentration'], ['r-ndx', 'NDX 1985+'], ['r-lit', 'Literature']];
     el.appendChild(h('nav', { class: 'toc', 'aria-label': 'Contents' }, toc.map(([id, n]) => h('a', { href: '#research', onclick: (e) => { e.preventDefault(); const x = document.getElementById(id); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, L(n)))));
-    const fns = [holding, bestdays, timing, lsdca, fwd, season, leverage, semis, crisis, divs, decades, vix, cape, conc, ndx, lit];
+    const fns = [holding, bestdays, timing, lsdca, fwd, season, leverage, semis, crisis, divs, inflation, decades, vix, cape, conc, ndx, lit];
     for (const f of fns) { try { f(el); } catch (e) { console.error(e); el.appendChild(h('div', { class: 'card empty' }, 'Error: ' + e.message)); } }
   };
   V.onShow = function () { setTimeout(U.resizeAll, 20); };

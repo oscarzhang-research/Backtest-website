@@ -508,7 +508,72 @@
     return section('sh-today', 'A', 'What to hold today', 'Target weights from the latest close',
       h('div', { class: 'grid-2 sh-alloc' }, donut, h('div', { class: 'stack' }, take(txt))), tbl,
       (() => { const ds = R.univ.filter(k => DIV[k]); if (!ds.length) return null; return h('p', { class: 'note' }, 'Diversifiers (issuer fund pages, 2026-09-30): ', ds.map((k, q) => [q ? '; ' : '', h('a', { href: DIV[k].url, target: '_blank', rel: 'noopener' }, L(DIV[k]))]), '.'); })(),
-      h('p', { class: 'note' }, `Share counts use the ${Core.lastPx.date || Core.asOf} close, rounded down; MA gaps use total-return series; SOXL's trend signal comes from SOXX. “Base weight” comes from the weighting method; “trend factor” is the multiplier from the moving-average filter (and any dip add). This is the rule's mechanical output, not investment advice.`));
+      h('p', { class: 'note' }, `Share counts use the ${Core.lastPx.date || Core.asOf} close, rounded down; MA gaps use total-return series; SOXL's trend signal comes from SOXX. “Base weight” comes from the weighting method; “trend factor” is the multiplier from the moving-average filter (and any dip add). This is the rule's mechanical output, not investment advice.`),
+      divMonitor(R, tk));
+  }
+
+  // rolling correlation of daily returns over `win` days, sampled every `step` days (ending at e)
+  function rollCorr(va, vb, s, e, win, step) {
+    const out = []; const n = e - s; const rx = new Float64Array(n + 1), ry = new Float64Array(n + 1);
+    let a1 = 0, a2 = 0, b1 = 0, b2 = 0, ab = 0;
+    for (let i = s + 1; i <= e; i++) {
+      const q = i - s; const x = va[i] / va[i - 1] - 1, y = vb[i] / vb[i - 1] - 1; rx[q] = x; ry[q] = y;
+      a1 += x; a2 += x * x; b1 += y; b2 += y * y; ab += x * y;
+      if (q > win) { const x0 = rx[q - win], y0 = ry[q - win]; a1 -= x0; a2 -= x0 * x0; b1 -= y0; b2 -= y0 * y0; ab -= x0 * y0; }
+      if (q >= win && (e - i) % step === 0) {
+        const cv = ab / win - (a1 / win) * (b1 / win), vx = a2 / win - (a1 / win) ** 2, vy = b2 / win - (b1 / win) ** 2;
+        out.push([U.ts(i), vx > 0 && vy > 0 ? cv / Math.sqrt(vx * vy) : null]);
+      }
+    }
+    return out;
+  }
+  // A, second part: are the diversifiers still diversifying? (only for plans with Treasuries or gold)
+  function divMonitor(R, tk) {
+    if (!isCross(SS)) return null;
+    const bk = SS.bond !== 'none' ? SS.bond : null, gk = SS.gold ? 'GLD' : null; const j = R.i1;
+    const pairs = [bk ? ['SPY', bk] : null, gk ? ['SPY', gk] : null, bk && gk ? [bk, gk] : null].filter(Boolean);
+    const WIN = [[63, '3 months'], [252, '1 year'], [756, '3 years']];
+    const rows = pairs.map(([a, c], q) => {
+      const va = Core.S[a].v, vc = Core.S[c].v, s0 = Math.max(Core.S[a].s, Core.S[c].s);
+      const roll = rollCorr(va, vc, s0, j, 252, 5); const vals = roll.map(p => p[1]).filter(U.isNum);
+      return { a, c, name: tick(a) + '–' + tick(c), w: WIN.map(([n]) => j - n >= s0 ? corrOf(va, vc, j - n, j) : NaN), full: corrOf(va, vc, s0, j), from: s0, roll, posShare: vals.length ? vals.filter(v => v > 0).length / vals.length : NaN,
+        color: q < 2 ? U.assetColor(c, tk) : tk.ink2, dash: q === 2 ? 'dashed' : 'solid' };
+    });
+    const cf = (v) => !U.isNum(v) ? '—' : (v > 0 ? '+' : '') + v.toFixed(2);
+    const tbl = h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', null, h('tr', null, h('th', null, 'Daily-return correlation'), WIN.map(([, lab]) => h('th', null, 'Last ' + lab)), h('th', null, 'Since data start'), h('th', null, '1-year corr. > 0'))),
+      h('tbody', null, rows.map(x => h('tr', null,
+        h('td', null, h('span', { class: 'th-asset' }, h('i', { style: { background: x.color } }), x.name)),
+        x.w.map(v => h('td', { style: { fontWeight: 700, background: U.heatBg(-v, 1, tk) } }, cf(v))),
+        h('td', null, cf(x.full), h('span', { class: 'hint' }, Core.iso(x.from).slice(0, 4) + '+')),
+        h('td', null, U.pct(x.posShare, 0), h('span', { class: 'hint' }, 'of days')))))));
+    const el = h('div', { class: 'chart short' });
+    requestAnimationFrame(() => {
+      const c = U.chart(el); if (!c) return;
+      const o = U.baseOpt(tk, { legend: legendOpt(tk), grid: { left: 8, right: 16, top: 30, bottom: 8, containLabel: true }, xAxis: U.timeAxis(tk),
+        yAxis: U.valAxis(tk, { min: -1, max: 1, scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => v.toFixed(1) } }),
+        series: rows.map((x, q) => U.lineSeries(x.name + ' (1-year)', x.roll, x.color, { sampling: null, connectNulls: false, lineStyle: { width: q === 0 ? 2 : 1.4, color: x.color, type: x.dash },
+          markLine: q === 0 ? { silent: true, symbol: 'none', data: [{ yAxis: 0 }], lineStyle: { color: tk.ruleStrong, type: 'solid' }, label: { show: false } } : undefined })) });
+      o.tooltip.formatter = ttFmt((v) => cf(v));
+      c.setOption(o, true);
+    });
+    // the inflation backdrop, from the Research study on inflation regimes
+    let infl = null; try { infl = LR.regimes(); } catch (e) { console.error(e); }
+    const rb = rows[0];
+    let txt = `Over the last year ${b(rb.name)} had a correlation of ${b(cf(rb.w[1]))} (3 months ${cf(rb.w[0])}, 3 years ${cf(rb.w[2])}); since ${Core.iso(rb.from).slice(0, 4)} the 1-year figure was above zero on ${rb.posShare < 0.4 ? 'only ' : ''}${b(U.pct(rb.posShare, 0))} of days. `;
+    txt += rb.w[1] > 0.2 ? `${tick(rb.c)} is currently moving ${b('with')} stocks rather than against them, so it is cushioning less than it did for most of the backtest. ` : rb.w[1] < -0.2 ? `${tick(rb.c)} is currently a good hedge: it tends to rise when stocks fall. ` : `${tick(rb.c)} is currently close to uncorrelated with stocks: it diversifies, but does not hedge sell-offs. `;
+    txt += `The 50-year test (F3) shows why this matters: the cross-asset plans gained most over equities alone while stocks and bonds were negatively correlated, and before 2000, when the correlation was mostly positive, the edge disappeared. `;
+    if (infl && infl.now) {
+      const g = infl.quad[infl.now.quad];
+      txt += `The inflation backdrop: US CPI inflation was ${b(U.pct(infl.now.y, 1))} a year in ${LR.label(infl.now.k)} (a year earlier ${U.pct(infl.now.prev, 1)}) — “${g.label.toLowerCase()}”. Since 1973, in months that began in that regime, stocks returned ${U.pct(g.real.EQ, 1, true)} a year after inflation, long Treasuries ${U.pct(g.real.BL, 1, true)} and gold ${U.pct(g.real.GOLD, 1, true)} (${g.n} months; Research R11).`;
+    }
+    return h('div', { style: { marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed var(--rule-strong)' } },
+      h('h4', { class: 'sh-h4', style: { borderTop: '0', marginTop: '0', paddingTop: '0' } }, 'Are Treasuries and gold still diversifying?'),
+      tbl, el, take(txt),
+      h('div', { class: 'flex', style: { gap: '8px', flexWrap: 'wrap', marginTop: '8px' } },
+        h('button', { type: 'button', class: 'btn ghost small', onclick: () => { const x = document.getElementById('sh-long'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'F3: when diversification works →'),
+        h('button', { type: 'button', class: 'btn ghost small', onclick: () => App.goStudy('r-infl') }, 'Research: inflation regimes →')),
+      h('p', { class: 'note' }, 'Correlations of daily total returns; green = negative (a hedge), red = positive (moving together). A correlation describes co-movement, not direction: both can still rise or fall together over a whole year. The chart shows rolling 1-year windows.'));
   }
 
   // ---------- B. Rules ----------
@@ -628,11 +693,12 @@
 
   // ---------- D. Option lab ----------
   function whatIf(R, tk) {
-    const belowHost = h('div', null, pending()); const famHost = h('div', null, pending());
-    queue([() => belowSweep(R, tk, belowHost), () => familyTable(R, tk, famHost)]);
+    const belowHost = h('div', null, pending()); const famHost = h('div', null, pending()); const edgeHost = h('div', null, pending());
+    queue([() => belowSweep(R, tk, belowHost), () => familyTable(R, tk, famHost), () => edgeLadder(R, tk, edgeHost)]);
     return section('sh-whatif', 'D', 'Option lab: change one thing at a time', 'Each row changes one option of the current plan; same span and costs',
       h('h4', { class: 'sh-h4' }, 'D1 · Below the moving average: trim, hold or add?'), belowHost,
-      h('h4', { class: 'sh-h4' }, 'D2 · Each option on its own'), famHost);
+      h('h4', { class: 'sh-h4' }, 'D2 · Each option on its own'), famHost,
+      h('h4', { class: 'sh-h4' }, 'D3 · Where does the edge come from? Adding the ingredients one at a time'), edgeHost);
   }
   const BELOWS = [0, 25, 50, 75, 100, 125, 150, 200];
   function belowSweep(R, tk, host) {
@@ -738,6 +804,118 @@
         ? `Changing one thing at a time: the biggest Sharpe gain comes from “${b(up.label)}” (+${U.num(up.r.sharpe - cur.sharpe, 2)}), the biggest loss from “${dn.label}” (${U.num(dn.r.sharpe - cur.sharpe, 2)}). `
         : `Changing one thing at a time, ${b('no single change raises the Sharpe')} (the biggest loss comes from “${dn.label}”, ${U.num(dn.r.sharpe - cur.sharpe, 2)}). The current setting sits on a local peak — reassuring about stability, but also a reminder that these parameters were chosen on the same history, so future results will likely fall short of the backtest. `;
       host.appendChild(take(lead + `Of the ${nonA} changes outside the asset mix, ${b(String(noise))} move the Sharpe by less than ±0.05 — inside the statistical noise (see the E6 bootstrap). ${eq && xa ? `What really separates outcomes is the asset mix: with the same rules, equities alone give ${U.num(eq.r.sharpe, 2)}, adding TLT and GLD gives ${b(U.num(xa.r.sharpe, 2))}. ` : ''}Spend effort on choosing the right assets and containing drawdowns rather than fine-tuning parameters.`));
+    }
+  }
+
+  // ---------- D3. Attribution ladder ----------
+  // Start from SPY and add the current plan's ingredients one at a time (asset mix → weighting → trend
+  // filter → vol target / exposure → overlays), next to classic static portfolios that use no rules at all.
+  const fixedOf = (w, sched) => ({ type: 'fixed', universe: Object.keys(w), params: { w, sched: sched || 'Q' } });
+  const CLASSICS = [
+    { key: 'perm', short: 'Permanent', name: 'Permanent Portfolio', what: '25% each in SPY, TLT, GLD and T-bills, rebalanced yearly (Harry Browne)', spec: fixedOf({ SPY: 25, TLT: 25, GLD: 25 }, 'Y') },
+    { key: 'thirds', short: 'Thirds', name: 'Thirds', what: 'One third each in SPY, TLT and GLD, rebalanced quarterly', spec: fixedOf({ SPY: 100 / 3, TLT: 100 / 3, GLD: 100 / 3 }) },
+    { key: 'aw', short: 'All-Weather-style', name: 'All-Weather-style', what: '30% SPY, 40% TLT, 15% IEF, 15% GLD, quarterly (the published mix has commodities instead of part of the gold)', spec: fixedOf({ SPY: 30, TLT: 40, IEF: 15, GLD: 15 }) },
+    { key: 'c6040', short: '60/40', name: '60/40', what: '60% SPY, 40% IEF, rebalanced quarterly', spec: S6040 },
+  ];
+  const actOf = (x) => x <= 0 ? 'goes to zero' : x < 100 ? `keeps ${x}%` : x === 100 ? 'is unchanged' : `is raised to ${x}%`;
+  // how a ladder step changed the Sharpe in the two halves of the period
+  // up: clearly positive in both; flat: within ±0.02 in both; down: never clearly positive and negative in at least one; mixed: positive in one only
+  const stepKind = (d1, d2) => !U.isNum(d1) || !U.isNum(d2) ? 'na' : d1 > 0.02 && d2 > 0.02 ? 'up' : Math.abs(d1) <= 0.02 && Math.abs(d2) <= 0.02 ? 'flat' : d1 <= 0.02 && d2 <= 0.02 ? 'down' : 'mixed';
+  const byKind = (steps) => { const K = {}; for (const s of steps) { const k = stepKind(s.d1, s.d2); (K[k] = K[k] || []).push(s); } return K; };
+  const andList = (a) => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  const sgn2 = (d) => (d >= 0 ? '+' : '') + U.num(d, 2);
+  function ladderOf(c) {
+    const u = univOf(c); const eq = {}; u.forEach(k => { eq[k] = 100 / u.length; });
+    const chk = { D: 'daily', W: 'weekly', M: 'monthly' }[c.sched] + (c.band > 0 ? `, ${c.band} pp band` : ', always rebalanced');
+    const noOver = { ddX: 0, vix: 0, mom: 0 }, flat = { vt: false, cap: 100 };
+    const overs = [c.mom > 0 ? `${c.mom}-month momentum tilt` : '', c.ddX > 0 ? `dip add (${c.ddX}% below the high → ×${c.ddMult}%)` : '', c.vix > 0 ? `VIX above ${c.vix} → ×${c.vixMult}%` : ''].filter(Boolean);
+    const rungs = [
+      { key: 'spy', short: 'SPY', step: 'SPY buy & hold', what: 'The starting point', spec: fixedOf({ SPY: 100 }) },
+      { key: 'mix', short: 'Equal weights', step: 'Same ETFs at equal weights', what: `${u.map(tick).join(' / ')} at 1/${u.length} each, rebalanced quarterly: diversification alone`, spec: fixedOf(eq) },
+    ];
+    if (u.length > 1) rungs.push({ key: 'w', short: c.weighting === 'iv' ? 'Inverse vol' : c.weighting === 'equal' ? 'Equal, daily' : 'Your weights', step: c.weighting === 'iv' ? '+ inverse-vol weights' : c.weighting === 'equal' ? '+ the plan’s rebalancing' : '+ your custom weights',
+        what: (c.weighting === 'iv' ? `Weights ∝ 1/${c.L}-day volatility` : c.weighting === 'equal' ? 'Equal weights' : 'Your fixed weights') + ` (checked ${chk}); no trend filter, no vol target`, spec: specOf(c, Object.assign({ trend: 'none', above: 100 }, flat, noOver)) });
+    if (c.trend !== 'none') rungs.push({ key: 'trend', short: '+ Trend', step: '+ trend filter', what: c.trend === 'sma' ? `Below its ${c.n}-day average an asset ${actOf(c.below)}` : `5-MA vote: below all five averages the weight ${actOf(c.below)}`, spec: specOf(c, Object.assign({}, flat, noOver)) });
+    rungs.push(c.vt ? { key: 'risk', short: '+ Vol target', step: '+ vol target', what: `The whole mix scaled toward ${c.T}% volatility (at most ${c.cap}% invested)`, spec: specOf(c, noOver) }
+      : c.cap !== 100 ? { key: 'risk', short: '+ ' + c.cap + '%', step: `+ ${c.cap}% exposure`, what: c.cap > 100 ? `A constant ${(c.cap / 100).toFixed(2)}× exposure, margin at T-bill + ${c.borrow}%` : `Only ${c.cap}% invested, the rest in T-bills`, spec: specOf(c, noOver) }
+        : { key: 'risk', short: '+ Factor', step: `+ ${c.above}% weight factor`, what: `Every weight × ${c.above}%`, spec: specOf(c, noOver) });
+    rungs.push({ key: 'over', short: '+ Overlays', step: '+ overlays', what: overs.join('; '), spec: specOf(c) });
+    // keep only the steps that change something; the last one is always the full current plan
+    const out = []; for (const r of rungs) { if (out.length && JSON.stringify(out[out.length - 1].spec) === JSON.stringify(r.spec)) continue; out.push(r); }
+    return out;
+  }
+  function edgeLadder(R, tk, host) {
+    const rungs = ladderOf(SS); const cls = CLASSICS.map(x => Object.assign({}, x)); const all = rungs.concat(cls);
+    const [i0, i1] = spanOf(all.map(x => x.spec), startIdx(), Core.N - 1);
+    if (i1 - i0 < 260) { U.clear(host); host.appendChild(h('div', { class: 'empty' }, 'Period too short.')); return; }
+    const iS = R.iSplit; const halves = iS > i0 + 250 && i1 > iS + 250;
+    queue(all.map(x => () => { x.r = runLite(x.spec, i0, i1); if (halves) { x.h1 = runLite(x.spec, i0, iS).sharpe; x.h2 = runLite(x.spec, iS, i1).sharpe; } }).concat([draw]));
+    function draw() {
+      U.disposeIn(host); U.clear(host);
+      const plan = rungs[rungs.length - 1], spy = rungs[0];
+      const pathEl = h('div', { class: 'chart short' });
+      requestAnimationFrame(() => {
+        const c = U.chart(pathEl); if (!c) return;
+        const narrow = pathEl.clientWidth < 560; // on phones, label only the ladder; the static mixes are named in the tooltip and the table
+        const pt = (x, pos, col, show) => ({ value: [x.r.mdd, x.r.sharpe], x, label: { show, position: pos, formatter: x.short, color: col, fontSize: narrow ? 10 : 11 } });
+        const o = U.baseOpt(tk, {
+          legend: legendOpt(tk), grid: { left: 8, right: 28, top: (root.innerWidth || 1200) < 640 ? 76 : 60, bottom: 26, containLabel: true },
+          tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 },
+            formatter: (p) => { const x = p.data.x; return U.ttHead(x.step || x.name) + U.ttRow(p.color, 'Sharpe', U.num(x.r.sharpe, 2)) + U.ttRow(p.color, 'Max drawdown', U.pct(x.r.mdd, 1)) + U.ttRow(p.color, 'CAGR', U.pct(x.r.twr, 1)); } },
+          xAxis: U.valAxis(tk, { name: 'Max drawdown (right = smaller)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tk.muted, fontSize: 11 }, axisLabel: { color: tk.muted, fontSize: 11, formatter: (v) => Math.round(v * 100) + '%' } }),
+          yAxis: U.valAxis(tk, { name: 'Sharpe', nameTextStyle: { color: tk.muted, fontSize: 11, align: 'left' }, axisLabel: { color: tk.muted, fontSize: 11, formatter: (v) => v.toFixed(1) } }),
+          series: [
+            { name: 'Adding the current plan’s ingredients', type: 'line', data: rungs.map(x => pt(x, 'top', tk.ink, true)), symbol: 'circle', symbolSize: 9, lineStyle: { width: 2, color: STRAT_COLOR(tk) }, itemStyle: { color: STRAT_COLOR(tk) }, z: 3 },
+            { name: 'Classic static mixes', type: 'scatter', data: cls.map(x => pt(x, 'bottom', tk.ink2, !narrow)), symbol: 'diamond', symbolSize: 10, itemStyle: { color: tk.ink2 }, z: 2 },
+          ],
+        });
+        o.tooltip.trigger = 'item';
+        c.setOption(o, true);
+      });
+      host.appendChild(pathEl);
+      const maxSh = Math.max(...all.map(x => x.r.sharpe).filter(U.isNum));
+      const bar = (v2) => h('span', { class: 'wi-bar' }, h('span', { class: 'track' }, h('i', { style: { width: Math.max(1, Math.min(100, 100 * v2 / maxSh)) + '%' } })), h('em', null, U.num(v2, 2)));
+      const dCell = (d) => h('td', { class: !U.isNum(d) || Math.abs(d) < 0.005 ? '' : d > 0 ? 'pos' : 'neg' }, !U.isNum(d) ? '—' : Math.abs(d) < 0.005 ? '0.00' : (d > 0 ? '+' : '') + d.toFixed(2));
+      const per = halves ? `${Core.iso(i0).slice(0, 4)}–${Core.iso(iS).slice(2, 4)} · ${Core.iso(iS + 1).slice(0, 4)}–${Core.iso(i1).slice(2, 4)}` : null;
+      const row = (x, prev, isPlan) => h('tr', { class: isPlan ? 'hl' : '' },
+        h('td', null, h('b', null, x.step || x.name), isPlan ? h('span', { class: 'hint' }, '= current plan') : null, h('div', { class: 'xs muted' }, x.what)),
+        h('td', null, bar(x.r.sharpe)), prev ? dCell(x.r.sharpe - prev.r.sharpe) : h('td', null, '—'),
+        halves ? h('td', { class: 'nowrap' }, U.num(x.h1, 2) + ' · ' + U.num(x.h2, 2)) : null,
+        h('td', null, U.pct(x.r.twr, 1)), h('td', null, U.pct(x.r.vol, 1)), h('td', null, U.pct(x.r.mdd, 0)));
+      host.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data wi-table' },
+        h('thead', null, h('tr', null, h('th', null, 'Step'), h('th', null, 'Sharpe'), h('th', null, 'ΔSharpe'), halves ? h('th', null, 'Sharpe ' + per) : null, h('th', null, 'CAGR'), h('th', null, 'Vol'), h('th', null, 'Max DD'))),
+        h('tbody', null, rungs.map((x, q) => row(x, q ? rungs[q - 1] : null, q === rungs.length - 1)),
+          h('tr', { class: 'grp' }, h('td', { colspan: halves ? '7' : '6' }, 'Classic static portfolios, no rules')),
+          cls.map(x => row(x, null, false))))));
+      host.appendChild(h('p', { class: 'note' }, `Common span ${Core.iso(i0)} → ${Core.iso(i1)}, ${SS.cost} bp costs, signals one day late, cash in T-bills. Each step keeps the previous ones and adds one ingredient of the current plan; ΔSharpe = change from the step above. Static portfolios trade only on their rebalancing dates.`));
+      // ---- takeaway, computed from the rows above ----
+      const gain = plan.r.sharpe - spy.r.sharpe;
+      const steps = rungs.slice(1).map((x, q) => ({ x, d: x.r.sharpe - rungs[q].r.sharpe, d1: x.h1 - rungs[q].h1, d2: x.h2 - rungs[q].h2, dd: x.r.mdd }));
+      const mix = steps.find(s => s.x.key === 'mix');
+      const sg = sgn2;
+      const nm = (x) => { const t2 = x.step.replace(/^\+ /, ''); return /^[A-Z][a-z]/.test(t2) ? t2.charAt(0).toLowerCase() + t2.slice(1) : t2; };
+      let txt = `Over this span SPY alone had a Sharpe of ${U.num(spy.r.sharpe, 2)} and a ${U.pct(spy.r.mdd, 0)} max drawdown; the current plan has ${b(U.num(plan.r.sharpe, 2))} and ${b(U.pct(plan.r.mdd, 0))}. `;
+      if (rungs.length > 1) txt += 'Step by step: ' + steps.map(s => `${nm(s.x)} ${b(sg(s.d))} (drawdown ${U.pct(s.dd, 0)})`).join('; ') + '. ';
+      if (mix && gain > 0.05 && mix.d > 0) {
+        const rest = plan.r.sharpe - mix.x.r.sharpe, ddTxt = `the max drawdown from ${U.pct(mix.dd, 0)} to ${U.pct(plan.r.mdd, 0)}`;
+        if (rest > 0.02) txt += `So ${b(U.pct(mix.d / gain, 0) + ' of the Sharpe gain')} comes from simply holding the same ETFs side by side; the rules add the other ${U.pct(rest / gain, 0)} and take ${ddTxt}. `;
+        else if (rest >= -0.02) txt += `So ${b('the whole Sharpe gain')} comes from simply holding the same ETFs side by side; the rules add no Sharpe on top, but take ${ddTxt}. `;
+        else txt += `Simply holding the same ETFs side by side does better on Sharpe (${U.num(mix.x.r.sharpe, 2)}) than the full plan: the rules ${b('cost ' + U.num(-rest, 2) + ' of Sharpe')}, though they take ${ddTxt}. `;
+      } else if (gain <= 0.05) txt += 'On this span the plan does not clearly beat SPY on Sharpe. ';
+      if (halves) {
+        const K = byKind(steps); const q = (s) => '“' + nm(s.x) + '”'; const nums = (s) => `${q(s)} (${sg(s.d1)}, then ${sg(s.d2)})`;
+        if (K.up) txt += `Clearly positive in both halves (${per.replace(' · ', ' and ')}): ${andList(K.up.map(q))}. `;
+        if (K.down) txt += `No help in either half: ${andList(K.down.map(nums))}. `;
+        if (K.mixed) txt += `Uneven: ${andList(K.mixed.map(nums))}. `;
+        if (K.flat) txt += `Little effect either way: ${andList(K.flat.map(q))}. `;
+      }
+      const best = cls.reduce((a, x) => (!a || x.r.sharpe > a.r.sharpe ? x : a), null);
+      const extraEq = univOf(SS).filter(k => !['SPY', 'TLT', 'IEF', 'GLD'].includes(k)).map(tick);
+      const gapC = best ? plan.r.sharpe - best.r.sharpe : NaN;
+      if (best) txt += `Among the static mixes with no rules at all, the ${best.name} did best (Sharpe ${b(U.num(best.r.sharpe, 2))}, max drawdown ${U.pct(best.r.mdd, 0)})` + (gapC > 0.05
+        ? ` — ${U.num(gapC, 2)} below the plan. That gap is what the rules${extraEq.length ? ` and the plan's extra equity ETFs (${extraEq.join(', ')}, winners of the past two decades; see K)` : ''} add on top of plain diversification. `
+        : gapC >= -0.05 ? ' — about as good as the plan, without any timing rules. ' : ` — ${U.num(-gapC, 2)} above the plan, without any timing rules. `) + 'Section F6 repeats this ladder over 50 years.';
+      host.appendChild(take(txt));
     }
   }
 
@@ -1104,6 +1282,9 @@
     const mT = cal[1][1], mP = cal[2][1];
     const dSh = mT && mP ? mP.sharpe - mT.sharpe : NaN, rDD = mT && mP ? mP.mdd / mT.mdd : NaN;
     host.appendChild(take(`Replacing one thing at a time over the same span (from ${LR.label(C0)}): monthly instead of daily rebalancing and the S&P instead of the Nasdaq-100 and semis move the Sharpe from ${daily ? U.num(daily.sharpe, 2) : '—'} to ${mT ? U.num(mT.sharpe, 2) : '—'}; month-average prices then inflate it to ${mP ? U.num(mP.sharpe, 2) : '—'} (≈${U.num(dSh, 2)} too high) and shrink the max drawdown to ${U.pct(rDD, 0)} of the real one. The synthetic bond tracks TLT's monthly-average returns with a correlation of ${U.num(qb.c, 2)} (vol ratio ${U.num(qb.ratio, 2)}); World Bank gold vs GLD: ${U.num(qg.c, 2)}. So read F1–F4 for ${b('relative standing, not absolute levels')}: knock about ${U.num(dSh, 1)} off the long-run Sharpe and scale drawdowns up by about ${U.num(1 / rDD, 1)}×.`));
+    // ---- F6: the D3 ladder over 50 years ----
+    host.appendChild(h('h4', { class: 'sh-h4' }, 'F6 · Where does the edge come from? The D3 ladder since 1973'));
+    host.appendChild(lrLadder(main, sp, q64, t3, S0, S1, M));
     // ---- verdict ----
     const mf = M(main, S0, S1), h1 = M(main, S0, LR.keyOf('1999-12')), h2 = M(main, LR.keyOf('1999-12'), S1);
     const f = (l, a, b2) => M(l, a, b2);
@@ -1130,6 +1311,56 @@
     const sumE = !ddBetter ? '' : mixed ? `The accurate summary: ${b('“much smaller drawdowns” held throughout the 50 years; “a clearly higher Sharpe” depends on bonds hedging stocks')}. ` : `${b('Both the drawdown and the Sharpe advantage held up over 50 years')}. `;
     host.appendChild(h('div', { class: 'callout' }, h('span', { html: `${b('Verdict')}: since 1973 (about ${yrs} years) ${main.name} has a Sharpe of ${b(U.num(mf.sharpe, 2))}, ${bestFull ? 'the highest of all comparisons' : 'not the highest'} (1.0 proxy ${U.num(l1f.sharpe, 2)}, S&P ${U.num(spf.sharpe, 2)}, 60/40 ${U.num(q64f.sharpe, 2)}, thirds ${U.num(t3f.sharpe, 2)}); max drawdown ${b(U.pct(mf.mdd, 0))}${U.isNum(mddAdj) ? ` (about ${U.pct(mddAdj, 0)} after the F5 bias)` : ''} vs ${U.pct(spf.mdd, 0)} for the S&P; worst 10-year CAGR ${b(U.pct(minG(rm), 1))} (S&P ${U.pct(minG(rs), 1)}). ` +
     (firstHalfWorse ? `But the edge is uneven: in 1973–1999, data never used in research, its Sharpe was only ${b(U.num(h1.sharpe, 2))}, ${b('below')} ${trailE}; almost all of the edge comes after 2000 (${U.num(h2.sharpe, 2)}; 1.0 proxy ${U.num(l1h2.sharpe, 2)}). ` : `And it held up in both halves: ${b(U.num(h1.sharpe, 2))} in 1973–1999 (1.0 proxy ${U.num(l1h1.sharpe, 2)}) and ${U.num(h2.sharpe, 2)} since 2000 (${U.num(l1h2.sharpe, 2)}). `) + `Across ${nW} rolling 10-year windows it beat the S&P's Sharpe in ${b(U.pct(beat / nW, 0))} and its return in ${U.pct(beatG / nW, 0)}. ${sumE}After the F5 data bias, the long-run Sharpe is roughly ${b(U.num(adj, 1))}, ${gapE} the ${U.num(bt, 2)} of this page's daily backtest since ${btY} — use ${who} with that more conservative expectation.` })));
+  }
+
+  // F6: add the plan's ingredients one at a time on the long-run monthly data (same steps as D3)
+  const LRN = { EQ: 'S&P 500', BL: 'long Treasuries', B10: '10-year Treasuries', GOLD: 'gold' };
+  function lrLadder(main, sp, q64, t3, S0, S1, M) {
+    const ms = main.spec; const sumK = ms.k.reduce((a, x) => a + x, 0); const H = LR.keyOf('1999-12');
+    const noOver = { ddX: 0, mom: 0 }, flat = { vt: false, cap: 100 };
+    const rungs = [
+      { step: 'S&P 500 buy & hold', short: 'S&P', what: 'The starting point', spec: sp.spec, res: sp.res },
+      { step: 'Same assets at fixed weights', short: 'fixed mix', what: ms.cols.map((c, q) => LRN[c] + ' ' + Math.round(100 * ms.k[q] / sumK) + '%').join(' / ') + ' (the S&P counts once per equity ETF), rebalanced monthly', spec: { cols: ms.cols, static: ms.k.map(x => x / sumK), cost: SS.cost } },
+    ];
+    if (ms.cols.length > 1) rungs.push({ step: ms.weighting === 'iv' ? '+ inverse-vol weights' : ms.weighting === 'equal' ? '+ the plan’s weighting' : '+ your custom weights', short: ms.weighting === 'iv' ? 'inverse vol' : 'plan weights', what: (ms.weighting === 'iv' ? 'Weights ∝ 1/12-month volatility' : 'The plan’s weights') + '; no trend filter, no vol target', spec: Object.assign({}, ms, { trend: 'none', above: 100 }, flat, noOver) });
+    if (ms.trend !== 'none') rungs.push({ step: '+ trend filter', short: 'trend filter', what: ms.trend === 'sma' ? `Below its ${ms.ma}-month average an asset ${actOf(ms.below)}` : `Five averages (3–12 months) vote; below all of them the weight ${actOf(ms.below)}`, spec: Object.assign({}, ms, flat, noOver) });
+    rungs.push({ step: ms.vt ? '+ vol target' : ms.cap !== 100 ? `+ ${ms.cap}% exposure` : `+ ${ms.above}% weight factor`, short: ms.vt ? 'vol target' : 'exposure', what: ms.vt ? `Scaled toward ${ms.T}% volatility (at most ${ms.cap}%)` : ms.cap > 100 ? `Constant ${(ms.cap / 100).toFixed(2)}× exposure` : 'Fixed exposure', spec: Object.assign({}, ms, noOver) });
+    rungs.push({ step: '+ overlays', short: 'overlays', what: 'Dip add and momentum tilt (the VIX filter has no long history)', spec: ms, res: main.res });
+    const lad = []; for (const r of rungs) { if (lad.length && JSON.stringify(lad[lad.length - 1].spec) === JSON.stringify(r.spec)) continue; lad.push(r); }
+    const cls = [
+      { step: 'Permanent Portfolio', what: '25% each in the S&P 500, long Treasuries, gold and T-bills', spec: { cols: ['EQ', 'BL', 'GOLD'], static: [0.25, 0.25, 0.25], cost: SS.cost } },
+      { step: 'Thirds', what: 'S&P 500 / long Treasuries / gold, one third each', spec: t3.spec, res: t3.res },
+      { step: 'All-Weather-style', what: '30% S&P 500, 40% long and 15% 10-year Treasuries, 15% gold', spec: { cols: ['EQ', 'BL', 'B10', 'GOLD'], static: [0.3, 0.4, 0.15, 0.15], cost: SS.cost } },
+      { step: '60/40', what: 'S&P 500 / 10-year Treasuries', spec: q64.spec, res: q64.res },
+    ];
+    const ok = (x) => { if (!x.res) x.res = LR.run(x.spec, S0, S1); if (x.res.error) return false; x.m = M(x, S0, S1); x.m1 = M(x, S0, H); x.m2 = M(x, H, S1); return !!(x.m && x.m1 && x.m2); };
+    const L2 = lad.filter(ok), C2 = cls.filter(ok);
+    const box = h('div');
+    if (L2.length < 2) { box.appendChild(h('div', { class: 'empty' }, 'Not enough long-run data for this plan.')); return box; }
+    const dCell = (d) => h('td', { class: !U.isNum(d) || Math.abs(d) < 0.005 ? '' : d > 0 ? 'pos' : 'neg' }, !U.isNum(d) ? '—' : Math.abs(d) < 0.005 ? '0.00' : (d > 0 ? '+' : '') + d.toFixed(2));
+    const row = (x, prev, isPlan) => h('tr', { class: isPlan ? 'hl' : '' },
+      h('td', null, h('b', null, x.step), isPlan ? h('span', { class: 'hint' }, main.key === 'me' ? '= current plan' : '= 2.0 proxy') : null, h('div', { class: 'xs muted' }, x.what)),
+      h('td', { style: { fontWeight: 700 } }, U.num(x.m.sharpe, 2)), prev ? dCell(x.m.sharpe - prev.m.sharpe) : h('td', null, '—'),
+      h('td', null, U.num(x.m1.sharpe, 2)), h('td', null, U.num(x.m2.sharpe, 2)), h('td', null, U.pct(x.m.cagr, 1)), h('td', null, U.pct(x.m.real, 1)), h('td', null, U.pct(x.m.mdd, 0)));
+    box.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data wi-table' },
+      h('thead', null, h('tr', null, h('th', null, 'Step'), h('th', null, 'Sharpe ' + LR.year(S0) + '–now'), h('th', null, 'ΔSharpe'), h('th', null, LR.year(S0) + '–99'), h('th', null, '2000–now'), h('th', null, 'CAGR'), h('th', null, 'Real CAGR'), h('th', null, 'Max DD'))),
+      h('tbody', null, L2.map((x, q) => row(x, q ? L2[q - 1] : null, q === L2.length - 1)),
+        C2.length ? h('tr', { class: 'grp' }, h('td', { colspan: '8' }, 'Classic static portfolios, no rules')) : null, C2.map(x => row(x, null, false))))));
+    const st = L2.slice(1).map((x, q) => ({ x, d: x.m.sharpe - L2[q].m.sharpe, d1: x.m1.sharpe - L2[q].m1.sharpe, d2: x.m2.sharpe - L2[q].m2.sharpe }));
+    const nm = (s) => '“' + s.x.short + '”';
+    const sg = sgn2; const K = byKind(st); const y0 = LR.year(S0);
+    const perm = C2.find(x => x.step === 'Permanent Portfolio'); const last = L2[L2.length - 1];
+    let txt = `Since ${LR.year(S0)} the Sharpe goes ` + L2.map(x => `${x.short} ${U.num(x.m.sharpe, 2)}`).join(' → ') + '. ';
+    const two = (s) => `${nm(s)} (${sg(s.d1)} in ${y0}–99, ${sg(s.d2)} since 2000)`;
+    if (K.up) txt += `${b('Clearly positive both before and after 2000')}: ${andList(K.up.map(two))}. `;
+    if (K.down) txt += `${b('No help in either era')}: ${andList(K.down.map(two))}. `;
+    if (K.mixed) txt += `${b('Era-dependent')}: ${andList(K.mixed.map(two))}. `;
+    if (K.flat) txt += `Little effect: ${andList(K.flat.map(nm))}. `;
+    if (perm) txt += `The Permanent Portfolio, with no rules at all, reached ${U.num(perm.m.sharpe, 2)} (${U.num(perm.m1.sharpe, 2)} before 2000, ${U.num(perm.m2.sharpe, 2)} after) with a ${U.pct(perm.m.mdd, 0)} max drawdown, against ${U.num(last.m.sharpe, 2)} and ${U.pct(last.m.mdd, 0)} for ${main.key === 'me' ? 'the current plan' : '2.0'}'s proxy. `;
+    txt += K.up && K.mixed ? `So on data never used in research the ${andList(K.up.map(nm))} step${K.up.length > 1 ? 's' : ''} carried over, while ${andList(K.mixed.map(nm))} helped only in some eras.` : '';
+    box.appendChild(take(txt));
+    box.appendChild(h('p', { class: 'note' }, 'Same monthly data and rules as F1–F5 (month-average prices, so Sharpe ratios are about 0.1 too high for every row alike); static mixes are rebalanced monthly; ΔSharpe = change from the step above.'));
+    return box;
   }
 
   // ---------- G. Crisis stress test ----------
@@ -1451,6 +1682,6 @@
   V.refresh = U.debounce(() => { if (V.el) App.renderView('sharpe'); }, 200);
   V.onShow = function () { setTimeout(U.resizeAll, 20); };
   V.state = () => SS;
-  V.presets = PRESETS;V.specOf = specOf;
+  V.presets = PRESETS;V.specOf = specOf;V.lrSpecOf = lrSpecOf;
   App.register('sharpe', V);
 })(window);
