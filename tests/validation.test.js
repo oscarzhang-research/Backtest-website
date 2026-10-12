@@ -36,8 +36,10 @@ test('Schwab market-timing study, $2,000 a year 2005–2024: same ranking, each 
 test('ETF series match issuer-reported annualized returns', () => {
   const yb = (iso, y) => Core.isoOf(Core.addYearsDay(Core.parseISO(iso), -y));
   const ann = (k, s, e) => { const S = Core.S[k]; const a = idx(s), b = idx(e); const yrs = (Core.parseISO(e) - Core.parseISO(s)) / 365.25; return yrs >= 1 ? Math.pow(S.v[b] / S.v[a], 1 / yrs) - 1 : S.v[b] / S.v[a] - 1; };
-  for (const [k, asOf, rows] of [['SMH', '2026-08-31', [[1, 92.33], [3, 53.41], [5, 33.47], [10, 33.84]]], ['SOXX', '2026-06-30', [[1, 169.69], [3, 56.95], [5, 34.51], [10, 36.60]]]]) {
-    for (const [y, off] of rows) assert.ok(Math.abs(ann(k, yb(asOf, y), asOf) * 100 - off) < 0.1, `${k} ${y}y`);
+  for (const [k, asOf, rows] of [['SMH', '2026-08-31', [[1, 92.33], [3, 53.41], [5, 33.47], [10, 33.84]]], ['SOXX', '2026-06-30', [[1, 169.69], [3, 56.95], [5, 34.51], [10, 36.60]]],
+    ['SOXL', '2026-06-30', [[1, 962.47], [3, 122.04], [5, 43.94], [10, 65.88]]]]) {
+    // a 3× fund compounding at 100%+ a year is more sensitive to the day count (exact years vs. 365.25-day years)
+    for (const [y, off] of rows) assert.ok(Math.abs(ann(k, yb(asOf, y), asOf) * 100 - off) < (k === 'SOXL' ? 0.15 : 0.1), `${k} ${y}y`);
   }
 });
 

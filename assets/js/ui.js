@@ -100,7 +100,7 @@
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 110;
   };
   // Asset colors (fixed identity order)
-  U.assetColorIdx = { SPX: 1, QQQ: 2, SMH: 3, SOXX: 4, VGT: 5, SPY: 6, SOXL: 7, SOXLX: 7, IEF: 8, GLD: 0, TLT: 8, TQQQ: 2, CASH: 0, SPXP: 0,
+  U.assetColorIdx = { SPX: 1, QQQ: 2, SMH: 3, SOXX: 4, VGT: 5, SPY: 6, SOXL: 7, SOXLX: 7, TQQQX: 2, SOXXU: 4, IEF: 8, GLD: 0, TLT: 8, TQQQ: 2, CASH: 0, SPXP: 0,
     // single stocks: distinct within each group (memory / compute / equipment); groups may share hues
     MU: 8, WDC: 5, STX: 7, NVDA: 3, AMD: 2, INTC: 1, AVGO: 6, AMAT: 4, LRCX: 1, KLAC: 3 };
   U.assetColor = (key, tk) => { const T = tk || U.tokens(); return key === 'GLD' ? (T.accentLine || T.s[0]) : T.s[U.assetColorIdx[key] || 0]; }; // gold gets the brass accent

@@ -82,6 +82,15 @@
       for (let j = 0; j < o.r.length; j++) arr[o.s + j + 1] = arr[o.s + j] * (1 + o.r[j] / 1e6);
       S[k] = { key: k, s: o.s, e: o.s + len - 1, v: arr };
     }
+    // SOXX*, the 1× series SOXL* is 3× of: the PHLX Semiconductor index plus SOXX's distributions until SOXL's launch
+    // (soxlCal.baseR; the fund now called SOXX was IGW until 2010-10-15, on another semiconductor index), SOXX afterwards
+    const bc = DATA.soxlCal;
+    if (bc && bc.baseR && S.SOXX && S.SOXL && S.SOXLX && S.SOXLX.s + bc.baseR.length === S.SOXL.s) {
+      const X = S.SOXX, s0 = S.SOXLX.s, L = S.SOXL.s, arr = new Float64Array(n); arr.fill(NaN); arr[s0] = 1;
+      for (let j = 0; j < bc.baseR.length; j++) arr[s0 + j + 1] = arr[s0 + j] * (1 + bc.baseR[j] / 1e6);
+      for (let i = L + 1; i <= X.e; i++) arr[i] = arr[i - 1] * X.v[i] / X.v[i - 1];
+      S.SOXXU = { key: 'SOXXU', s: s0, e: X.e, v: arr, hidden: true };
+    }
     // Fill SPX-like NaN outside for uniformity
     // ---------- Risk-free ----------
     const rfd = DATA.rf; const rfAnn = new Float64Array(n);
@@ -125,7 +134,8 @@
     Core.ndxAnnual = DATA.ndxA;
     Core.meta = DATA.meta;
     Core.lastPx = DATA.lastPx || {};
-    Core.soxlCal = DATA.soxlCal || null;
+    Core.soxlCal = DATA.soxlCal || null;     // SOXL* = 3 × SOXX* − 2 × T-bill − c before SOXL's launch (scripts/rebuild-leveraged.js)
+    Core.tqqqCal = DATA.tqqqCal || null;     // TQQQ* = 3 × QQQ − 2 × T-bill − c before TQQQ's launch
     Core.lrRaw = DATA.lr || null;      // monthly 10y yields + gold for the long-run test (lr.js)
     Core.cpiRaw = DATA.cpi || null;
     Core.updated = DATA.updated || null;     // last run of scripts/update-data.js: {at, sessions}

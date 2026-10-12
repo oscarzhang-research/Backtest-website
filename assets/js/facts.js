@@ -18,6 +18,7 @@
     holdrs: 'https://www.sec.gov/Archives/edgar/data/1110511/000093041311007245/c67045_ex99-a1a.htm',
     ishares: 'https://www.ishares.com/us/products/239705/ishares-phlx-semiconductor-etf',
     soxxIndexChange: 'https://www.sec.gov/Archives/edgar/data/1100663/000119312521126827/d82642d497.htm',
+    soxx2010: 'https://www.nbcnews.com/news/amp/wbna39627983',
     soxxSplit2026: 'https://www.sec.gov/Archives/edgar/data/1100663/000119312526361162/d133118d497.htm',
     iceRename: 'https://www.ice.com/publicdocs/ice/notifications/adhoc/110000725074/ICEBIO_ICESEMI_Index_Name_Changes_20231013.pdf',
     vanguard: 'https://investor.vanguard.com/investment-products/etfs/profile/vgt',
@@ -43,6 +44,8 @@
     nasdaqSOX: 'https://indexes.nasdaq.com/Index/History/SOX',
     direxion: 'https://www.direxion.com/product/daily-semiconductor-bull-bear-3x-etfs',
     direxionFS: 'https://www.direxion.com/uploads/SOXL-SOXS-Fact-Sheet.pdf',
+    direxionIdx2021: 'https://www.direxion.com/uploads/Direxion-Changes-Index-for-Semiconductor-ETFs.pdf',
+    nyseArcaRB21075: 'https://www.nyse.com/publicdocs/nyse/markets/nyse-arca/rule-interpretations/2021/NYSE%20Arca%20Equities%20RB-21-075.pdf',
     secLev: 'https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-alerts/sec',
     moreiraMuir: 'https://doi.org/10.1111/jofi.12513',
     harvey2018: 'https://doi.org/10.3905/jpm.2018.45.1.014',
@@ -129,7 +132,7 @@
         [{ zh: '费率', en: 'Expense ratio' }, '0.33%', { zh: '2026-07-31 招募说明书', en: 'Prospectus, 2026-07-31' }],
         [{ zh: '规模', en: 'Assets' }, '$48.9B', { zh: '2026-09-25', en: '2026-09-25' }],
         [{ zh: '持仓', en: 'Holdings' }, '30', { zh: '2026-09-25', en: '2026-09-25' }],
-        [{ zh: '指数沿革', en: 'Index history' }, { zh: '2021-06-20 前跟踪费城半导体指数 (SOX)；之后跟踪 ICE 半导体指数，2023-11-03 更名为纽约证交所半导体指数', en: 'PHLX Semiconductor (SOX) until 2021-06-20; then the ICE Semiconductor Index, renamed NYSE Semiconductor Index on 2023-11-03' }, ''],
+        [{ zh: '指数沿革', en: 'Index history' }, { zh: '2010-10-15 以前为 iShares IGW，跟踪标普北美科技-半导体指数；之后改名 SOXX、跟踪费城半导体指数 (SOX)；2021-06-21 起跟踪 ICE 半导体指数，2023-11-03 更名为纽约证交所半导体指数', en: 'iShares IGW on the S&P North American Technology-Semiconductors index until 2010-10-15; then renamed SOXX on the PHLX Semiconductor index (SOX); the ICE Semiconductor Index from 2021-06-21, renamed NYSE Semiconductor Index on 2023-11-03' }, { zh: '本站 SOXX 的早期数据就是 IGW 的历史', en: 'The site\'s early SOXX data are IGW\'s history' }],
         [{ zh: '加权方式', en: 'Weighting' }, { zh: '修正市值加权，设单股上限（2021 年文件：前五 8%、其余 4%）；当前上限未能核实（英特尔 9.7%）', en: 'Modified cap with limits (2021 filing: top five 8%, others 4%); current caps unverified (Intel 9.7%)' }, ''],
         [{ zh: '股息率', en: 'Yield' }, '0.29%', { zh: '近12月，2026-08-31（SEC 30日 0.21%）', en: 'Trailing 12m, 2026-08-31 (30-day SEC 0.21%)' }],
         [{ zh: '市盈率 / 市净率', en: 'P/E · P/B' }, '68.0 · 11.8', { zh: '2026-09-25（历史市盈率）', en: '2026-09-25 (trailing)' }],
@@ -142,7 +145,7 @@
       notes: [
         { zh: '与 SMH 相比，SOXX 更“平均”：单股上限让英伟达只占约 7%，英特尔、AMD、美光等权重更高，所以两者在个股行情分化时表现差异可达数十个百分点。', en: 'SOXX is more evenly spread than SMH: caps hold NVIDIA near 7% and give Intel, AMD and Micron more weight, so the two can diverge by tens of points when individual chips stocks part ways.' },
       ],
-      links: [['iShares SOXX', F.sources.ishares], ['2021 index change (SEC)', F.sources.soxxIndexChange], ['2026 split notice (SEC)', F.sources.soxxSplit2026], ['ICE rename notice', F.sources.iceRename]],
+      links: [['iShares SOXX', F.sources.ishares], ['2010: IGW becomes SOXX on the PHLX index (Nasdaq release)', F.sources.soxx2010], ['2021 index change (SEC)', F.sources.soxxIndexChange], ['2026 split notice (SEC)', F.sources.soxxSplit2026], ['ICE rename notice', F.sources.iceRename]],
     },
     {
       key: 'VGT', ticker: 'VGT', kind: 'etf',
@@ -187,10 +190,10 @@
       key: 'SOXL', ticker: 'SOXL', kind: 'etf',
       name: { zh: 'Direxion 每日半导体三倍做多ETF', en: 'Direxion Daily Semiconductor Bull 3X Shares' },
       facts: [
-        [{ zh: '成立日', en: 'Inception' }, '2010-03-11', { zh: '本站首个收盘价 2010-03-12', en: 'First close in this site\'s data: 2010-03-12' }],
+        [{ zh: '成立日', en: 'Inception' }, '2010-03-11', { zh: '本站数据从当天收盘起（全收益）', en: 'The site\'s data start at that close (total return)' }],
         [{ zh: '投资目标', en: 'Objective' }, { zh: '单日涨跌幅的 300%（每日重置）', en: '300% of the index\'s daily return (resets daily)' }, { zh: '持有超过一天的收益不等于指数收益 × 3', en: 'Returns over more than a day are not 3× the index return' }],
         [{ zh: '费率', en: 'Expense ratio' }, '0.75%', { zh: '净费率（毛费率 0.91%，豁免至 2027-09-01；不含基金的基金费用为 0.71%）', en: 'Net (gross 0.91%, waiver to 2027-09-01; 0.71% excl. acquired-fund fees)' }],
-        [{ zh: '指数', en: 'Index' }, { zh: '纽约证交所半导体指数（ICESEMIT）：美国上市最大的 30 家半导体公司，修正市值加权', en: 'NYSE Semiconductor Index (ICESEMIT): the 30 largest US-listed semiconductor companies, modified cap-weighted' }, ''],
+        [{ zh: '指数', en: 'Index' }, { zh: '纽约证交所半导体指数（ICESEMIT）：美国上市最大的 30 家半导体公司，修正市值加权', en: 'NYSE Semiconductor Index (ICESEMIT): the 30 largest US-listed semiconductor companies, modified cap-weighted' }, { zh: '2021-08-24 以前为费城半导体指数（SOX）', en: 'The PHLX Semiconductor index (SOX) until 2021-08-24' }],
         [{ zh: '指数构成', en: 'Index mix' }, { zh: '半导体 76.0%、设备与材料 24.0%', en: 'Semiconductors 76.0%, equipment & materials 24.0%' }, { zh: '事实表，2026-06-30', en: 'Fact sheet, 2026-06-30' }],
         [{ zh: '净值', en: 'NAV' }, '$147.09', { zh: '2026-09-29（市价 $147.00）', en: '2026-09-29 (market $147.00)' }],
         [{ zh: '分红', en: 'Distributions' }, { zh: '少量收入分红', en: 'Small income dividends' }, { zh: '最近：$0.0929（除息 2026-09-22）、$0.0101（2025-09-23）、$0.0680（2025-06-24）、$0.0648（2025-03-25）', en: 'Latest: $0.0929 (ex 2026-09-22), $0.0101 (2025-09-23), $0.0680 (2025-06-24), $0.0648 (2025-03-25)' }],
@@ -200,10 +203,10 @@
       topAsOf: { zh: '指数成分，2026-06-30 事实表', en: 'Index constituents, fact sheet 2026-06-30' },
       official: { asOf: '2026-06-30', basis: { zh: '市价总回报', en: 'market-price total return' }, r: [['1Y', 962.47], ['3Y', 122.04], ['5Y', 43.94], ['10Y', 65.88], [{ zh: '成立以来(2010-03-11)', en: 'Since 2010-03-11' }, 45.24]] },
       notes: [
-        { zh: '本站 SOXL 序列为收盘价（已按拆股调整，未计入分红），因此 3–10 年年化比官方总回报低约 1–1.6 个百分点——主要是 2016–2024 年间（尤其高利率时期）的收入分红。早期价格只精确到 1 美分（复权后约 $0.3–1），会给 2010–2013 年的日收益带来少量噪声。', en: 'The site\'s SOXL series is closing prices (split-adjusted, distributions excluded), so 3–10-year annualized returns run about 1–1.6 points below the official total return — mostly income distributions in 2016–2024, especially when rates were high. Early prices are rounded to the cent (≈$0.3–1 split-adjusted), adding a little noise to 2010–2013 daily returns.' },
-        { zh: '2010 年以前的“SOXL*”为模拟：SOXX 日总回报 × 3，减去 2 倍国库券融资成本和每年 2.9% 的综合拖累（用 2010–2026 年真实 SOXL 校准，月度相关系数 0.999）。', en: '“SOXL*” before 2010 is simulated: 3 × SOXX daily total return less 2× T-bill financing and a 2.9% annual drag (calibrated on real 2010–2026 SOXL; monthly correlation 0.999).' },
+        { zh: '本站 SOXL 序列为全收益：Yahoo Finance 全精度拆股调整收盘价，分红在除息日再投资；与 Direxion 公布的 1/3/5/10 年业绩相差不到 0.1 个百分点（下方核对）。', en: 'The site\'s SOXL series is total return: Yahoo Finance full-precision split-adjusted closes, with distributions reinvested on their ex-dates; it matches Direxion\'s published 1/3/5/10-year returns within 0.1 point (check below).' },
+        { zh: 'SOXL 上市至 2021-08-24 跟踪费城半导体指数，2021-08-25 起改为 ICE 半导体指数（2023 年更名为纽约证交所半导体指数）。2010 年以前的“SOXL*”为模拟值，以费城半导体指数为底，构造方法见“方法论”第二部分。', en: 'SOXL tracked the PHLX Semiconductor index from its launch until 2021-08-24 and the ICE Semiconductor Index (renamed NYSE Semiconductor Index in 2023) from 2021-08-25. “SOXL*” before 2010 is a simulation on the PHLX index; see Methodology, section 2.' },
       ],
-      links: [['Direxion SOXL', F.sources.direxion], ['Fact sheet', F.sources.direxionFS], ['Investor.gov bulletin: leveraged & inverse ETFs', F.sources.secLev]],
+      links: [['Direxion SOXL', F.sources.direxion], ['Fact sheet', F.sources.direxionFS], ['2021 index change (Direxion)', F.sources.direxionIdx2021], ['NYSE Arca RB-21-075', F.sources.nyseArcaRB21075], ['Investor.gov bulletin: leveraged & inverse ETFs', F.sources.secLev]],
     },
   ];
 

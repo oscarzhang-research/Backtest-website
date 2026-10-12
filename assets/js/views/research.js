@@ -246,7 +246,7 @@
           const A = Core.S[actualKey]; const a0 = Math.max(i0, A.s);
           const base3 = sims[2].v[a0] / sims[2].v[i0];
           const data = []; for (let i = a0; i <= Math.min(i1, A.e); i += 2) data.push([U.ts(i), Math.max(A.v[i] / A.v[a0] * base3, 1e-4)]);
-          series.push(U.lineSeries(actualKey + (zh() ? '（真实，仅价格）' : ' (actual, price)'), data, tk.s[5], { sampling: null, lineStyle: { width: 1.6, color: tk.s[5] } }));
+          series.push(U.lineSeries(actualKey + (zh() ? '（真实）' : ' (actual)'), data, tk.s[5], { sampling: null, lineStyle: { width: 1.6, color: tk.s[5] } }));
         }
         const o = U.baseOpt(tk, { legend: { top: 0, textStyle: { color: tk.ink2, fontSize: 11.5 }, itemWidth: 14, itemHeight: 3, icon: 'roundRect' }, grid: { left: 8, right: 16, top: 30, bottom: 8, containLabel: true },
           xAxis: U.timeAxis(tk), yAxis: U.valAxis(tk, { type: 'log', axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => v >= 1 ? v.toFixed(0) + '×' : v.toPrecision(1) + '×' } }), series });

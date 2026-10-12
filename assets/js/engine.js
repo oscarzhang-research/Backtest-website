@@ -686,7 +686,7 @@
   // ---------------- Multi-asset strategies ----------------
   // Each prepare(ctx, p) returns target(j) -> Float64Array of weights (one per universe key, sum <= 1; rest = T-bills)
   // computed with information up to the close of day j, or null when signals are not yet available.
-  const LEV_UNDER = { SOXL: 'SOXX', SOXLX: 'SOXX', TQQQ: 'QQQ' };
+  const LEV_UNDER = { SOXL: 'SOXX', SOXLX: 'SOXX', TQQQ: 'QQQ', TQQQX: 'QQQ' };
   E.levUnder = LEV_UNDER;
   const MR = {};
   E.multiRules = MR;
