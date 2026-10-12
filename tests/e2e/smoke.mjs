@@ -182,6 +182,31 @@ for (const [lang, live, must] of [
   report('soxl start', problems);
   await ctx.close();
 }
+// SOXL S6 end date: the data stop there (the summary says so), the status line still shows the latest session
+{
+  const { ctx, page, errors } = await open('zh', 'soxl');
+  const settle = async (pred) => { for (let k = 0; k < 120; k++) { await page.waitForTimeout(250); const t = await page.evaluate(() => (document.getElementById('sx-dip') || document.body).innerText); if (pred(t)) return t; } return null; };
+  const problems = [];
+  if (!(await settle((t) => /年以来，符合全部条件/.test(t)))) problems.push('S6 did not render');
+  else {
+    const asOf = await page.evaluate(() => window.__DATA__.asOf);
+    await page.fill('#dipEnd', '2019-12-31'); await page.$eval('#dipEnd', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+    const t1 = await settle((t) => /\d{4}-\d{2}-\d{2} 至 2019-12-31，符合全部条件/.test(t));
+    if (!t1) problems.push('the summary does not end on 2019-12-31');
+    else {
+      if (!t1.includes(asOf + ' 收盘') && !t1.includes(asOf + ' 盘中')) problems.push('the status line no longer shows the latest session ' + asOf);
+      if (/\bNaN\b|undefined/.test(t1)) problems.push('NaN/undefined with an end date');
+      const min = await page.$eval('#dipEnd', (el) => el.min), max = await page.$eval('#dipStart', (el) => el.max);
+      if (max !== '2019-12-31') problems.push('the start date can go past the end: max ' + max);
+      if (!min) problems.push('no earliest end date');
+    }
+    await page.click('button:text-is("到最新")');
+    if (!(await settle((t) => /年以来，符合全部条件/.test(t)))) problems.push('"到最新" did not go back to the latest session');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('soxl end', problems);
+  await ctx.close();
+}
 await browser.close();
 server.close();
 process.exit(failed ? 1 : 0);

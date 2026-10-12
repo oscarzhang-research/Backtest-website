@@ -151,6 +151,22 @@ test('a start date: purchases from that day only, while the history before it st
   assert.equal(Calc.dipContext(S.v, S.s, S.e, months, S.e + 10).from, S.e);
 });
 
+test('an end date: the data stop there, holding periods included', () => {
+  const months = [3, 12], from = idx('2012-01-03'), to = idx('2019-12-31');
+  const ctx = Calc.dipContext(S.v, S.s, to, months, from);
+  const R = Calc.dipStudy(ctx, { sv: S.v, ref: Calc.dipRef(S.v, S.s, to, 'ath'), dd: { on: true, lo: 0.4 } });
+  assert.ok(R.days.length > 0 && R.days.every(i => i >= from && i <= to));
+  // the same qualifying days as the study of the whole history (every condition looks only backwards), cut at the end
+  const all = Calc.dipStudy(Calc.dipContext(S.v, S.s, S.e, months, from), { sv: S.v, ref: Calc.dipRef(S.v, S.s, S.e, 'ath'), dd: { on: true, lo: 0.4 } });
+  assert.deepEqual(R.days, all.days.filter(i => i <= to));
+  R.H.forEach((H, h) => {
+    assert.ok(H.at.length > 0 && H.at.every(i => Core.addYearsDay(Core.days[i], H.m / 12) <= Core.days[to]), H.m + ' months: every holding period ends by the end date');
+    let nb = 0; for (let i = from; i <= to; i++) if (Core.addYearsDay(Core.days[i], H.m / 12) <= Core.days[to]) nb++;
+    assert.equal(ctx.base[h].length, nb, H.m + ' months: the baseline stops at the end date too');
+  });
+  assert.ok(R.H[1].at.length < R.H[0].at.length, 'longer holding periods leave fewer purchases');
+});
+
 test('summary statistics, unweighted and with each fall weighing the same', () => {
   const R = fall(S.v, S.s, S.e, { lo: 0.5, months: [12], wFall: true });
   const H = R.H[0], a = H.r, st = Calc.summary(a);
