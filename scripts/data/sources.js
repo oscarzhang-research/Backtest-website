@@ -1,8 +1,10 @@
-// Downloads for the weekly data update: Yahoo Finance daily bars and FRED series.
+// Downloads for the weekly data update, all reachable from GitHub-hosted runners without an API key:
+// Yahoo Finance daily bars (prices, dividends, USD/CNY), the U.S. Treasury's daily rate files (T-bill rate,
+// 10-year yield) and the BLS API (CPI). FRED's web endpoints refuse connections from the runners.
 // Output format (what update.js expects):
 //   { gspc, vix, ndx: {bars: [{date: 'YYYY-MM-DD', close, div}]}, etf: {SPY: {bars}, ...},
-//     dtb3, cny: Map('YYYY-MM-DD' -> number|null), cpi, gs10: Map('YYYY-MM' -> number|null) }
-// Required series throw when they cannot be downloaded; optional ones (FRED, ^NDX) come back as null.
+//     tbill, cny: Map('YYYY-MM-DD' -> number|null), cpi, gs10: Map('YYYY-MM' -> number|null), plus a label per source }
+// Required series throw when they cannot be downloaded; optional ones (rates, CPI, USD/CNY, ^NDX) come back as null.
 'use strict';
 const { dayNum, isoOf, monthKey, monthIso, decodeCalendar } = require('./codec.js');
 const { MIRRORS, RF_EXACT_UNTIL } = require('./update.js');
@@ -61,21 +63,6 @@ async function yahoo(symbol, fromDay, toDay) {
   return { symbol, bars, splits, orphanDivs };
 }
 
-// FRED graph CSV (no API key): observation_date,VALUE with "." or "" for missing values.
-async function fred(id, fromIso, monthly) {
-  const txt = await getText(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}&cosd=${fromIso}`);
-  const lines = txt.trim().split(/\r?\n/); const head = lines.shift() || '';
-  if (!/date/i.test(head)) throw new Error(`FRED ${id}: unexpected header "${head.slice(0, 60)}"`);
-  const out = new Map();
-  for (const ln of lines) {
-    const [d, v] = ln.split(','); if (!/^\d{4}-\d{2}-\d{2}$/.test(d || '')) continue;
-    const x = v == null || v.trim() === '.' || v.trim() === '' ? null : +v;
-    out.set(monthly ? d.slice(0, 7) : d, Number.isFinite(x) ? x : null);
-  }
-  if (!out.size) throw new Error(`FRED ${id}: no observations`);
-  return out;
-}
-
 // U.S. Treasury daily rate files (no key): one CSV per year. type: 'daily_treasury_bill_rates' or 'daily_treasury_yield_curve'.
 // Returns Map('YYYY-MM-DD' -> number|null) for the given column, e.g. '13 WEEKS BANK DISCOUNT' or '10 Yr'.
 async function treasury(type, column, years) {
@@ -131,16 +118,28 @@ async function fetchAll(data, opts = {}) {
     await sleep(opts.delay == null ? 300 : opts.delay);
   }
 
-  log('FRED:');
-  const rfFrom = isoOf(Math.min(dayNum(data.rfThrough || RF_EXACT_UNTIL), last) - 70);
-  src.dtb3 = await optional('DTB3', () => fred('DTB3', rfFrom));
-  src.cny = data.fx && data.fx.cny ? await optional('DEXCHUS', () => fred('DEXCHUS', isoOf(dayNum(data.fx.cny.last) - 70))) : null;
-  const cpiLast = monthKey(data.cpi.m0) + data.cpi.v.length - 1;
-  const firstFilled = (data.cpi.filled || []).map(monthKey).reduce((a, x) => Math.min(a, x), cpiLast);
-  src.cpi = await optional('CPIAUCNS', () => fred('CPIAUCNS', monthIso(Math.min(cpiLast - 8, firstFilled - 1)) + '-01', true));
-  src.gs10 = data.lr && data.lr.y10 ? await optional('GS10', () => fred('GS10', monthIso(monthKey(data.lr.y10.m0) + data.lr.y10.v.length - 9) + '-01', true)) : null;
-  for (const [k, m] of [['DTB3', src.dtb3], ['DEXCHUS', src.cny], ['CPIAUCNS', src.cpi], ['GS10', src.gs10]]) if (m) { const ks = [...m].filter(([, v]) => v != null).map(([d]) => d); log(`  ${k} ${ks.length} observations, last ${ks[ks.length - 1]}`); }
+  const years = (a, b) => { const out = []; for (let y = +isoOf(a).slice(0, 4); y <= +isoOf(b).slice(0, 4); y++) out.push(y); return out; };
+  log('Rates, CPI and USD/CNY:');
+  // T-bill rate: the Treasury's 13-week bill rate on a discount basis (FRED's DTB3 until 2025-12-19)
+  const rfFrom = Math.min(dayNum(data.rfThrough || RF_EXACT_UNTIL), last) - 70;
+  src.tbill = await optional('Treasury bill rates', () => treasury('daily_treasury_bill_rates', '13 WEEKS BANK DISCOUNT', years(rfFrom, to)));
+  src.tbillName = 'U.S. Treasury 13-week bill';
+  // 10-year yield: monthly averages of the Treasury's daily 10-year par yield (what H.15 and FRED's GS10 average)
+  if (data.lr && data.lr.y10) {
+    const y10From = dayNum(monthIso(monthKey(data.lr.y10.m0) + data.lr.y10.v.length - 7) + '-01');
+    const daily = await optional('Treasury yield curve', () => treasury('daily_treasury_yield_curve', '10 Yr', years(y10From, to)));
+    src.gs10 = daily ? monthlyMean(daily, now.toISOString().slice(0, 10)) : null;
+  } else src.gs10 = null;
+  // CPI-U, not seasonally adjusted (BLS series CUUR0000SA0, the same as FRED's CPIAUCNS)
+  src.cpi = await optional('BLS CPI-U', () => bls('CUUR0000SA0'));
+  // USD/CNY: Yahoo's daily close (the Fed's H.10 noon rates, FRED DEXCHUS, until the original build)
+  if (data.fx && data.fx.cny) {
+    const fx = await optional('Yahoo CNY=X', () => yahoo('CNY=X', dayNum(data.fx.cny.last) - 70, to));
+    src.cny = fx ? new Map(fx.bars.map(b => [b.date, Math.round(b.close * 1e4) / 1e4])) : null;
+    src.cnyTol = 0.005; // compared with the stored H.10 rates within 0.5%: a different fixing time, not an error
+  } else src.cny = null;
+  for (const [k, m] of [['T-bill', src.tbill], ['10-year (monthly)', src.gs10], ['CPI-U', src.cpi], ['USD/CNY', src.cny]]) if (m) { const ks = [...m].filter(([, v]) => v != null).map(([d]) => d); log(`  ${k} ${ks.length} observations, last ${ks[ks.length - 1]}`); }
   return src;
 }
 
-module.exports = { fetchAll, yahoo, fred };
+module.exports = { fetchAll, yahoo, treasury, bls, monthlyMean };

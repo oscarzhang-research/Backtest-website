@@ -23,7 +23,7 @@ const REVISE_MAX = 0.03;    // the largest correction allowed in the revision wi
 const PRICE_ONLY = new Set(['SOXL', 'TQQQ']);   // built from closes only (distributions excluded), as originally
 const MIRRORS = { SOXLX: 'SOXL' };              // simulated SOXL before 2010-03-12, the real SOXL afterwards
 const LEVERAGED = new Set(['SOXL', 'TQQQ', 'SOXLX']);
-const RF_EXACT_UNTIL = '2025-12-19';            // last DTB3 value in the original build (then the Fed funds target midpoint)
+const RF_EXACT_UNTIL = '2025-12-19';            // last FRED DTB3 value in the original build (then the Fed funds target midpoint)
 const SPY_FEE = 0.000945;                       // SPY's expense ratio, added back to its yield to estimate the index yield
 
 // The last New York date whose session has certainly closed (it is 18:00 or later in New York).
@@ -158,15 +158,15 @@ function applyUpdate(data0, src, opts = {}) {
     rep.series.push({ k: 'VIX', last: v[v.length - 1] / 100, ret: NaN, n, maxD: maxD / 100, unit: 'points' });
   }
 
-  // ---------- 5. T-bill rate (FRED DTB3, basis points, delta-encoded) ----------
+  // ---------- 5. T-bill rate (3-month bill, discount basis; basis points, delta-encoded) ----------
   {
     const rfB = cumsum(data.rf); for (let q = 0; q < newDays.length; q++) rfB.push(rfB[rfB.length - 1]);
-    const thru0 = data.rfThrough || RF_EXACT_UNTIL, t0 = dayNum(thru0);
-    if (src.dtb3 && src.dtb3.size) {
-      const obs = [...src.dtb3].filter(([, x]) => x != null).map(([d, x]) => [dayNum(d), Math.round(x * 100)]).sort((a, b) => a[0] - b[0]);
+    const thru0 = data.rfThrough || RF_EXACT_UNTIL, t0 = dayNum(thru0); const tb = src.tbill;
+    if (tb && tb.size) {
+      const obs = [...tb].filter(([, x]) => x != null).map(([d, x]) => [dayNum(d), Math.round(x * 100)]).sort((a, b) => a[0] - b[0]);
       let n = 0, bad = 0;
-      for (const [d, x] of obs) { if (d > t0 || d < t0 - 60) continue; const i = idx.get(d); if (i == null) continue; n++; if (x !== rfB[i]) bad++; }
-      if (n && bad > 2) throw new Error(`DTB3 disagrees with the stored T-bill rate on ${bad} of ${n} days up to ${thru0}`);
+      for (const [d, x] of obs) { if (d > t0 || d < t0 - 60) continue; const i = idx.get(d); if (i == null) continue; n++; if (Math.abs(x - rfB[i]) > 2) bad++; }
+      if (n && bad > 3) throw new Error(`the downloaded T-bill rates differ from the stored ones by more than 2 bp on ${bad} of ${n} days up to ${thru0}`);
       let p = 0, cur = null, lastObs = null, changedOld = 0;
       for (let i = 0; i < N; i++) {
         while (p < obs.length && obs[p][0] <= days[i]) { cur = obs[p][1]; lastObs = obs[p][0]; p++; }
@@ -177,13 +177,13 @@ function applyUpdate(data0, src, opts = {}) {
       }
       if (lastObs != null && lastObs > t0) data.rfThrough = isoOf(Math.min(lastObs, days[N - 1]));
       else if (!data.rfThrough) data.rfThrough = thru0;
-      check(`T-bill rate (DTB3) known through ${data.rfThrough}${n ? `; matched the stored rate on ${n - bad} of ${n} earlier days` : ''}${changedOld ? `; ${changedOld} provisional stored days replaced` : ''}; latest ${(rfB[N - 1] / 100).toFixed(2)}%`);
-    } else { warn('DTB3 unavailable: the T-bill rate is carried forward and will be revised next time'); if (!data.rfThrough) data.rfThrough = thru0; }
+      check(`T-bill rate (${src.tbillName || 'download'}) known through ${data.rfThrough}${n ? `; within 2 bp of the stored rate on ${n - bad} of ${n} earlier days` : ''}${changedOld ? `; ${changedOld} provisional stored days replaced` : ''}; latest ${(rfB[N - 1] / 100).toFixed(2)}%`);
+    } else { warn('T-bill rates unavailable: the rate is carried forward and will be revised next time'); if (!data.rfThrough) data.rfThrough = thru0; }
     for (const x of rfB) if (!(x > -100 && x < 2500)) throw new Error('T-bill rate out of range: ' + x + ' bp');
     data.rf = diffs(rfB);
   }
 
-  // ---------- 6. USD/CNY (FRED DEXCHUS, ×1e4 per session, delta-encoded) ----------
+  // ---------- 6. USD/CNY (×1e4 per session, delta-encoded) ----------
   if (data.fx && data.fx.cny) {
     const f = data.fx.cny; const vals = [f.v0].concat(cumsum(f.dv, f.v0));
     if (f.s + vals.length - 1 !== N0 - 1) throw new Error('USD/CNY: the stored series does not end on ' + data.asOf);
@@ -192,16 +192,17 @@ function applyUpdate(data0, src, opts = {}) {
       const lastF = dayNum(f.last);
       const obs = [...src.cny].filter(([, x]) => x != null).map(([d, x]) => [dayNum(d), Math.round(x * 1e4)]).sort((a, b) => a[0] - b[0]);
       let n = 0, bad = 0;
-      for (const [d, x] of obs) { if (d > lastF || d < lastF - 60) continue; const i = idx.get(d); if (i == null || i < f.s) continue; n++; if (x !== vals[i - f.s]) bad++; }
-      if (n && bad > 2) throw new Error(`DEXCHUS disagrees with the stored USD/CNY rate on ${bad} of ${n} days`);
+      const tol = src.cnyTol || 0; // relative tolerance when the source fixes the rate at another time of day
+      for (const [d, x] of obs) { if (d > lastF || d < lastF - 60) continue; const i = idx.get(d); if (i == null || i < f.s) continue; n++; if (Math.abs(x - vals[i - f.s]) > tol * vals[i - f.s]) bad++; }
+      if (n && bad > 2) throw new Error(`the downloaded USD/CNY rates disagree with the stored ones on ${bad} of ${n} days`);
       let p = 0, cur = null, lastObs = null;
       for (let i = f.s; i < N; i++) {
         while (p < obs.length && obs[p][0] <= days[i]) { cur = obs[p][1]; lastObs = obs[p][0]; p++; }
         if (days[i] > lastF && cur != null) vals[i - f.s] = cur; else if (days[i] > lastF) vals[i - f.s] = vals[i - f.s - 1];
       }
       if (lastObs != null && lastObs > lastF) f.last = isoOf(Math.min(lastObs, days[N - 1]));
-      check(`USD/CNY (DEXCHUS) known through ${f.last}; latest ${(vals[vals.length - 1] / 1e4).toFixed(4)}`);
-    } else warn('DEXCHUS unavailable: USD/CNY is carried forward and will be revised next time');
+      check(`USD/CNY known through ${f.last}${n ? `; matched the stored rate on ${n - bad} of ${n} earlier days` : ''}; latest ${(vals[vals.length - 1] / 1e4).toFixed(4)}`);
+    } else warn('USD/CNY unavailable: carried forward and will be revised next time');
     f.dv = diffs(vals.slice(1), vals[0]);
   }
 
@@ -224,11 +225,11 @@ function applyUpdate(data0, src, opts = {}) {
     }
   }
 
-  // ---------- 8. CPI-U (FRED CPIAUCNS, monthly) ----------
+  // ---------- 8. CPI-U (not seasonally adjusted, monthly) ----------
   if (src.cpi && src.cpi.size) {
     const c = data.cpi; const m0 = monthKey(c.m0); const filled = new Set(c.filled || []);
     const lastM = m0 + c.v.length - 1;
-    for (let m = lastM - 5; m <= lastM; m++) { const x = src.cpi.get(monthIso(m)); if (x == null || filled.has(monthIso(m))) continue; if (Math.abs(x - c.v[m - m0]) > 0.0015) throw new Error(`CPI ${monthIso(m)} is ${x} at FRED but ${c.v[m - m0]} stored`); }
+    for (let m = lastM - 5; m <= lastM; m++) { const x = src.cpi.get(monthIso(m)); if (x == null || filled.has(monthIso(m))) continue; if (Math.abs(x - c.v[m - m0]) > 0.0015) throw new Error(`CPI ${monthIso(m)} is ${x} in the download but ${c.v[m - m0]} stored`); }
     for (const fm of [...filled]) { const x = src.cpi.get(fm); if (x != null) { c.v[monthKey(fm) - m0] = x; filled.delete(fm); check(`CPI ${fm} is now published (${x}); the interpolated value was replaced`); } }
     const later = [...src.cpi].filter(([m, x]) => x != null && monthKey(m) > lastM).map(([m]) => monthKey(m));
     const upTo = later.length ? Math.max(...later) : lastM;
@@ -245,13 +246,13 @@ function applyUpdate(data0, src, opts = {}) {
     check(`CPI-U through ${monthIso(m0 + c.v.length - 1)}`);
   } else warn('CPI unavailable this time');
 
-  // ---------- 9. 10-year Treasury yield (FRED GS10, monthly, ×100) ----------
+  // ---------- 9. 10-year Treasury yield (monthly average, ×100) ----------
   if (data.lr && data.lr.y10 && src.gs10 && src.gs10.size) {
     const y = data.lr.y10; const m0 = monthKey(y.m0); const lastM = m0 + y.v.length - 1;
-    for (let m = lastM - 5; m <= lastM; m++) { const x = src.gs10.get(monthIso(m)); if (x != null && Math.abs(Math.round(x * 100) - y.v[m - m0]) > 1) throw new Error(`GS10 ${monthIso(m)} is ${x} at FRED but ${y.v[m - m0] / 100} stored`); }
+    for (let m = lastM - 5; m <= lastM; m++) { const x = src.gs10.get(monthIso(m)); if (x != null && Math.abs(Math.round(x * 100) - y.v[m - m0]) > 1) throw new Error(`10-year yield ${monthIso(m)} is ${x} in the download but ${y.v[m - m0] / 100} stored`); }
     for (let m = lastM + 1; src.gs10.get(monthIso(m)) != null; m++) y.v.push(Math.round(src.gs10.get(monthIso(m)) * 100));
     check(`10-year Treasury yield through ${monthIso(m0 + y.v.length - 1)}`);
-  } else if (data.lr && data.lr.y10) warn('GS10 unavailable this time');
+  } else if (data.lr && data.lr.y10) warn('10-year yield unavailable this time');
 
   // ---------- 10. Nasdaq-100 year-end levels ----------
   if (src.ndx && src.ndx.bars && data.ndxA) {
@@ -302,7 +303,7 @@ function reportMarkdown(rep) {
 }
 function commitMessage(rep) {
   const L = [`Update market data through ${rep.to}`, ''];
-  L.push(rep.added.length ? `Adds ${rep.added.length} session${rep.added.length > 1 ? 's' : ''} (${rep.added[0]} to ${rep.to}) from Yahoo Finance and FRED.` : 'No new sessions; provisional values revised.');
+  L.push(rep.added.length ? `Adds ${rep.added.length} session${rep.added.length > 1 ? 's' : ''} (${rep.added[0]} to ${rep.to}) from Yahoo Finance, the U.S. Treasury and the BLS.` : 'No new sessions; provisional values revised.');
   for (const c of rep.checks) L.push('- ' + c);
   if (rep.revisions.length) L.push('- Corrected: ' + rep.revisions.join('; '));
   if (rep.warnings.length) L.push('- Warnings: ' + rep.warnings.join('; '));
