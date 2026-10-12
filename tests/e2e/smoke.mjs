@@ -150,6 +150,38 @@ for (const [lang, live, must] of [
   report('soxl stats', problems);
   await ctx.close();
 }
+// SOXL S6 start date: purchases from a chosen day, shown in the summary, remembered, and back to the start of the data
+{
+  const { ctx, page, errors } = await open('zh', 'soxl');
+  const settle = async (pred) => { for (let k = 0; k < 120; k++) { await page.waitForTimeout(250); const t = await page.evaluate(() => (document.getElementById('sx-dip') || document.body).innerText); if (pred(t)) return t; } return null; };
+  const problems = [];
+  let t0 = await settle((t) => /年以来，符合全部条件/.test(t));
+  if (!t0) problems.push('S6 did not render');
+  else {
+    const n0 = await page.evaluate(() => document.querySelector('table.dip-cmp tbody tr td:nth-child(2)').textContent);
+    await page.fill('#dipStart', '2016-01-04'); await page.$eval('#dipStart', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+    const t1 = await settle((t) => t.includes('2016-01-04 以来，符合全部条件'));
+    if (!t1) problems.push('the summary does not start on 2016-01-04');
+    else {
+      const n1 = await page.evaluate(() => document.querySelector('table.dip-cmp tbody tr td:nth-child(2)').textContent);
+      if (!(parseInt(n1.replace(/,/g, '')) < parseInt(n0.replace(/,/g, '')))) problems.push(`the any-day baseline did not shrink (${n0} → ${n1})`);
+      if (/\bNaN\b|undefined/.test(t1)) problems.push('NaN/undefined with a start date');
+      if (!(await page.$('button:text-is("从头开始")'))) problems.push('no button back to the start of the data');
+    }
+    await page.reload({ waitUntil: 'load' });
+    const t2 = await settle((t) => /以来，符合全部条件/.test(t));
+    if (!t2 || !t2.includes('2016-01-04 以来')) problems.push('the start date was not remembered');
+    else {
+      await page.click('button:text-is("从头开始")');
+      const t3 = await settle((t) => /年以来，符合全部条件/.test(t));
+      if (!t3) problems.push('"从头开始" did not go back to the start of the data');
+      if (await page.$('button:text-is("从头开始")')) problems.push('the reset button is still there');
+    }
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('soxl start', problems);
+  await ctx.close();
+}
 await browser.close();
 server.close();
 process.exit(failed ? 1 : 0);
