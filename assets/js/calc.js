@@ -213,19 +213,20 @@
   // ---------- After a fall from the high (SOXL Deep Dive, S6) ----------
   // Shared context for one instrument v over [s, e] and forward horizons in calendar months: the session that ends
   // each horizon (-1 once a horizon runs past e, -2 for a gap in the calendar), the any-day baseline and the
-  // lowest close between two sessions (for the worst fall while holding).
-  C.dipContext = function (v, s, e, months) {
-    const D = Core.days, n = e - s + 1;
+  // lowest close between two sessions (for the worst fall while holding). Purchases start at `from` (default s): the
+  // history before it still counts for highs, lows and averages, but not as purchase days or in the baseline.
+  C.dipContext = function (v, s, e, months, from) {
+    const D = Core.days, n = e - s + 1; from = from == null ? s : Math.min(e, Math.max(s, from));
     const ends = months.map(m => {
       const a = new Int32Array(n).fill(-1);
       for (let i = s; i <= e; i++) { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) break; const j = Core.idxOnOrBefore(t); a[i - s] = j > i && D[j] >= t - 7 ? j : -2; }
       return a;
     });
-    const base = ends.map(a => { const r = []; for (let i = s; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0) r.push(v[j] / v[i] - 1); } return r; });
+    const base = ends.map(a => { const r = []; for (let i = from; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0) r.push(v[j] / v[i] - 1); } return r; });
     const st = [Float64Array.from({ length: n }, (_, k) => v[s + k])]; // sparse table of minima
     for (let k = 1; (1 << k) <= n; k++) { const p = st[k - 1], h = 1 << (k - 1), c = new Float64Array(n - (1 << k) + 1); for (let i = 0; i < c.length; i++) c[i] = Math.min(p[i], p[i + h]); st.push(c); }
     const minOf = (i, j) => { const a = i - s, b = j - s, k = 31 - Math.clz32(b - a + 1); return Math.min(st[k][a], st[k][b - (1 << k) + 1]); };
-    return { v, s, e, n, months, ends, base, minOf, cache: new Map() };
+    return { v, s, e, n, from, months, ends, base, minOf, cache: new Map() };
   };
   // A signal series sv over [s, e]: its fall below the reference high (the highest close since s, or of the last `win`
   // sessions), where that high was, where the current fall began (the last close at the reference high) and the
@@ -276,8 +277,10 @@
   //      cmp (another series bought on the same days), mae (worst close while holding), rest (the non-qualifying days) }
   // With the fall condition on, a fall starts on the first qualifying day after the signal closes at its reference
   // high and lasts until the next such close; without it, qualifying days fewer than 21 sessions apart form one spell.
+  // Only days from ctx.from qualify: a fall already under way then starts on its first qualifying day from there.
   C.dipStudy = function (ctx, o) {
-    const { v, s, e, n, months, ends } = ctx; const sv = o.sv || v, R = o.ref, dd = o.dd || {}, rb = o.reb || {}, mask = o.mask || null;
+    const { v, s, e, n, months, ends } = ctx; const from = ctx.from == null ? s : ctx.from;
+    const sv = o.sv || v, R = o.ref, dd = o.dd || {}, rb = o.reb || {}, mask = o.mask || null;
     const ddHi = dd.hi == null ? Infinity : dd.hi, rbHi = rb.hi == null ? Infinity : rb.hi, G = 21;
     const ok = (i) => {
       const k = i - s;
@@ -295,7 +298,7 @@
       const k = i - s;
       if (dd.on && R.dd[k] >= 0) { if (cur) cur.endI = i; cur = null; armed = true; }
       if (!dd.on && cur && i - last > G) { cur.endI = i; cur = null; }
-      if (ok(i)) {
+      if (i >= from && ok(i)) {
         q[k] = 1;
         if (dd.on ? armed : !cur) { cur = { i, peakI: dd.on ? R.hiAt[k] : -1, depth: R.dd[k], lowI: i, endI: -1, nDays: 0 }; eps.push(cur); armed = false; }
         cur.nDays++; days.push(i); epOf.push(eps.length - 1); last = i;
@@ -315,7 +318,7 @@
       }
       const cnt = new Map(); for (const k of ep) cnt.set(k, (cnt.get(k) || 0) + 1);
       let rest = null;
-      if (isS) { rest = []; for (let i = s; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0 && !isS[i - s]) rest.push(v[j] / v[i] - 1); } }
+      if (isS) { rest = []; for (let i = from; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0 && !isS[i - s]) rest.push(v[j] / v[i] - 1); } }
       return { m, r, ann: r.map(x => Math.pow(1 + x, 12 / m) - 1), w: o.wFall ? ep.map(k => 1 / cnt.get(k)) : null, ep, at, cmp, mae, rest, cnt, nEp: cnt.size };
     });
     return { q, eps, days, epOf, H };

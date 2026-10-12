@@ -126,6 +126,31 @@ test('forward returns, annualizing, the baseline and the worst fall while holdin
   assert.ok(R.H[3].r.length < R.H[0].r.length, 'longer horizons have fewer samples');
 });
 
+test('a start date: purchases from that day only, while the history before it still sets the highs', () => {
+  const months = [3, 12], from = idx('2016-01-04'); // the 2015 fall (−50% from 2015-08-20) was still under way
+  const ref = Calc.dipRef(S.v, S.s, S.e, 'ath');
+  const run = (ctx, first) => Calc.dipStudy(ctx, { sv: S.v, ref, dd: { on: true, lo: 0.4 }, first, rest: true });
+  const full = Calc.dipContext(S.v, S.s, S.e, months), late = Calc.dipContext(S.v, S.s, S.e, months, from);
+  assert.equal(late.from, from); assert.equal(full.from, S.s);
+  const A = run(full, false), B = run(late, false);
+  assert.deepEqual(B.days, A.days.filter(i => i >= from), 'the same qualifying days, from the start on');
+  assert.ok(B.days.length < A.days.length && B.days[0] >= from);
+  // the fall under way at the start is measured from its real (2015) high and enters on its first day from the start
+  const p0 = B.eps[0]; assert.ok(p0.peakI < from, 'its high is before the start'); assert.equal(p0.i, B.days[0]);
+  const first = []; let lastEp = -1; A.days.forEach((i, k) => { if (i >= from && A.epOf[k] !== lastEp) { first.push(i); lastEp = A.epOf[k]; } });
+  assert.deepEqual(run(late, true).eps.map(p => p.i), first, 'one first day per fall, counted from the start');
+  // the baseline and the other days start at the start too
+  late.months.forEach((m, h) => {
+    const exp = []; for (let i = from; i <= S.e; i++) { const t = Core.addYearsDay(Core.days[i], m / 12); if (t > Core.days[S.e]) break; exp.push(S.v[Core.idxOnOrBefore(t)] / S.v[i] - 1); }
+    assert.equal(late.base[h].length, exp.length, m + ' months: baseline days');
+    close(Calc.summary(late.base[h]).q(0.5), Calc.summary(exp).q(0.5), 1e-12, m + ' months: baseline median');
+    assert.equal(B.H[h].rest.length + B.H[h].r.length, late.base[h].length, 'every baseline day is a sample or one of the rest');
+  });
+  // a start before the data, or after its end, is clamped
+  assert.equal(Calc.dipContext(S.v, S.s, S.e, months, S.s - 500).from, S.s);
+  assert.equal(Calc.dipContext(S.v, S.s, S.e, months, S.e + 10).from, S.e);
+});
+
 test('summary statistics, unweighted and with each fall weighing the same', () => {
   const R = fall(S.v, S.s, S.e, { lo: 0.5, months: [12], wFall: true });
   const H = R.H[0], a = H.r, st = Calc.summary(a);
