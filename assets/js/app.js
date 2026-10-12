@@ -1,5 +1,5 @@
 /* ============================================================
-   app.js — shell: state, language, theme, routing, views
+   app.js — shell: state, theme, routing, views
    ============================================================ */
 (function (root) {
   'use strict';
@@ -11,30 +11,17 @@
     current: null,
     rendered: {},
     state: {
-      lang: U.store.get('lang', null),
       theme: U.store.get('theme', 'system'),
-      colors: U.store.get('colors', null),
     },
   };
   root.App = App;
 
   App.register = function (id, mod) { App.views[id] = mod; };
 
-  App.applyLang = function () {
-    I18N.setLang(App.state.lang);
-    document.documentElement.lang = App.state.lang === 'en' ? 'en' : 'zh-CN';
+  App.applyText = function () {
     U.$$('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
-    U.$('#btnLangTxt').textContent = t('tool.lang');
-    U.$('#btnLang').title = t('tool.langTitle');
-    U.$('#btnColor').title = t('tool.colorTitle');
-    App.applyColors();
     App.applyTheme();
     App.renderFooter();
-  };
-  App.applyColors = function () {
-    const us = App.state.colors === 'us';
-    document.documentElement.classList.toggle('us-colors', us);
-    U.$('#btnColorTxt').textContent = us ? t('tool.colorUS') : t('tool.colorCN');
   };
   App.applyTheme = function () {
     const th = App.state.theme;
@@ -68,7 +55,7 @@
     try { App.views[id].render(el); App.rendered[id] = true; }
     catch (e) { console.error(e); el.appendChild(U.h('div', { class: 'empty' }, 'Error: ' + e.message)); }
   };
-  // Re-render all rendered views (language/theme/colour change)
+  // Re-render all rendered views (theme change)
   App.rerenderAll = function () {
     const cur = App.current;
     for (const id in App.rendered) { if (id !== cur) App.rendered[id] = false; }
@@ -81,20 +68,7 @@
 
   App.init = function () {
     Core.init(root.__DATA__);
-    if (!App.state.lang) {
-      const nav = (navigator.language || 'zh').toLowerCase();
-      App.state.lang = nav.startsWith('zh') ? 'zh' : 'zh'; // default Chinese
-    }
-    if (!App.state.colors) App.state.colors = App.state.lang === 'en' ? 'us' : 'cn';
-    App.applyLang();
-    U.$('#btnLang').addEventListener('click', () => {
-      App.state.lang = App.state.lang === 'zh' ? 'en' : 'zh'; U.store.set('lang', App.state.lang);
-      App.applyLang(); App.rerenderAll();
-    });
-    U.$('#btnColor').addEventListener('click', () => {
-      App.state.colors = App.state.colors === 'us' ? 'cn' : 'us'; U.store.set('colors', App.state.colors);
-      App.applyColors(); App.rerenderAll();
-    });
+    App.applyText();
     U.$('#btnTheme').addEventListener('click', () => {
       const order = ['system', 'light', 'dark']; const k = order.indexOf(App.state.theme);
       App.state.theme = order[(k + 1) % 3]; U.store.set('theme', App.state.theme);

@@ -36,12 +36,12 @@
       case 'lump': return { asset: 'SPX', start: '2000-01-01', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1,
         strategies: [S('immediate'), S('tranche', { n: 12, freq: 'M' }), S('tranche', { n: 36, freq: 'M' }), S('dip', { x: 20, ref: 'ath', wait: 24, base: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }), S('stop', { x: 20, n: 200 }), S('va', { g: 8, sell: false, baseMonths: 12 }), S('hold_cash')] };
       case 'five': return { asset: 'SPX', start: '2006-10-01', end: null, fund: { initial: 0, amount: 1000, freq: 'M', growth: 0 }, lag: 1,
-        strategies: ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT'].map(k => S('immediate', {}, { asset: { key: k } })).concat([S('immediate', {}, { asset: P({ SPX: 50, SMH: 50 }), name: I18N.lang === 'zh' ? '50% 标普 + 50% SMH' : '50% S&P + 50% SMH' }), S('immediate', {}, { asset: P({ SPX: 20, QQQ: 20, SMH: 20, SOXX: 20, VGT: 20 }), name: I18N.lang === 'zh' ? '五只等权（季度再平衡）' : 'Equal-weight five (quarterly)' })]) };
+        strategies: ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT'].map(k => S('immediate', {}, { asset: { key: k } })).concat([S('immediate', {}, { asset: P({ SPX: 50, SMH: 50 }), name: '50% S&P + 50% SMH' }), S('immediate', {}, { asset: P({ SPX: 20, QQQ: 20, SMH: 20, SOXX: 20, VGT: 20 }), name: 'Equal-weight five (quarterly)' })]) };
       case 'schwab': return { asset: 'SPX', start: '2005-01-01', end: '2024-12-31', fund: { initial: 0, amount: 2000, freq: 'Y', growth: 0 }, lag: 0,
         strategies: [S('timing_low', { period: 'Y' }, { name: 'Peter Perfect' }), S('immediate', {}, { name: 'Ashley Action' }), S('dca', { freq: 'M' }, { name: 'Matthew Monthly' }), S('timing_high', { period: 'Y' }, { name: 'Rosie Rotten' }), S('hold_cash', {}, { name: 'Larry Linger' })] };
       case 'smartdca': return { asset: 'QQQ', start: '2000-01-01', end: null, fund: { initial: 0, amount: 1000, freq: 'M', growth: 0 }, lag: 1,
         strategies: [S('immediate'), S('smart', { ind: 'dd_ath', cap: 12 }), S('smart', { ind: 'ma_dev', n: 200, cap: 12 }), S('va', { g: 10, sell: false }), S('dip', { x: 10, ref: 'ath', wait: 12, base: 50 }),
-          S('custom', { freq: 'M', buyRules: [{ ind: 'rsi', n: 14, op: '<', a: 35, mult: 2 }, { ind: 'rsi', n: 14, op: '>', a: 70, mult: 0.5 }], sellRules: [], cap: 12 }, { name: I18N.lang === 'zh' ? 'RSI 加减码' : 'RSI-scaled' })] };
+          S('custom', { freq: 'M', buyRules: [{ ind: 'rsi', n: 14, op: '<', a: 35, mult: 2 }, { ind: 'rsi', n: 14, op: '>', a: 70, mult: 0.5 }], sellRules: [], cap: 12 }, { name: 'RSI-scaled' })] };
       case 'leverage': return { asset: 'QQQ', start: '1999-03-10', end: null, fund: { initial: 10000, amount: 500, freq: 'M', growth: 0 }, lag: 1,
         strategies: [S('immediate', {}, { lev: null }), S('immediate', {}, { lev: { L: 2, fee: 0.95, spread: 0.5 } }), S('immediate', {}, { lev: { L: 3, fee: 0.95, spread: 0.5 } }),
           S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { lev: { L: 2, fee: 0.95, spread: 0.5 } }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { lev: { L: 3, fee: 0.95, spread: 0.5 } }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' })] };
@@ -56,33 +56,36 @@
         strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 34, QQQ: 33, SOXX: 33 }, sched: 'M' }), S('rotation', { n: 6, top: 1, abs: true }), S('rotation', { n: 6, top: 2, abs: true }), S('riskparity', { L: 60, n: 200, T: 0, sched: 'M' }), S('minvar', { L: 120 }), S('smc', { T: 20, n: 200, soft: 50, L: 20, band: 10, sched: 'D', cap: 100 })] };
       case 'soxl': return { asset: 'SOXL', start: '2010-03-12', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate', {}, { asset: { key: 'SOXX' } }), S('immediate'), S('constmix', { w: 33, freq: 'Q', t: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { sig: 'SOXX' }), S('voltarget', { target: 40, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }, { sig: 'SOXX' }), S('dca', { freq: 'M' }), S('dca_tp', { tp: 100, sell: 30, redeploy: 12 })] };
-      case 'sharpe50': { const zh = I18N.lang === 'zh'; const X5 = ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD']; const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
+      case 'sharpe50': {
+        const X5 = ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD'];const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
         return { asset: 'SPY', start: '2002-08-01', end: null, fund: { initial: 500000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
-          strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 60, IEF: 40 }, sched: 'Q' }, { universe: ['SPY', 'IEF'], name: zh ? '股债 60/40（SPY/IEF）' : '60/40 (SPY/IEF)' }),
-            S('smc', Object.assign({ T: 20 }, base), { name: zh ? '高夏普 1.0 平衡' : 'High-Sharpe 1.0 balanced' }),
-            S('smc', Object.assign({ T: 25 }, base), { universe: ['SPY', 'QQQ', 'SOXX', 'SOXLX'], name: zh ? '高夏普 1.0 进取（含 SOXL）' : 'High-Sharpe 1.0 aggressive (+SOXL)' }),
-            S('smc', Object.assign({ vt: false }, base), { universe: X5, name: zh ? '高夏普 2.0（推荐）' : 'High-Sharpe 2.0 (default)' }),
-            S('smc', Object.assign({ T: 10 }, base), { universe: X5, name: zh ? '高夏普 2.0 稳健' : 'High-Sharpe 2.0 steady' }),
-            S('smc', Object.assign({ vt: false, borrow: 1 }, base, { cap: 130 }), { universe: X5, name: zh ? '高夏普 2.0 + 1.3 倍融资' : 'High-Sharpe 2.0 + 1.3× margin' })] }; }
+          strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 60, IEF: 40 }, sched: 'Q' }, { universe: ['SPY', 'IEF'], name: '60/40 (SPY/IEF)' }),
+            S('smc', Object.assign({ T: 20 }, base), { name: 'High-Sharpe 1.0 balanced' }),
+            S('smc', Object.assign({ T: 25 }, base), { universe: ['SPY', 'QQQ', 'SOXX', 'SOXLX'], name: 'High-Sharpe 1.0 aggressive (+SOXL)' }),
+            S('smc', Object.assign({ vt: false }, base), { universe: X5, name: 'High-Sharpe 2.0 (default)' }),
+            S('smc', Object.assign({ T: 10 }, base), { universe: X5, name: 'High-Sharpe 2.0 steady' }),
+            S('smc', Object.assign({ vt: false, borrow: 1 }, base, { cap: 130 }), { universe: X5, name: 'High-Sharpe 2.0 + 1.3× margin' })] };
+      }
       case 'combo': return { asset: 'QQQ', start: '2002-08-01', end: null, fund: { initial: 100000, amount: 1000, freq: 'M', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate'), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }),
-          S('combo', { how: 'split', parts: [{ type: 'immediate', w: 50 }, { type: 'ddladder', params: { ref: 'ath', tiers: [{ x: 10, pct: 30 }, { x: 20, pct: 50 }, { x: 30, pct: 100 }], base: 0, wait: 0 }, w: 50 }] }, { name: I18N.lang === 'zh' ? '一半立即 + 一半跌幅阶梯' : 'Half now + half on a dip ladder' }),
-          S('combo', { how: 'split', parts: [{ type: 'trend', params: { n: 200 }, w: 50 }, { type: 'voltarget', params: { target: 20, n: 20, freq: 'D', band: 10 }, w: 50 }] }, { name: I18N.lang === 'zh' ? '一半均线择时 + 一半波动目标' : 'Half MA timing + half vol target' }),
-          S('combo', { how: 'mult', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'voltarget', params: { target: 20, n: 20, freq: 'D', band: 10 } }] }, { name: I18N.lang === 'zh' ? '均线 × 波动目标（信号相乘）' : 'MA × vol target (multiplied)' }),
-          S('combo', { how: 'and', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'dualma', params: { fast: 50, slow: 200 } }] }, { name: I18N.lang === 'zh' ? '均线 且 金叉（同时满足）' : 'MA and golden cross (both)' }),
-          S('combo', { how: 'or', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'rsi_mr', params: { n: 2, lo: 10, hi: 70, filter: 0 } }] }, { name: I18N.lang === 'zh' ? '均线 或 RSI 超卖（任一满足）' : 'MA or RSI oversold (either)' }),
-          S('combo', { how: 'vote', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'dualma', params: { fast: 50, slow: 200 } }, { type: 'absmom', params: { n: 12 } }] }, { name: I18N.lang === 'zh' ? '三个趋势信号投票' : 'Three trend signals voting' })] };
+          S('combo', { how: 'split', parts: [{ type: 'immediate', w: 50 }, { type: 'ddladder', params: { ref: 'ath', tiers: [{ x: 10, pct: 30 }, { x: 20, pct: 50 }, { x: 30, pct: 100 }], base: 0, wait: 0 }, w: 50 }] }, { name: 'Half now + half on a dip ladder' }),
+          S('combo', { how: 'split', parts: [{ type: 'trend', params: { n: 200 }, w: 50 }, { type: 'voltarget', params: { target: 20, n: 20, freq: 'D', band: 10 }, w: 50 }] }, { name: 'Half MA timing + half vol target' }),
+          S('combo', { how: 'mult', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'voltarget', params: { target: 20, n: 20, freq: 'D', band: 10 } }] }, { name: 'MA × vol target (multiplied)' }),
+          S('combo', { how: 'and', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'dualma', params: { fast: 50, slow: 200 } }] }, { name: 'MA and golden cross (both)' }),
+          S('combo', { how: 'or', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'rsi_mr', params: { n: 2, lo: 10, hi: 70, filter: 0 } }] }, { name: 'MA or RSI oversold (either)' }),
+          S('combo', { how: 'vote', parts: [{ type: 'trend', params: { n: 200 } }, { type: 'dualma', params: { fast: 50, slow: 200 } }, { type: 'absmom', params: { n: 12 } }] }, { name: 'Three trend signals voting' })] };
       case 'ladder': return { asset: 'SPX', start: '2000-01-01', end: null, fund: { initial: 100000, amount: 1000, freq: 'M', growth: 0 }, lag: 1, costBps: 0,
         strategies: [S('immediate'), S('ddladder', { ref: 'ath', tiers: [{ x: 10, pct: 100 }], base: 0, wait: 0 }), S('ddladder', { ref: 'ath', tiers: [{ x: 20, pct: 100 }], base: 0, wait: 0 }), S('ddladder', { ref: 'ath', tiers: [{ x: 30, pct: 100 }], base: 0, wait: 0 }),
           S('ddladder', { ref: 'ath', tiers: [{ x: 10, pct: 30 }, { x: 20, pct: 50 }, { x: 30, pct: 100 }], base: 0, wait: 0 }), S('ddladder', { ref: 'ath', tiers: [{ x: 10, pct: 30 }, { x: 20, pct: 50 }, { x: 30, pct: 100 }], base: 50, wait: 0 }),
           S('ddladder', { ref: '52w', tiers: [{ x: 10, pct: 50 }, { x: 20, pct: 100 }], base: 0, wait: 12 }), S('ddladder', { ref: 'ath', tiers: [{ x: 5, pct: 25 }, { x: 10, pct: 33 }, { x: 15, pct: 50 }, { x: 20, pct: 100 }], base: 0, wait: 0 })] };
-      case 'memory': { const zh = I18N.lang === 'zh';
+      case 'memory': {
         return { asset: 'MU', start: '1995-01-03', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
-          strategies: [S('immediate', {}, { name: zh ? '美光 买入持有' : 'Micron buy & hold' }), S('immediate', {}, { asset: { key: 'SPY' } }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { name: zh ? '美光 · 200 日均线择时' : 'Micron · 200-day MA timing' }),
-            S('ddladder', { ref: 'ath', tiers: [{ x: 30, pct: 30 }, { x: 50, pct: 50 }, { x: 70, pct: 100 }], base: 0, wait: 0 }, { name: zh ? '美光 · 跌 30/50/70% 分三批买' : 'Micron · buy in thirds at −30/50/70%' }),
-            S('ddladder', { ref: 'ath', tiers: [{ x: 50, pct: 100 }], base: 0, wait: 0 }, { name: zh ? '美光 · 跌 50% 一次买入' : 'Micron · all in at −50%' }),
-            S('voltarget', { target: 30, n: 20, freq: 'W', band: 5, cap: 100 }, { name: zh ? '美光 · 波动目标 30%' : 'Micron · 30% vol target' }),
-            S('immediate', {}, { asset: { port: { MU: 50, SPY: 50 }, rebal: 'Q' }, name: zh ? '美光 50% + SPY 50%（季度再平衡）' : 'Micron 50% + SPY 50% (quarterly)' })] }; }
+          strategies: [S('immediate', {}, { name: 'Micron buy & hold' }), S('immediate', {}, { asset: { key: 'SPY' } }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { name: 'Micron · 200-day MA timing' }),
+            S('ddladder', { ref: 'ath', tiers: [{ x: 30, pct: 30 }, { x: 50, pct: 50 }, { x: 70, pct: 100 }], base: 0, wait: 0 }, { name: 'Micron · buy in thirds at −30/50/70%' }),
+            S('ddladder', { ref: 'ath', tiers: [{ x: 50, pct: 100 }], base: 0, wait: 0 }, { name: 'Micron · all in at −50%' }),
+            S('voltarget', { target: 30, n: 20, freq: 'W', band: 5, cap: 100 }, { name: 'Micron · 30% vol target' }),
+            S('immediate', {}, { asset: { port: { MU: 50, SPY: 50 }, rebal: 'Q' }, name: 'Micron 50% + SPY 50% (quarterly)' })] };
+      }
       case 'salary':
       default: return { asset: 'SPX', start: '2000-01-01', end: null, fund: { initial: 0, amount: 1000, freq: 'M', growth: 0 }, lag: 1,
         strategies: [S('immediate'), S('dca', { freq: 'D' }), S('dca', { freq: 'Q' }), S('dca', { freq: 'Y' }), S('timing_low', { period: 'M' }), S('timing_high', { period: 'M' }), S('timing_low', { period: 'Y' }), S('timing_high', { period: 'Y' })] };
@@ -103,64 +106,63 @@
   // ---------- naming ----------
   function freqName(f) { return t('f.' + f); }
   function autoName(s) {
-    const zh = I18N.lang === 'zh'; const p = s.params || {};
+    const p = s.params || {};
     let n;
     switch (s.type) {
-      case 'immediate': n = LS.fund.freq !== 'none' && (+LS.fund.amount || 0) > 0 ? (zh ? '到账即投（' + freqName(LS.fund.freq) + '定投）' : 'Invest on arrival (' + freqName(LS.fund.freq).toLowerCase() + ')') : (zh ? '一次性投入' : 'Lump sum'); break;
-      case 'dca': n = zh ? '按' + (t('f.' + (p.freq || 'M'))).replace('每', '') + '定投' : freqName(p.freq || 'M') + ' DCA'; break;
-      case 'tranche': n = zh ? '分 ' + (p.n || 12) + ' 期建仓（' + freqName(p.freq || 'M') + '）' : (p.n || 12) + ' tranches (' + freqName(p.freq || 'M').toLowerCase() + ')'; break;
-      case 'timing_low': n = zh ? '每' + t('p.' + (p.period || 'Y')) + '最低点买入' : 'Buy each ' + t('p.' + (p.period || 'Y')) + '\'s low'; break;
-      case 'timing_high': n = zh ? '每' + t('p.' + (p.period || 'Y')) + '最高点买入' : 'Buy each ' + t('p.' + (p.period || 'Y')) + '\'s high'; break;
-      case 'cycle_low': n = zh ? '只买≥' + (p.x || 20) + '%大跌的谷底' : 'Only buy ' + (p.x || 20) + '%+ bottoms'; break;
-      case 'cycle_high': n = zh ? '只买≥' + (p.x || 20) + '%大跌前的顶点' : 'Only buy before ' + (p.x || 20) + '%+ falls'; break;
-      case 'dip': n = zh ? '回撤≥' + (p.x || 15) + '%才买' : 'Buy when ' + (p.x || 15) + '%+ off high'; break;
-      case 'smart': n = zh ? '智能定投（' + (p.ind === 'ma_dev' ? '均线偏离' : p.ind === 'rsi' ? 'RSI' : '回撤') + '）' : 'Smart DCA (' + (p.ind === 'ma_dev' ? 'MA gap' : p.ind === 'rsi' ? 'RSI' : 'drawdown') + ')'; break;
-      case 'va': n = zh ? '价值平均（' + (p.g == null ? 8 : p.g) + '%）' : 'Value averaging (' + (p.g == null ? 8 : p.g) + '%)'; break;
-      case 'trend': n = zh ? (p.n || 200) + '日均线择时' : (p.n || 200) + '-day MA timing'; break;
-      case 'stop': n = zh ? '追踪止损 ' + (p.x || 20) + '%' : 'Trailing stop ' + (p.x || 20) + '%'; break;
-      case 'constmix': n = zh ? (p.w == null ? 80 : p.w) + '% 标的 + 现金' : (p.w == null ? 80 : p.w) + '% + cash'; break;
-      case 'custom': n = zh ? '自定义规则' : 'Custom rules'; break;
-      case 'hold_cash': n = zh ? '只存现金' : 'Cash only'; break;
-      case 'voltarget': n = zh ? '波动目标 ' + (p.target == null ? 20 : p.target) + '%' : 'Vol target ' + (p.target == null ? 20 : p.target) + '%'; break;
-      case 'dualma': n = zh ? '双均线 ' + (p.fast || 50) + '/' + (p.slow || 200) : 'MA cross ' + (p.fast || 50) + '/' + (p.slow || 200); break;
-      case 'rsi_mr': n = 'RSI(' + (p.n || 2) + ') ' + (zh ? '均值回归' : 'mean reversion'); break;
-      case 'donchian': n = zh ? '通道突破 ' + (p.n || 55) + '/' + (p.m || 20) : 'Breakout ' + (p.n || 55) + '/' + (p.m || 20); break;
-      case 'seasonal': n = zh ? '季节择时 ' + (p.from || 11) + '–' + (p.to || 4) + '月' : 'Seasonal ' + monthAbbr(p.from || 11) + '–' + monthAbbr(p.to || 4); break;
-      case 'grid': n = zh ? '网格 ' + (p.step || 10) + '%' : 'Grid ' + (p.step || 10) + '%'; break;
-      case 'dca_tp': n = zh ? '定投+止盈 ' + (p.tp == null ? 50 : p.tp) + '%' : 'DCA + take profit ' + (p.tp == null ? 50 : p.tp) + '%'; break;
-      case 'absmom': n = zh ? '绝对动量 ' + (p.n || 12) + '个月' : 'Abs. momentum ' + (p.n || 12) + 'm'; break;
-      case 'ddladder': { const tr = (p.tiers || Engine.defaultLadder()); n = (zh ? '跌幅阶梯 ' : 'Dip ladder ') + tr.map(x => '−' + x.x + '%').join('/') + (p.ref === '52w' ? (zh ? '·52周高点' : ' · 52w high') : '') + (p.base ? (zh ? '（先投' + p.base + '%）' : ' (' + p.base + '% now)') : '') + (+p.wait ? (zh ? '·最多等' + p.wait + '月' : ' · ≤' + p.wait + 'm wait') : ''); break; }
-      case 'combo': { const parts = (p.parts || []); const how = p.how || 'split'; const sep = { split: ' + ', and: zh ? ' 且 ' : ' AND ', or: zh ? ' 或 ' : ' OR ', vote: zh ? ' 投票 ' : ' vote ', mult: ' × ' }[how] || ' + ';
-        n = parts.map(x => (how === 'split' ? (x.w == null ? '' : Math.round(x.w) + '% ') : '') + shortType(x.type, x.params || {})).join(sep) || (zh ? '组合策略' : 'Combo'); break; }
-      case 'fixed': n = zh ? '固定权重' : 'Fixed weights'; break;
-      case 'riskparity': n = (zh ? '风险平价' : 'Risk parity') + ((p.n || 0) > 0 ? (zh ? '+均线' : ' + MA') : '') + ((p.T || 0) > 0 ? (zh ? '+波动目标' : ' + vol target') : ''); break;
-      case 'minvar': n = zh ? '最小方差' : 'Min variance'; break;
-      case 'meanvar': n = zh ? '最大夏普(均值方差)' : 'Max Sharpe (MV)'; break;
-      case 'rotation': n = (zh ? '动量轮动 ' : 'Rotation ') + (p.n || 6) + (zh ? '个月·前' : 'm top-') + (p.top || 1) + (p.abs === false ? '' : (zh ? '+绝对' : ' +abs')); break;
+      case 'immediate': n = LS.fund.freq !== 'none' && (+LS.fund.amount || 0) > 0 ? ('Invest on arrival (' + freqName(LS.fund.freq).toLowerCase() + ')') : 'Lump sum'; break;
+      case 'dca': n = freqName(p.freq || 'M') + ' DCA'; break;
+      case 'tranche': n = (p.n || 12) + ' tranches (' + freqName(p.freq || 'M').toLowerCase() + ')'; break;
+      case 'timing_low': n = 'Buy each ' + t('p.' + (p.period || 'Y')) + '\'s low'; break;
+      case 'timing_high': n = 'Buy each ' + t('p.' + (p.period || 'Y')) + '\'s high'; break;
+      case 'cycle_low': n = 'Only buy ' + (p.x || 20) + '%+ bottoms'; break;
+      case 'cycle_high': n = 'Only buy before ' + (p.x || 20) + '%+ falls'; break;
+      case 'dip': n = 'Buy when ' + (p.x || 15) + '%+ off high'; break;
+      case 'smart': n = 'Smart DCA (' + (p.ind === 'ma_dev' ? 'MA gap' : p.ind === 'rsi' ? 'RSI' : 'drawdown') + ')'; break;
+      case 'va': n = 'Value averaging (' + (p.g == null ? 8 : p.g) + '%)'; break;
+      case 'trend': n = (p.n || 200) + '-day MA timing'; break;
+      case 'stop': n = 'Trailing stop ' + (p.x || 20) + '%'; break;
+      case 'constmix': n = (p.w == null ? 80 : p.w) + '% + cash'; break;
+      case 'custom': n = 'Custom rules'; break;
+      case 'hold_cash': n = 'Cash only'; break;
+      case 'voltarget': n = 'Vol target ' + (p.target == null ? 20 : p.target) + '%'; break;
+      case 'dualma': n = 'MA cross ' + (p.fast || 50) + '/' + (p.slow || 200); break;
+      case 'rsi_mr': n = 'RSI(' + (p.n || 2) + ') ' + 'mean reversion'; break;
+      case 'donchian': n = 'Breakout ' + (p.n || 55) + '/' + (p.m || 20); break;
+      case 'seasonal': n = 'Seasonal ' + monthAbbr(p.from || 11) + '–' + monthAbbr(p.to || 4); break;
+      case 'grid': n = 'Grid ' + (p.step || 10) + '%'; break;
+      case 'dca_tp': n = 'DCA + take profit ' + (p.tp == null ? 50 : p.tp) + '%'; break;
+      case 'absmom': n = 'Abs. momentum ' + (p.n || 12) + 'm'; break;
+      case 'ddladder': { const tr = (p.tiers || Engine.defaultLadder()); n = 'Dip ladder ' + tr.map(x => '−' + x.x + '%').join('/') + (p.ref === '52w' ? ' · 52w high' : '') + (p.base ? (' (' + p.base + '% now)') : '') + (+p.wait ? (' · ≤' + p.wait + 'm wait') : ''); break; }
+      case 'combo': { const parts = (p.parts || []); const how = p.how || 'split'; const sep = { split: ' + ', and: ' AND ', or: ' OR ', vote: ' vote ', mult: ' × ' }[how] || ' + ';
+        n = parts.map(x => (how === 'split' ? (x.w == null ? '' : Math.round(x.w) + '% ') : '') + shortType(x.type, x.params || {})).join(sep) || 'Combo'; break; }
+      case 'fixed': n = 'Fixed weights'; break;
+      case 'riskparity': n = 'Risk parity' + ((p.n || 0) > 0 ? ' + MA' : '') + ((p.T || 0) > 0 ? ' + vol target' : ''); break;
+      case 'minvar': n = 'Min variance'; break;
+      case 'meanvar': n = 'Max Sharpe (MV)'; break;
+      case 'rotation': n = 'Rotation ' + (p.n || 6) + 'm top-' + (p.top || 1) + (p.abs === false ? '' : ' +abs'); break;
       case 'smc': { const cross = (s.universe || []).some(k => k === 'TLT' || k === 'IEF' || k === 'GLD');
-        n = (zh ? '高夏普' : 'High-Sharpe') + (cross ? ' 2.0' : '') + (p.vt === false ? (zh ? ' · 无波动目标' : ' · no vol target') : ' ' + (p.T == null ? 20 : p.T) + '%') + ((p.cap || 100) !== 100 ? (zh ? ' · 仓位 ' : ' · exposure ') + p.cap + '%' : '') + (p.below != null && p.below !== 50 ? (zh ? ' · 跌破均线 ' : ' · below MA ') + p.below + '%' : ''); break; }
+        n = 'High-Sharpe' + (cross ? ' 2.0' : '') + (p.vt === false ? ' · no vol target' : ' ' + (p.T == null ? 20 : p.T) + '%') + ((p.cap || 100) !== 100 ? ' · exposure ' + p.cap + '%' : '') + (p.below != null && p.below !== 50 ? ' · below MA ' + p.below + '%' : ''); break; }
       default: n = s.type;
     }
     if (isMulti(s.type)) return (s.universe || []).map(k => U.assetName(k, true)).join('/') + ' · ' + n;
     const a = assetLabel(s);
     const lev = s.lev && s.lev.L > 1 ? ' ' + s.lev.L + '×' : '';
-    const sg = s.sig ? (zh ? '（' + U.assetName(s.sig, true) + '信号）' : ' (' + U.assetName(s.sig, true) + ' signal)') : '';
+    const sg = s.sig ? (' (' + U.assetName(s.sig, true) + ' signal)') : '';
     return (s.asset ? a + ' · ' : '') + n + lev + sg;
   }
   function shortType(type, p) {
-    const zh = I18N.lang === 'zh';
     switch (type) {
-      case 'immediate': return zh ? '立即投入' : 'invest now';
-      case 'dca': return zh ? t('f.' + (p.freq || 'M')) + '定投' : t('f.' + (p.freq || 'M')).toLowerCase() + ' DCA';
-      case 'trend': return (p.n || 200) + (zh ? '日均线' : 'd MA');
-      case 'voltarget': return (zh ? '波动' : 'vol ') + (p.target == null ? 20 : p.target) + '%';
-      case 'dualma': return (zh ? '金叉' : 'cross ') + (p.fast || 50) + '/' + (p.slow || 200);
+      case 'immediate': return 'invest now';
+      case 'dca': return t('f.' + (p.freq || 'M')).toLowerCase() + ' DCA';
+      case 'trend': return (p.n || 200) + 'd MA';
+      case 'voltarget': return 'vol ' + (p.target == null ? 20 : p.target) + '%';
+      case 'dualma': return 'cross ' + (p.fast || 50) + '/' + (p.slow || 200);
       case 'rsi_mr': return 'RSI' + (p.n || 2);
-      case 'ddladder': return (zh ? '跌幅阶梯' : 'dip ladder');
-      case 'dip': return (zh ? '跌' : 'dip ') + (p.x || 15) + '%';
-      case 'absmom': return (zh ? '动量' : 'mom ') + (p.n || 12) + (zh ? '月' : 'm');
+      case 'ddladder': return 'dip ladder';
+      case 'dip': return 'dip ' + (p.x || 15) + '%';
+      case 'absmom': return 'mom ' + (p.n || 12) + 'm';
       case 'constmix': return (p.w == null ? 80 : p.w) + '%';
-      default: return t('st.' + type).replace(/（.*）|\(.*\)/g, '');
+      default: return t('st.' + type).replace(/\s*\(.*\)/g, '');
     }
   }
   function monthAbbr(m) { return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(m - 1 + 12) % 12]; }
@@ -213,7 +215,7 @@
   ];
   function kpiTable(list, tk) {
     const tbl = h('table', { class: 'data' });
-    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, I18N.lang === 'zh' ? '指标' : 'Metric'), list.map(({ s }) => h('th', { style: { whiteSpace: 'normal', minWidth: '96px', maxWidth: '150px', textAlign: 'right' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[s.slot || 0] } }), nameOf(s)))))));
+    tbl.appendChild(h('thead', null, h('tr', null, h('th', null, 'Metric'), list.map(({ s }) => h('th', { style: { whiteSpace: 'normal', minWidth: '96px', maxWidth: '150px', textAlign: 'right' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[s.slot || 0] } }), nameOf(s)))))));
     const tb = h('tbody');
     for (const [key, dir, f, sub] of KROWS) {
       const vals = list.map(({ r }) => r.error ? NaN : r[key]);
@@ -308,7 +310,7 @@
     const ok = run.res.filter(x => !x.r.error);
     const dims = [['irr', 1], ['mdd', 1], ['sharpe', 1], ['maxLossPct', 1], ['posMonths', 1], ['ulcer', -1]];
     const norm = dims.map(([k, dir]) => { const vs = ok.map(x => x.r[k]).filter(U.isNum); const mn = Math.min(...vs), mx = Math.max(...vs); return (v) => !U.isNum(v) ? 0 : mx === mn ? 60 : 20 + 80 * (dir > 0 ? (v - mn) / (mx - mn) : (mx - v) / (mx - mn)); });
-    const names = I18N.lang === 'zh' ? ['收益 (IRR)', '抗回撤', '夏普', '浮亏控制', '月度胜率', '少受煎熬'] : ['Return (IRR)', 'Drawdown', 'Sharpe', 'Paper loss', 'Up months', 'Less pain'];
+    const names = ['Return (IRR)', 'Drawdown', 'Sharpe', 'Paper loss', 'Up months', 'Less pain'];
     c.setOption(U.baseOpt(tk, {
       tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12 } },
       legend: { show: false },
@@ -322,10 +324,10 @@
     const per = ok.map(x => { const m = {}; for (const y of Core.periodReturns(x.r.navFull, x.r.i0, x.r.i1, 'Y')) m[y.label] = y; return m; });
     const years = Array.from(new Set(per.flatMap(m => Object.keys(m)))).sort((a, b) => b - a);
     const tbl = h('table', { class: 'data heat' },
-      h('thead', null, h('tr', null, h('th', null, I18N.lang === 'zh' ? '年份' : 'Year'), ok.map(x => h('th', { style: { whiteSpace: 'normal', minWidth: '84px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[x.s.slot || 0] } }), nameOf(x.s)))))),
+      h('thead', null, h('tr', null, h('th', null, 'Year'), ok.map(x => h('th', { style: { whiteSpace: 'normal', minWidth: '84px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[x.s.slot || 0] } }), nameOf(x.s)))))),
       h('tbody', null, years.map(y => h('tr', null, h('td', null, y), per.map(m => { const x = m[y]; return x ? h('td', { style: { background: U.heatBg(x.r, 0.6, tk) } }, U.pct(x.r, 1) + (x.full ? '' : '*')) : h('td', { class: 'na' }, '—'); })))));
     host.appendChild(h('div', { class: 'table-wrap tall' }, tbl));
-    host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, I18N.lang === 'zh' ? '按时间加权净值计算（剔除资金进出），与基金净值年度收益同口径；* 为不完整年份。' : 'Time-weighted (unit-value) returns, excluding cash-flow timing, comparable to fund NAV returns; * = partial year.'));
+    host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, 'Time-weighted (unit-value) returns, excluding cash-flow timing, comparable to fund NAV returns; * = partial year.'));
   }
   function tradesChart(el, run, tk) {
     const c = U.chart(el); if (!c) return;
@@ -361,10 +363,10 @@
     c.__item = item;
   }
   function comboChart(el, item, tk) {
-    const c = U.chart(el); if (!c) return;
-    const r = item.r; const zh = I18N.lang === 'zh'; const step = Math.max(1, Math.floor(r.n / 1500));
+    const c = U.chart(el);if (!c) return;
+    const r = item.r;const step = Math.max(1, Math.floor(r.n / 1500));
     const cols = [tk.s[1], tk.s[2], tk.s[3], tk.s[5], tk.s[7]];
-    const pname = (x, q) => (zh ? '子策略' : 'Part ') + (q + 1) + ' · ' + shortType(x.type, x.params || {}) + (r.combo === 'split' && x.w != null ? ' ' + Math.round(x.w * 100) + '%' : '');
+    const pname = (x, q) => 'Part ' + (q + 1) + ' · ' + shortType(x.type, x.params || {}) + (r.combo === 'split' && x.w != null ? ' ' + Math.round(x.w * 100) + '%' : '');
     let opt;
     if (r.combo === 'split') {
       const ser = r.parts.map((sub, q) => { const d = []; for (let k = 0; k < r.n; k += step) d.push([U.ts(r.i0 + k), sub.V[k]]); d.push([U.ts(r.i1), sub.V[r.n - 1]]); return { name: pname(r.comboParts[q], q), type: 'line', stack: 'v', data: d, showSymbol: false, sampling: null, lineStyle: { width: 0 }, areaStyle: { color: cols[q % cols.length], opacity: 0.75 }, itemStyle: { color: cols[q % cols.length] } }; });
@@ -375,7 +377,7 @@
     } else {
       const ser = r.comboExpo.map((e, q) => { const d = []; for (let k = 0; k < r.n; k += step) d.push([U.ts(r.i0 + k), e[k]]); return U.lineSeries(pname(r.comboParts[q], q), d, cols[q % cols.length], { sampling: null, lineStyle: { width: 1.2, type: 'dashed', color: cols[q % cols.length] } }); });
       const d = []; for (let k = 0; k < r.n; k += step) d.push([U.ts(r.i0 + k), r.V[k] > 0 ? (r.V[k] - r.CASH[k]) / r.V[k] : 0]);
-      ser.push(U.lineSeries((zh ? '组合后实际仓位（' : 'Combined position (') + t('how.' + r.combo) + (zh ? '）' : ')'), d, tk.ink, { sampling: null, areaStyle: { color: tk.ink, opacity: 0.06 }, lineStyle: { width: 2, color: tk.ink }, z: 5 }));
+      ser.push(U.lineSeries('Combined position (' + t('how.' + r.combo) + ')', d, tk.ink, { sampling: null, areaStyle: { color: tk.ink, opacity: 0.06 }, lineStyle: { width: 2, color: tk.ink }, z: 5 }));
       opt = U.baseOpt(tk, { legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8, textStyle: { color: tk.ink2, fontSize: 11.5 } }, grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true }, xAxis: U.timeAxis(tk), yAxis: U.valAxis(tk, { min: 0, scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }), series: ser });
       opt.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); let s2 = U.ttHead(Core.iso(i)); ps.forEach(p => { s2 += U.ttRow(p.color, p.seriesName, U.pct(p.value[1], 0)); }); return s2; };
     }
@@ -415,7 +417,7 @@
         h('thead', null, h('tr', null, h('th', null, t('date')), h('th', null, t('lab.turnover')), keys.map(k => h('th', null, U.assetName(k, true))), h('th', null, t('a.CASH.s')))),
         h('tbody', null, show.map(x => { const sw = x.w.reduce((a, b) => a + b, 0); return h('tr', null, h('td', null, Core.iso(x.i)), h('td', null, U.money(x.amt)), x.w.map(w => h('td', null, U.pct(w, 1))), h('td', null, U.pct(Math.max(0, 1 - sw), 1))); })));
       host.appendChild(h('div', { class: 'table-wrap tall' }, tbl));
-      host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, I18N.lang === 'zh' ? '每行是一次调仓后的目标权重；成交额 = 本次买卖金额合计（含首次建仓）。' : 'Each row shows target weights after a rebalance; “traded” = total bought + sold that day (including the initial build).'));
+      host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, 'Each row shows target weights after a rebalance; “traded” = total bought + sold that day (including the initial build).'));
       return;
     }
     const tr = item.r.trades; const show = tr.slice(-300).reverse();
@@ -427,10 +429,10 @@
         U.copyText(lines.join('\n'));
       } }, t('copyCsv'))));
     const tbl = h('table', { class: 'data' },
-      h('thead', null, h('tr', null, h('th', null, t('date')), h('th', null, I18N.lang === 'zh' ? '方向' : 'Side'), h('th', null, t('lab.amt')), h('th', null, t('lab.price')), h('th', null, t('lab.cashAfter')), h('th', null, t('lab.holdAfter')))),
+      h('thead', null, h('tr', null, h('th', null, t('date')), h('th', null, 'Side'), h('th', null, t('lab.amt')), h('th', null, t('lab.price')), h('th', null, t('lab.cashAfter')), h('th', null, t('lab.holdAfter')))),
       h('tbody', null, show.map(x => h('tr', null, h('td', null, Core.iso(x.i)), h('td', { class: x.t === 'B' ? 'pos' : 'neg' }, x.t === 'B' ? t('lab.buy') : t('lab.sell')), h('td', null, U.money(x.amt)), h('td', null, (x.p / item.r.series.v[item.r.i0] * 100).toFixed(2)), h('td', null, U.money(x.cash)), h('td', null, U.money(x.hold))))));
     host.appendChild(h('div', { class: 'table-wrap tall' }, tbl));
-    host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, I18N.lang === 'zh' ? '“净值价格”是标的全收益净值（回测起点 = 100），不是 ETF 的市场价格；股息已再投资。' : '“NAV price” is the instrument\'s total-return value (backtest start = 100), not the ETF market price; dividends are reinvested.'));
+    host.appendChild(h('p', { class: 'note', style: { marginTop: '6px' } }, '“NAV price” is the instrument\'s total-return value (backtest start = 100), not the ETF market price; dividends are reinvested.'));
   }
 
   // ---------- strategy editor ----------
@@ -489,7 +491,7 @@
         box.appendChild(num('m', t('pp.dM'), 20, { min: 2, max: 300, step: 1 }));
         break;
       case 'seasonal': {
-        const months = Array.from({ length: 12 }, (_, k) => [k + 1, I18N.lang === 'zh' ? (k + 1) + '月' : monthAbbr(k + 1)]);
+        const months = Array.from({ length: 12 }, (_, k) => [k + 1, monthAbbr(k + 1)]);
         box.appendChild(U.ctl(t('pp.from'), U.select('p-' + s.id + '-from', months, p.from || 11, (v) => { p.from = +v; onCh(); })));
         box.appendChild(U.ctl(t('pp.to'), U.select('p-' + s.id + '-to', months, p.to || 4, (v) => { p.to = +v; onCh(); })));
         break;
@@ -574,15 +576,14 @@
       const x = U.numInput('lx-' + s.id + j, tr.x, (v) => { tr.x = Math.max(1, Math.min(95, v)); onCh(); }, { min: 1, max: 95, step: 1, style: 'width:100%' });
       const pc = U.numInput('lp-' + s.id + j, tr.pct, (v) => { tr.pct = Math.max(0, Math.min(100, v)); onCh(); }, { min: 0, max: 100, step: 5, style: 'width:100%' });
       const del = h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('lab.del'), onclick: () => { if (p.tiers.length > 1) { p.tiers.splice(j, 1); onCh(true); } } }, '×');
-      wrap.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr auto 1fr auto 32px', gap: '6px', alignItems: 'center' } }, h('span', { class: 'xs muted' }, I18N.lang === 'zh' ? '跌' : '−'), x, h('span', { class: 'xs muted' }, I18N.lang === 'zh' ? '% → 投入现金的' : '% → invest'), pc, h('span', { class: 'xs muted' }, '%'), del));
+      wrap.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr auto 1fr auto 32px', gap: '6px', alignItems: 'center' } }, h('span', { class: 'xs muted' }, '−'), x, h('span', { class: 'xs muted' }, '% → invest'), pc, h('span', { class: 'xs muted' }, '%'), del));
     });
     if (p.tiers.length < 6) wrap.appendChild(h('button', { class: 'linkbtn', type: 'button', onclick: () => { const last = p.tiers[p.tiers.length - 1]; p.tiers.push({ x: Math.min(90, (last ? last.x : 0) + 10), pct: 100 }); onCh(true); } }, t('pp.addTier')));
     wrap.appendChild(h('span', { class: 'xs muted' }, t('pp.ladderNote')));
     return wrap;
   }
   function partsEditor(s, onCh) {
-    const p = s.params; if (!p.parts || !p.parts.length) Object.assign(p, defaultParams('combo')); if (!p.how) p.how = 'split';
-    const zh = I18N.lang === 'zh';
+    const p = s.params;if (!p.parts || !p.parts.length) Object.assign(p, defaultParams('combo'));if (!p.how) p.how = 'split';
     const wrap = h('div', { class: 'full stack combo-box', style: { gap: '8px' } });
     wrap.appendChild(U.ctl(t('pp.how'), U.select('ch-' + s.id, ['split', 'and', 'or', 'vote', 'mult'].map(k => [k, t('how.' + k)]), p.how, (v) => { p.how = v; s.name = ''; onCh(true); })));
     wrap.appendChild(h('p', { class: 'xs muted' }, t('howd.' + p.how)));
@@ -591,21 +592,21 @@
       part.params = part.params || {};
       const pseudo = { id: s.id + 'p' + k, type: part.type, params: part.params };
       const tSel = U.select('pt-' + s.id + k, PART_TYPES.map(x => [x, t('st.' + x)]), part.type, (v) => { part.type = v; part.params = defaultParams(v); s.name = ''; onCh(true); });
-      const lbl = h('b', { class: 'xs' }, (zh ? '子策略 ' : 'Part ') + (k + 1));
+      const lbl = h('b', { class: 'xs' }, 'Part ' + (k + 1));
       const del = h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('lab.del'), onclick: () => { if (p.parts.length > 1) { p.parts.splice(k, 1); s.name = ''; onCh(true); } } }, '×');
       let head;
       if (p.how === 'split') {
         tSel.style.width = '100%';
         head = h('div', { class: 'stack', style: { gap: '6px' } },
           h('div', { class: 'combo-head w' }, lbl,
-            h('span', { class: 'combo-w' }, h('span', { class: 'xs muted' }, zh ? '资金占比' : 'Money share'), U.numInput('pw-' + s.id + k, part.w == null ? 50 : part.w, (v) => { part.w = Math.max(0, v); s.name = ''; onCh(); }, { min: 0, max: 100, step: 5, title: zh ? '资金占比 %' : 'Money %' }), h('span', { class: 'xs muted' }, '%')),
+            h('span', { class: 'combo-w' }, h('span', { class: 'xs muted' }, 'Money share'), U.numInput('pw-' + s.id + k, part.w == null ? 50 : part.w, (v) => { part.w = Math.max(0, v); s.name = ''; onCh(); }, { min: 0, max: 100, step: 5, title: 'Money %' }), h('span', { class: 'xs muted' }, '%')),
             del),
           tSel);
       } else head = h('div', { class: 'combo-head' }, lbl, tSel, del);
       const pb = paramInputs(pseudo, () => { s.name = ''; onCh(); });
       wrap.appendChild(h('div', { class: 'combo-part' }, head, pb.childNodes.length ? pb : null));
     });
-    if (p.how === 'split' && Math.abs(sumW - 100) > 0.01) wrap.appendChild(h('span', { class: 'xs neg' }, (zh ? '资金占比合计 ' : 'Money shares total ') + sumW + '%' + (zh ? '（将按比例归一）' : ' (will be normalised)')));
+    if (p.how === 'split' && Math.abs(sumW - 100) > 0.01) wrap.appendChild(h('span', { class: 'xs neg' }, 'Money shares total ' + sumW + '%' + ' (will be normalized)'));
     if (p.parts.length < 5) wrap.appendChild(h('button', { class: 'linkbtn', type: 'button', onclick: () => { p.parts.push({ type: 'trend', params: { n: 200 }, w: 25 }); s.name = ''; onCh(true); } }, t('pp.addPart')));
     return wrap;
   }
@@ -623,13 +624,13 @@
     }
     wrap.appendChild(chips);
     const first = Math.max(...(s.universe || []).map(k => Core.S[k] ? Core.S[k].s : 0));
-    wrap.appendChild(h('span', { class: 'xs muted' }, t('lab.multiNote') + ' ' + (I18N.lang === 'zh' ? '共同数据起点：' : 'Common data from ') + Core.iso(first)));
+    wrap.appendChild(h('span', { class: 'xs muted' }, t('lab.multiNote') + ' ' + 'Common data from ' + Core.iso(first)));
     return wrap;
   }
   function checkbox(id, val, onChange) { const c = h('input', { type: 'checkbox', id }); c.checked = val; c.addEventListener('change', () => onChange(c.checked)); return h('label', { class: 'toggle', for: id }, c, val ? t('on') : t('off')); }
   function tierEditor(s, onCh) {
     const p = s.params; if (!p.tiers) p.tiers = Engine.defaultTiers(p.ind || 'dd_ath');
-    const wrap = h('div', { class: 'full stack', style: { gap: '4px' } }, h('span', { class: 'lbl xs muted' }, t('pp.tiers') + (I18N.lang === 'zh' ? '（信号区间 → 倍数）' : ' (signal range → multiplier)')));
+    const wrap = h('div', { class: 'full stack', style: { gap: '4px' } }, h('span', { class: 'lbl xs muted' }, t('pp.tiers') + ' (signal range → multiplier)'));
     p.tiers.forEach((tr, j) => {
       const lo = U.numInput('tlo-' + s.id + j, tr.lo == null ? '' : tr.lo, (v) => { tr.lo = v; onCh(); }, { placeholder: '-∞', style: 'width:100%' });
       const hi = U.numInput('thi-' + s.id + j, tr.hi == null ? '' : tr.hi, (v) => { tr.hi = v; onCh(); }, { placeholder: '+∞', style: 'width:100%' });
@@ -653,7 +654,7 @@
       const aIn = U.numInput('ra-' + s.id + field + j, r.a, (v) => { r.a = v; onCh(); }, { style: 'width:100%' });
       const actIn = isBuy ? U.numInput('rm-' + s.id + field + j, r.mult, (v) => { r.mult = v; onCh(); }, { step: 0.1, style: 'width:100%', title: t('pp.mult') }) : U.numInput('rp-' + s.id + field + j, r.pct, (v) => { r.pct = v; onCh(); }, { step: 5, style: 'width:100%', title: t('pp.pct') });
       const del = h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('lab.del'), onclick: () => { p[field].splice(j, 1); onCh(true); } }, '×');
-      wrap.appendChild(h('div', { class: 'stack', style: { gap: '4px' } }, indSel, h('div', { class: 'rule-row' }, h('span', { class: 'xs muted' }, isBuy ? (I18N.lang === 'zh' ? '参数 N / 条件 / 值 / 倍数' : 'N / op / value / ×') : (I18N.lang === 'zh' ? '参数 N / 条件 / 值 / 卖出%' : 'N / op / value / sell %')), nIn, opSel, aIn, h('span'))));
+      wrap.appendChild(h('div', { class: 'stack', style: { gap: '4px' } }, indSel, h('div', { class: 'rule-row' }, h('span', { class: 'xs muted' }, isBuy ? 'N / op / value / ×' : 'N / op / value / sell %'), nIn, opSel, aIn, h('span'))));
       wrap.lastChild.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 36px', gap: '6px' } }, actIn, del));
     });
     wrap.appendChild(h('button', { class: 'linkbtn', type: 'button', onclick: () => { p[field].push(isBuy ? { ind: 'dd_ath', op: '<', a: -20, mult: 2 } : { ind: 'ma_dev', n: 200, op: '>', a: 30, pct: 20 }); onCh(true); } }, t('pp.addRule')));
@@ -666,8 +667,8 @@
     for (const k of ASSETS) grid.appendChild(U.ctl(U.assetName(k, true) + ' %', U.numInput('w-' + s.id + k, a.port[k] || 0, (v) => { a.port[k] = Math.max(0, v); onCh(); }, { min: 0, max: 100, step: 5, style: 'width:100%' })));
     const sum = Object.values(a.port).reduce((x, y) => x + (+y || 0), 0);
     wrap.appendChild(grid);
-    wrap.appendChild(h('div', { class: 'flex' }, U.ctl(t('lab.rebal'), U.select('rb-' + s.id, [['M', t('f.M')], ['Q', t('f.Q')], ['Y', t('f.Y')], ['T5', I18N.lang === 'zh' ? '偏离 5% 时' : 'at 5% drift'], ['N', I18N.lang === 'zh' ? '不再平衡' : 'Never']], a.rebal, (v) => { a.rebal = v; onCh(); })),
-      h('span', { class: 'xs ' + (Math.abs(sum - 100) > 0.01 ? 'neg' : 'muted') }, (I18N.lang === 'zh' ? '合计 ' : 'Total ') + sum + '%' + (Math.abs(sum - 100) > 0.01 ? (I18N.lang === 'zh' ? '（将按比例归一）' : ' (will be normalised)') : ''))));
+    wrap.appendChild(h('div', { class: 'flex' }, U.ctl(t('lab.rebal'), U.select('rb-' + s.id, [['M', t('f.M')], ['Q', t('f.Q')], ['Y', t('f.Y')], ['T5', 'at 5% drift'], ['N', 'Never']], a.rebal, (v) => { a.rebal = v; onCh(); })),
+      h('span', { class: 'xs ' + (Math.abs(sum - 100) > 0.01 ? 'neg' : 'muted') }, 'Total ' + sum + '%' + (Math.abs(sum - 100) > 0.01 ? ' (will be normalized)' : ''))));
     return wrap;
   }
   function strategyCard(s, tk) {
@@ -694,7 +695,7 @@
       U.ctl(t('lab.levFee'), U.numInput('lf-' + s.id, s.lev.fee, (v) => { s.lev.fee = v; onCh(); }, { step: 0.05, style: 'width:100%' })),
       U.ctl(t('lab.levSpread'), U.numInput('ls-' + s.id, s.lev.spread, (v) => { s.lev.spread = v; onCh(); }, { step: 0.1, style: 'width:100%' }))));
     const pbox = paramInputs(s, onCh); if (pbox.childNodes.length) card.appendChild(pbox);
-    card.appendChild(h('details', { class: 'desc' }, h('summary', null, HIND.has(s.type) ? h('span', { class: 'badge hind' }, t('hindsight')) : null, HIND.has(s.type) ? ' ' : '', I18N.lang === 'zh' ? '规则说明' : 'How it works'), h('p', null, t('std.' + s.type))));
+    card.appendChild(h('details', { class: 'desc' }, h('summary', null, HIND.has(s.type) ? h('span', { class: 'badge hind' }, t('hindsight')) : null, HIND.has(s.type) ? ' ' : '', 'How it works'), h('p', null, t('std.' + s.type))));
     return card;
   }
 
@@ -704,7 +705,7 @@
     const full = LS.strategies.length >= MAXS;
     const addSel = U.select('addType', typeOptions(['', t('lab.add')]), '', (v) => { if (v && !v.startsWith('__')) V.add(v); });
     addSel.disabled = full;
-    host.appendChild(h('div', { class: 'flex' }, addSel, full ? h('span', { class: 'xs muted' }, I18N.lang === 'zh' ? '最多 8 个策略' : 'Up to 8 strategies') : null));
+    host.appendChild(h('div', { class: 'flex' }, addSel, full ? h('span', { class: 'xs muted' }, 'Up to 8 strategies') : null));
   };
   function freeSlot() { const used = new Set(LS.strategies.map(s => s.slot)); for (let k = 1; k <= 8; k++) if (!used.has(k)) return k; return 0; }
   V.add = function (type) { if (LS.strategies.length >= MAXS) return; const s = S(type, defaultParams(type)); s.slot = freeSlot(); LS.strategies.push(s); save(); V.renderStrategies(); V.schedule(); };
@@ -740,13 +741,13 @@
     out.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('lab.rank'))),
       h('div', { class: 'rank-list' }, sorted.map((x, j) => h('div', { class: 'rank-item', style: { '--c': tk.s[x.s.slot || 0] } },
         h('span', { class: 'n' }, String(j + 1)),
-        h('div', { class: 'lbl' }, h('span', null, nameOf(x.s), HIND.has(x.s.type) ? h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, I18N.lang === 'zh' ? '后见' : 'hindsight') : null), h('div', { class: 'bar', style: { width: Math.max(1, 100 * x.r.final / mx) + '%' } })),
+        h('div', { class: 'lbl' }, h('span', null, nameOf(x.s), HIND.has(x.s.type) ? h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, 'hindsight') : null), h('div', { class: 'bar', style: { width: Math.max(1, 100 * x.r.final / mx) + '%' } })),
         h('span', { class: 'num', style: { textAlign: 'right' } }, h('b', null, U.moneyShort(x.r.final)), h('br'), h('span', { class: 'xs muted' }, 'IRR ' + U.pct(x.r.irr, 2))))))));
     // KPI
-    out.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('lab.kpi')), h('span', { class: 'sub' }, I18N.lang === 'zh' ? '高亮为该行最优' : 'Highlighted = best in row'),
+    out.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('lab.kpi')), h('span', { class: 'sub' }, 'Highlighted = best in row'),
       h('span', { class: 'right' }, h('button', { class: 'btn ghost small', type: 'button', onclick: () => V.copyKpi() }, t('copyCsv')))), kpiTable(run.res, tk)));
     // chart tabs
-    const tabs = [['equity', t('lab.cEquity')], ['dd', t('lab.cDD')], ['bars', t('lab.cBars')], ['radar', t('lab.cRadar')], ['years', t('lab.cYears')], ['trades', t('lab.cTrades') + (ok.some(x => x.r.multi) ? ' / ' + t('lab.cWeights') : '') + (ok.some(x => x.r.combo) ? ' / ' + (I18N.lang === 'zh' ? '组合拆解' : 'combo') : '')]];
+    const tabs = [['equity', t('lab.cEquity')], ['dd', t('lab.cDD')], ['bars', t('lab.cBars')], ['radar', t('lab.cRadar')], ['years', t('lab.cYears')], ['trades', t('lab.cTrades') + (ok.some(x => x.r.multi) ? ' / ' + t('lab.cWeights') : '') + (ok.some(x => x.r.combo) ? ' / ' + 'combo' : '')]];
     const chartHost = h('div');
     const tabSeg = U.seg('labChartTab', tabs, LS.chart, (v) => { LS.chart = v; save(); drawChart(); });
     const extra = h('span', { class: 'right flex' });
@@ -757,21 +758,21 @@
       if (k === 'equity') {
         extra.appendChild(U.seg('labScale', [['lin', t('linear')], ['log', t('log')]], LS.logScale ? 'log' : 'lin', (v) => { LS.logScale = v === 'log'; save(); drawChart(); }));
         const el = h('div', { class: 'chart tall' }); chartHost.appendChild(el); requestAnimationFrame(() => equityChart(el, run, tk));
-        chartHost.appendChild(h('p', { class: 'note' }, I18N.lang === 'zh' ? '灰色阶梯线为累计投入本金；曲线高于它的部分就是盈利。' : 'The grey step line is cumulative money invested; anything above it is profit.'));
+        chartHost.appendChild(h('p', { class: 'note' }, 'The grey step line is cumulative money invested; anything above it is profit.'));
       } else if (k === 'dd') { const el = h('div', { class: 'chart' }); chartHost.appendChild(el); requestAnimationFrame(() => ddChart(el, run, tk)); chartHost.appendChild(h('p', { class: 'note' }, t('kd.mdd'))); }
       else if (k === 'bars') barsPanel(chartHost, run, tk);
-      else if (k === 'radar') { const el = h('div', { class: 'chart' }); chartHost.appendChild(el); requestAnimationFrame(() => radarChart(el, run, tk)); chartHost.appendChild(h('p', { class: 'note' }, I18N.lang === 'zh' ? '各维度在当前策略之间做 0–100 标准化（越靠外越好），只用于相对比较；“少受煎熬”= 溃疡指数越低越好。' : 'Each axis is rescaled 0–100 across the current strategies (outer = better), for relative comparison only; “less pain” = lower Ulcer index.')); }
+      else if (k === 'radar') { const el = h('div', { class: 'chart' }); chartHost.appendChild(el); requestAnimationFrame(() => radarChart(el, run, tk)); chartHost.appendChild(h('p', { class: 'note' }, 'Each axis is rescaled 0–100 across the current strategies (outer = better), for relative comparison only; “less pain” = lower Ulcer index.')); }
       else if (k === 'years') yearsTable(chartHost, run, tk);
       else if (k === 'trades') {
         extra.appendChild(U.select('tradeFor', ok.map(x => [x.s.id, nameOf(x.s)]), LS.tradeFor, (v) => { LS.tradeFor = v; save(); drawChart(); V.drawLog(); const s2 = document.getElementById('tradeFor2'); if (s2) s2.value = v; }));
         const item = ok.find(x => x.s.id === LS.tradeFor) || ok[0];
         if (item.r.combo) {
-          const cel = h('div', { class: 'chart' }); chartHost.appendChild(h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0, marginTop: 0 } }, I18N.lang === 'zh' ? '组合拆解' : 'Combo breakdown')); chartHost.appendChild(cel);
+          const cel = h('div', { class: 'chart' }); chartHost.appendChild(h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0, marginTop: 0 } }, 'Combo breakdown')); chartHost.appendChild(cel);
           requestAnimationFrame(() => comboChart(cel, item, tk));
-          chartHost.appendChild(h('p', { class: 'note' }, item.r.combo === 'split' ? (I18N.lang === 'zh' ? '每个子策略各自管理自己那份资金，面积叠加 = 账户总值；灰线为累计投入。' : 'Each part manages its own share of the money; stacked areas add up to the account; grey line = money invested.') : (I18N.lang === 'zh' ? '虚线 = 每个子策略单独运行时想要的仓位；实线 = 按组合方式合并后的实际仓位。' : 'Dashed = the exposure each part wants on its own; solid = the actual position after combining.')));
+          chartHost.appendChild(h('p', { class: 'note' }, item.r.combo === 'split' ? 'Each part manages its own share of the money; stacked areas add up to the account; grey line = money invested.' : 'Dashed = the exposure each part wants on its own; solid = the actual position after combining.'));
         }
         const el = h('div', { class: 'chart tall' }); chartHost.appendChild(el);
-        if (item.r.multi) { requestAnimationFrame(() => weightsChart(el, item, tk)); chartHost.appendChild(h('p', { class: 'note' }, I18N.lang === 'zh' ? '多资产策略：显示每天收盘后的实际持仓权重（灰色 = 国库券/现金）。' : 'Multi-asset strategy: actual end-of-day weights (grey = T-bills/cash).')); }
+        if (item.r.multi) { requestAnimationFrame(() => weightsChart(el, item, tk)); chartHost.appendChild(h('p', { class: 'note' }, 'Multi-asset strategy: actual end-of-day weights (grey = T-bills/cash).')); }
         else requestAnimationFrame(() => tradesChart(el, run, tk));
       }
     }
@@ -794,49 +795,48 @@
 
   // ---------- in-sample / out-of-sample check ----------
   function oosPanel() {
-    const zh = I18N.lang === 'zh';
     const out = h('div', { class: 'stack' }, h('div', { class: 'empty' }, t('loading')));
     V.parts.oos = out;
-    return h('div', { class: 'card', id: 'lab-oos' }, h('div', { class: 'card-head' }, h('h3', null, zh ? '样本内 / 样本外检验' : 'In-sample / out-of-sample check'), h('span', { class: 'sub' }, zh ? '用前一段挑策略，看它在后一段还灵不灵' : 'Pick on the first part, test on the rest')),
-      h('p', { class: 'note', style: { marginBottom: '10px' } }, zh ? '把回测区间切成“训练期”和“测试期”：在训练期里表现最好的策略，到了测试期还能排在前面吗？排名能延续，说明差异更可能来自策略本身；排名打乱，说明很可能是巧合。下方的 PBO 用全部区间做更彻底的交叉验证。' : 'Split the backtest into a training and a test period: does the strategy that did best in training still rank near the top in the test? Persistent rankings suggest real differences; scrambled rankings suggest luck. The PBO below runs a more thorough cross-validation over the whole period.'), out);
+    return h('div', { class: 'card', id: 'lab-oos' }, h('div', { class: 'card-head' }, h('h3', null, 'In-sample / out-of-sample check'), h('span', { class: 'sub' }, 'Pick on the first part, test on the rest')),
+      h('p', { class: 'note', style: { marginBottom: '10px' } }, 'Split the backtest into a training and a test period: does the strategy that did best in training still rank near the top in the test? Persistent rankings suggest real differences; scrambled rankings suggest luck. The PBO below runs a more thorough cross-validation over the whole period.'), out);
   }
   V.drawOOS = function () {
-    const out = V.parts.oos; if (!out || !V.results || V.results.error) return;
-    U.disposeIn(out); U.clear(out);
-    const tk = U.tokens(); const zh = I18N.lang === 'zh';
+    const out = V.parts.oos;if (!out || !V.results || V.results.error) return;
+    U.disposeIn(out);U.clear(out);
+    const tk = U.tokens();
     LS.oos = Object.assign({ mode: 'mid', date: null, metric: 'sharpe' }, LS.oos || {});
-    const O = LS.oos; const run = V.results; const all = run.res.filter(x => !x.r.error && x.r.navFull);
+    const O = LS.oos;const run = V.results;const all = run.res.filter(x => !x.r.error && x.r.navFull);
     const ok = all.filter(x => !HIND.has(x.s.type)), hindOnes = all.filter(x => HIND.has(x.s.type));
-    if (ok.length < 2) { out.appendChild(h('div', { class: 'empty' }, (zh ? '至少需要两个策略才能比较排名——在左侧多勾选或添加几个策略' : 'Add or enable at least two strategies to compare rankings') + (hindOnes.length ? (zh ? '（标有“后见”的策略用到了未来信息，不参与排名）。' : ' (strategies marked “hindsight” use future information and are not ranked).') : (zh ? '。' : '.')))); return; }
+    if (ok.length < 2) { out.appendChild(h('div', { class: 'empty' }, 'Add or enable at least two strategies to compare rankings' + (hindOnes.length ? ' (strategies marked “hindsight” use future information and are not ranked).' : '.'))); return; }
     const i0 = run.i0, i1 = run.i1;
-    if (i1 - i0 < 500) { out.appendChild(h('div', { class: 'empty' }, zh ? '回测区间太短（至少约两年）。' : 'The backtest period is too short (about two years needed).')); return; }
+    if (i1 - i0 < 500) { out.appendChild(h('div', { class: 'empty' }, 'The backtest period is too short (about two years needed).')); return; }
     let iS = O.mode === 'date' && O.date ? Core.idxOnOrBefore(Core.parseISO(O.date)) : Math.round(i0 + (i1 - i0) * (O.mode === 't70' ? 0.7 : 0.5));
     iS = Math.max(i0 + 250, Math.min(i1 - 250, iS));
     const metric = O.metric;
-    const mName = { sharpe: zh ? '夏普' : 'Sharpe', cagr: zh ? '年化收益' : 'CAGR', mdd: zh ? '最大回撤' : 'Max drawdown' }[metric];
+    const mName = { sharpe: 'Sharpe', cagr: 'CAGR', mdd: 'Max drawdown' }[metric];
     const val = (m) => metric === 'sharpe' ? (m.vol > 0.005 ? m.sharpe : NaN) : metric === 'cagr' ? (U.isNum(m.cagr) ? m.cagr : m.cagrAny) : m.mdd;
     const fmt = (v) => !U.isNum(v) ? '—' : metric === 'sharpe' ? U.num(v, 2) : U.pct(v, 1);
     const rows = ok.map(x => { const a = Core.metrics(x.r.navFull, i0, iS), c = Core.metrics(x.r.navFull, iS, i1); return { s: x.s, nav: x.r.navFull, tr: val(a), te: val(c) }; });
     const rank = (key) => { const fin = rows.filter(r => U.isNum(r[key])).sort((p, q) => q[key] - p[key]); rows.forEach(r => { r[key + 'R'] = U.isNum(r[key]) ? fin.indexOf(r) + 1 : NaN; }); return fin.length; };
-    const nTr = rank('tr'), nTe = rank('te'); const N = rows.length;
+    const nTr = rank('tr'), nTe = rank('te');const N = rows.length;
     const ctl = h('div', { class: 'controls' },
-      U.ctl(zh ? '切分方式' : 'Split', U.seg('oosMode', [['mid', zh ? '对半分' : 'Half / half'], ['t70', zh ? '前 70% / 后 30%' : '70 / 30'], ['date', zh ? '自选日期' : 'Pick a date']], O.mode, (v) => { O.mode = v; if (v === 'date' && !O.date) O.date = Core.iso(iS); save(); V.drawOOS(); })),
-      O.mode === 'date' ? U.ctl(zh ? '测试期从' : 'Test starts', U.dateInput('oosDate', O.date || Core.iso(iS), Core.iso(i0 + 250), Core.iso(i1 - 250), (v) => { O.date = v; save(); V.drawOOS(); })) : null,
-      U.ctl(zh ? '比较指标' : 'Metric', U.seg('oosMetric', [['sharpe', zh ? '夏普' : 'Sharpe'], ['cagr', zh ? '年化' : 'CAGR'], ['mdd', zh ? '最大回撤' : 'Max DD']], metric, (v) => { O.metric = v; save(); V.drawOOS(); })));
+      U.ctl('Split', U.seg('oosMode', [['mid', 'Half / half'], ['t70', '70 / 30'], ['date', 'Pick a date']], O.mode, (v) => { O.mode = v; if (v === 'date' && !O.date) O.date = Core.iso(iS); save(); V.drawOOS(); })),
+      O.mode === 'date' ? U.ctl('Test starts', U.dateInput('oosDate', O.date || Core.iso(iS), Core.iso(i0 + 250), Core.iso(i1 - 250), (v) => { O.date = v; save(); V.drawOOS(); })) : null,
+      U.ctl('Metric', U.seg('oosMetric', [['sharpe', 'Sharpe'], ['cagr', 'CAGR'], ['mdd', 'Max DD']], metric, (v) => { O.metric = v; save(); V.drawOOS(); })));
     out.appendChild(ctl);
     const yr = (i) => Core.iso(i).slice(0, 7);
-    out.appendChild(h('p', { class: 'note' }, zh ? `训练期 ${yr(i0)} → ${yr(iS)}（${Core.yearsBetween(i0, iS).toFixed(1)} 年），测试期 ${yr(iS)} → ${yr(i1)}（${Core.yearsBetween(iS, i1).toFixed(1)} 年）。按单位净值计算，不受定投金额影响。` : `Training ${yr(i0)} → ${yr(iS)} (${Core.yearsBetween(i0, iS).toFixed(1)} yrs), test ${yr(iS)} → ${yr(i1)} (${Core.yearsBetween(iS, i1).toFixed(1)} yrs). Based on unit NAV, so contribution amounts do not matter.`));
+    out.appendChild(h('p', { class: 'note' }, `Training ${yr(i0)} → ${yr(iS)} (${Core.yearsBetween(i0, iS).toFixed(1)} yrs), test ${yr(iS)} → ${yr(i1)} (${Core.yearsBetween(iS, i1).toFixed(1)} yrs). Based on unit NAV, so contribution amounts do not matter.`));
     const champ = rows.filter(r => r.trR === 1)[0];
     const sorted = rows.slice().sort((p, q) => (U.isNum(p.trR) ? p.trR : 99) - (U.isNum(q.trR) ? q.trR : 99));
     out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-      h('thead', null, h('tr', null, h('th', null, t('lab.strategies')), h('th', null, (zh ? '训练期' : 'Training') + ' · ' + mName), h('th', null, zh ? '训练期排名' : 'Rank'), h('th', null, (zh ? '测试期' : 'Test') + ' · ' + mName), h('th', null, zh ? '测试期排名' : 'Rank'), h('th', null, zh ? '名次变化' : 'Change'))),
+      h('thead', null, h('tr', null, h('th', null, t('lab.strategies')), h('th', null, 'Training' + ' · ' + mName), h('th', null, 'Rank'), h('th', null, 'Test' + ' · ' + mName), h('th', null, 'Rank'), h('th', null, 'Change'))),
       h('tbody', null, sorted.concat(hindOnes.map(x => ({ s: x.s, hind: true, tr: val(Core.metrics(x.r.navFull, i0, iS)), te: val(Core.metrics(x.r.navFull, iS, i1)) }))).map(r => { const d = U.isNum(r.trR) && U.isNum(r.teR) ? r.trR - r.teR : NaN;
-        if (r.hind) return h('tr', { class: 'base-row' }, h('td', { style: { whiteSpace: 'normal', minWidth: '150px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[r.s.slot || 0] } }), nameOf(r.s), h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, zh ? '后见' : 'hindsight'))), h('td', null, fmt(r.tr)), h('td', null, '—'), h('td', null, fmt(r.te)), h('td', null, '—'), h('td', { class: 'xs' }, zh ? '不参与排名' : 'not ranked'));
-        return h('tr', { class: r === champ ? 'hl' : '' }, h('td', { style: { whiteSpace: 'normal', minWidth: '150px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[r.s.slot || 0] } }), nameOf(r.s), HIND.has(r.s.type) ? h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, zh ? '后见' : 'hindsight') : null)),
+        if (r.hind) return h('tr', { class: 'base-row' }, h('td', { style: { whiteSpace: 'normal', minWidth: '150px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[r.s.slot || 0] } }), nameOf(r.s), h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, 'hindsight'))), h('td', null, fmt(r.tr)), h('td', null, '—'), h('td', null, fmt(r.te)), h('td', null, '—'), h('td', { class: 'xs' }, 'not ranked'));
+        return h('tr', { class: r === champ ? 'hl' : '' }, h('td', { style: { whiteSpace: 'normal', minWidth: '150px' } }, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[r.s.slot || 0] } }), nameOf(r.s), HIND.has(r.s.type) ? h('span', { class: 'badge hind', style: { marginLeft: '6px' } }, 'hindsight') : null)),
           h('td', null, fmt(r.tr)), h('td', null, U.isNum(r.trR) ? r.trR + '/' + nTr : '—'), h('td', { style: { fontWeight: 700 } }, fmt(r.te)), h('td', null, U.isNum(r.teR) ? r.teR + '/' + nTe : '—'),
           h('td', { style: { color: !U.isNum(d) || d === 0 ? tk.muted : d > 0 ? tk.pos : tk.neg } }, !U.isNum(d) ? '—' : d === 0 ? '=' : (d > 0 ? '↑' : '↓') + Math.abs(d))); })))));
     // chart: training vs test per strategy (horizontal bars)
-    const el = h('div', { class: 'chart', style: { height: Math.max(220, 70 + sorted.length * 46) + 'px' } }); out.appendChild(el);
+    const el = h('div', { class: 'chart', style: { height: Math.max(220, 70 + sorted.length * 46) + 'px' } });out.appendChild(el);
     requestAnimationFrame(() => {
       const c = U.chart(el); if (!c) return;
       const names = sorted.map(r => nameOf(r.s)); const narrow = el.clientWidth < 560;
@@ -844,26 +844,24 @@
         tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, axisPointer: { type: 'shadow' }, valueFormatter: (v) => fmt(v) },
         xAxis: U.valAxis(tk, { scale: false, axisLabel: { color: tk.muted, fontSize: 11, formatter: (v) => metric === 'sharpe' ? v.toFixed(1) : Math.round(v * 100) + '%' } }),
         yAxis: U.catAxis(tk, names, { inverse: true, axisLabel: { color: tk.ink2, fontSize: 11.5, width: narrow ? 110 : 220, overflow: 'truncate' } }),
-        series: [{ name: zh ? '训练期' : 'Training', type: 'bar', barMaxWidth: 14, itemStyle: { color: tk.ruleStrong, borderRadius: [0, 3, 3, 0] }, data: sorted.map(r => U.isNum(r.tr) ? r.tr : null) },
-          { name: zh ? '测试期' : 'Test', type: 'bar', barMaxWidth: 14, data: sorted.map(r => ({ value: U.isNum(r.te) ? r.te : null, itemStyle: { color: tk.s[r.s.slot || 0], borderRadius: [0, 3, 3, 0] } })) }] }), true);
+        series: [{ name: 'Training', type: 'bar', barMaxWidth: 14, itemStyle: { color: tk.ruleStrong, borderRadius: [0, 3, 3, 0] }, data: sorted.map(r => U.isNum(r.tr) ? r.tr : null) },
+          { name: 'Test', type: 'bar', barMaxWidth: 14, data: sorted.map(r => ({ value: U.isNum(r.te) ? r.te : null, itemStyle: { color: tk.s[r.s.slot || 0], borderRadius: [0, 3, 3, 0] } })) }] }), true);
     });
     // rank persistence and PBO
     const both = rows.filter(r => U.isNum(r.tr) && U.isNum(r.te));
     const rho = both.length >= 3 ? Calc.spearman(both.map(r => r.tr), both.map(r => r.te)) : NaN;
     const cv = Calc.cscv(ok.map(x => x.r.navFull), i0, i1, 16);
     const stats = [];
-    if (champ) stats.push(h('div', { class: 'stat' }, h('span', null, zh ? '训练期冠军在测试期' : 'Training champion in the test'), h('b', null, U.isNum(champ.teR) ? (zh ? `第 ${champ.teR}/${nTe} 名` : `#${champ.teR} of ${nTe}`) : '—'), h('em', null, nameOf(champ.s))));
-    if (U.isNum(rho)) stats.push(h('div', { class: 'stat' }, h('span', null, zh ? '排名相关系数 ρ' : 'Rank correlation ρ'), h('b', null, U.num(rho, 2)), h('em', null, zh ? '1 = 完全延续，0 = 无关，−1 = 反转' : '1 = same order, 0 = unrelated, −1 = reversed')));
-    if (cv) stats.push(h('div', { class: 'stat' }, h('span', null, zh ? '过拟合概率 PBO（夏普）' : 'Probability of overfitting (Sharpe)'), h('b', null, U.pct(cv.pbo, 0)), h('em', null, zh ? `12,870 种切法 · ${N} 个候选` : `12,870 splits · ${N} candidates`)));
-    if (cv) stats.push(h('div', { class: 'stat' }, h('span', null, zh ? '冠军夏普：样本内 → 样本外' : 'Champion Sharpe: in → out of sample'), h('b', null, U.num(cv.meanIS, 2) + ' → ' + U.num(cv.meanOOS, 2)), h('em', null, zh ? '交叉验证平均' : 'cross-validated average')));
+    if (champ) stats.push(h('div', { class: 'stat' }, h('span', null, 'Training champion in the test'), h('b', null, U.isNum(champ.teR) ? `#${champ.teR} of ${nTe}` : '—'), h('em', null, nameOf(champ.s))));
+    if (U.isNum(rho)) stats.push(h('div', { class: 'stat' }, h('span', null, 'Rank correlation ρ'), h('b', null, U.num(rho, 2)), h('em', null, '1 = same order, 0 = unrelated, −1 = reversed')));
+    if (cv) stats.push(h('div', { class: 'stat' }, h('span', null, 'Probability of overfitting (Sharpe)'), h('b', null, U.pct(cv.pbo, 0)), h('em', null, `12,870 splits · ${N} candidates`)));
+    if (cv) stats.push(h('div', { class: 'stat' }, h('span', null, 'Champion Sharpe: in → out of sample'), h('b', null, U.num(cv.meanIS, 2) + ' → ' + U.num(cv.meanOOS, 2)), h('em', null, 'cross-validated average')));
     if (stats.length) out.appendChild(h('div', { class: 'stat-row' }, stats));
-    const rhoTxt = !U.isNum(rho) ? '' : zh ? `训练期与测试期排名的相关系数 ρ = ${b(U.num(rho, 2))}：${rho > 0.6 ? '排名相当稳定，差异更可能来自策略本身' : rho > 0.2 ? '排名只是部分延续' : rho > -0.2 ? '排名几乎没有延续——前一段的赢家到后一段和随机差不多' : '排名发生了反转——前一段越好的，后一段反而越差'}。` : `The rank correlation between the two periods is ρ = ${b(U.num(rho, 2))}: ${rho > 0.6 ? 'fairly stable, so the differences are more likely real' : rho > 0.2 ? 'only partly persistent' : rho > -0.2 ? 'barely persistent — the first period\'s winners did no better than random later' : 'reversed — the better in the first period, the worse in the second'}. `;
-    const pboLvl = (p) => p < 0.25 ? (zh ? '在训练期里挑冠军比较可靠' : 'picking the in-sample champion is fairly reliable') : p <= 0.55 ? (zh ? '挑冠军和随便挑差不多' : 'picking the champion is about as good as picking at random') : (zh ? '越挑越差，典型的过拟合' : 'picking the best actually hurts — classic overfitting');
-    const pboTxt = !cv ? '' : zh ? `把整个区间切成 16 段做组合交叉验证，PBO = ${b(U.pct(cv.pbo, 0))}：${pboLvl(cv.pbo)}${N < 4 ? '（候选少于 4 个时只能当参考）' : ''}。` : `Cross-validating over 16 blocks of the whole period gives PBO = ${b(U.pct(cv.pbo, 0))}: ${pboLvl(cv.pbo)}${N < 4 ? ' (with fewer than 4 candidates, treat it as indicative only)' : ''}. `;
-    const champTxt = !champ ? '' : zh ? `训练期${mName}最好的是“${b(nameOf(champ.s))}”（${fmt(champ.tr)}），到了测试期它${U.isNum(champ.teR) ? `排第 ${b(champ.teR + '/' + nTe)}（${fmt(champ.te)}）` : '无法计算'}。` : `The best training-period ${mName} belonged to “${b(nameOf(champ.s))}” (${fmt(champ.tr)}); in the test period it ${U.isNum(champ.teR) ? `ranked ${b('#' + champ.teR + ' of ' + nTe)} (${fmt(champ.te)})` : 'could not be measured'}. `;
-    out.appendChild(h('div', { class: 'takeaway', html: zh
-      ? champTxt + rhoTxt + pboTxt + '提醒：只有在“没先看过测试期”的前提下这个检验才有意义——如果是看过全期结果才设计的策略，测试期也就不再是样本外了。' + (hindOnes.length ? '标有“后见”的策略用到了未来信息，已排除在排名和 PBO 之外。' : '')
-      : champTxt + rhoTxt + pboTxt + 'Caveat: the test is only meaningful if you had not looked at the test period — a strategy designed after seeing the whole period has no out-of-sample left.' + (hindOnes.length ? ' Strategies marked “hindsight” use future information and are excluded from the ranking and the PBO.' : '') }));
+    const rhoTxt = !U.isNum(rho) ? '' : `The rank correlation between the two periods is ρ = ${b(U.num(rho, 2))}: ${rho > 0.6 ? 'fairly stable, so the differences are more likely real' : rho > 0.2 ? 'only partly persistent' : rho > -0.2 ? 'barely persistent — the first period\'s winners did no better than random later' : 'reversed — the better in the first period, the worse in the second'}. `;
+    const pboLvl = (p) => p < 0.25 ? 'picking the in-sample champion is fairly reliable' : p <= 0.55 ? 'picking the champion is about as good as picking at random' : 'picking the best actually hurts — classic overfitting';
+    const pboTxt = !cv ? '' : `Cross-validating over 16 blocks of the whole period gives PBO = ${b(U.pct(cv.pbo, 0))}: ${pboLvl(cv.pbo)}${N < 4 ? ' (with fewer than 4 candidates, treat it as indicative only)' : ''}. `;
+    const champTxt = !champ ? '' : `The best training-period ${mName} belonged to “${b(nameOf(champ.s))}” (${fmt(champ.tr)}); in the test period it ${U.isNum(champ.teR) ? `ranked ${b('#' + champ.teR + ' of ' + nTe)} (${fmt(champ.te)})` : 'could not be measured'}. `;
+    out.appendChild(h('div', { class: 'takeaway', html: champTxt + rhoTxt + pboTxt + 'Caveat: the test is only meaningful if you had not looked at the test period — a strategy designed after seeing the whole period has no out-of-sample left.' + (hindOnes.length ? ' Strategies marked “hindsight” use future information and are excluded from the ranking and the PBO.' : '') }));
   };
 
   // ---------- drawdown-trigger analysis ----------
@@ -874,55 +872,55 @@
     return h('div', { class: 'card', id: 'lab-dd' }, h('div', { class: 'card-head' }, h('h3', null, t('lab.ddTitle')), h('span', { class: 'sub' }, t('lab.ddSub'))), h('p', { class: 'note', style: { marginBottom: '10px' } }, t('lab.ddLede')), out);
   }
   V.drawDD = function () {
-    const out = V.parts.dd; if (!out || !V.results || V.results.error) return;
-    U.disposeIn(out); U.clear(out);
-    const tk = U.tokens(); const zh = I18N.lang === 'zh';
+    const out = V.parts.dd;if (!out || !V.results || V.results.error) return;
+    U.disposeIn(out);U.clear(out);
+    const tk = U.tokens();
     LS.dd = LS.dd || { key: null, x: 20 };
-    const key = LS.dd.key && Core.S[LS.dd.key] ? LS.dd.key : LS.asset; const S = Core.S[key];
+    const key = LS.dd.key && Core.S[LS.dd.key] ? LS.dd.key : LS.asset;const S = Core.S[key];
     const i0 = Math.max(S.s, V.results.i0), i1 = Math.min(S.e, V.results.i1);
     const res = Calc.ddTriggers(S.v, S.s, S.e, i0, i1, DDX.map(x => x / 100));
     // threshold sweep with the Lab's funding plan
-    const f = LS.fund; const fund = { initial: +f.initial || 0, amount: +f.amount || 0, freq: f.freq, growth: (+f.growth || 0) / 100 };
+    const f = LS.fund;const fund = { initial: +f.initial || 0, amount: +f.amount || 0, freq: f.freq, growth: (+f.growth || 0) / 100 };
     const o = { i0, i1, fund, lag: LS.lag, costBps: +LS.costBps || 0, cashYield: LS.cashYield };
     const base = Engine.run({ type: 'immediate', asset: { key } }, o);
     const sweep = DDX.map(x => ({ x, r: Engine.run({ type: 'ddladder', asset: { key }, params: { ref: 'ath', tiers: [{ x, pct: 100 }], base: 0, wait: 0 } }, o) }));
     const ladder = Engine.run({ type: 'ddladder', asset: { key }, params: { ref: 'ath', tiers: Engine.defaultLadder(), base: 0, wait: 0 } }, o);
     const ctl = h('div', { class: 'controls' },
       U.ctl(t('asset'), U.select('ddKey', ASSETS.filter(k => k !== 'CASH').map(k => [k, U.assetName(k, true)]), key, (v) => { LS.dd.key = v; save(); V.drawDD(); })),
-      U.ctl(zh ? '在走势图上标出' : 'Mark on chart', U.seg('ddX', DDX.map(x => [x, '−' + x + '%']), LS.dd.x, (v) => { LS.dd.x = +v; save(); V.drawDD(); })));
+      U.ctl('Mark on chart', U.seg('ddX', DDX.map(x => [x, '−' + x + '%']), LS.dd.x, (v) => { LS.dd.x = +v; save(); V.drawDD(); })));
     out.appendChild(ctl);
-    out.appendChild(h('p', { class: 'note' }, (zh ? `${U.assetName(key, true)}，${Core.iso(i0)} → ${Core.iso(i1)}；“前高”= 历史最高收盘价（含区间之前），每轮“高点→收复”只记第一次触发。` : `${U.assetName(key, true)}, ${Core.iso(i0)} → ${Core.iso(i1)}; “previous high” = all-time closing high (including before the window); each high-to-recovery cycle counts once.`)));
+    out.appendChild(h('p', { class: 'note' }, `${U.assetName(key, true)}, ${Core.iso(i0)} → ${Core.iso(i1)}; “previous high” = all-time closing high (including before the window); each high-to-recovery cycle counts once.`));
     // table
-    const lv = res.levels; const B = res.base;
+    const lv = res.levels;const B = res.base;
     const pc = (x, d) => U.pct(x, d == null ? 0 : d);
     out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-      h('thead', null, h('tr', null, h('th', null, zh ? '距前高跌幅' : 'Fall from high'), h('th', null, zh ? '触发次数' : 'Times'), h('th', null, zh ? '从前高到触发' : 'High → trigger'), h('th', null, zh ? '触发后还会再跌（中位/最深）' : 'Further fall (median / worst)'), h('th', null, zh ? '收复前高用时' : 'Time to recover'), h('th', null, zh ? '1年后（中位·胜率）' : '1 yr later (median · up)'), h('th', null, zh ? '3年后（中位·胜率）' : '3 yrs later (median · up)'), h('th', null, zh ? '回测 IRR' : 'Backtest IRR'), h('th', null, zh ? '平均仓位' : 'Avg exposure'))),
+      h('thead', null, h('tr', null, h('th', null, 'Fall from high'), h('th', null, 'Times'), h('th', null, 'High → trigger'), h('th', null, 'Further fall (median / worst)'), h('th', null, 'Time to recover'), h('th', null, '1 yr later (median · up)'), h('th', null, '3 yrs later (median · up)'), h('th', null, 'Backtest IRR'), h('th', null, 'Avg exposure'))),
       h('tbody', null,
-        h('tr', { class: 'base-row' }, h('td', null, zh ? '任意一天买入（对照）' : 'Any day (baseline)'), h('td', null, '—'), h('td', null, '—'), h('td', null, '—'), h('td', null, '—'), h('td', null, pc(B.f1med, 1) + ' · ' + pc(B.f1pos)), h('td', null, pc(B.f3med, 1) + ' · ' + pc(B.f3pos)), h('td', null, U.pct(base.irr, 2)), h('td', null, pc(base.exposure))),
+        h('tr', { class: 'base-row' }, h('td', null, 'Any day (baseline)'), h('td', null, '—'), h('td', null, '—'), h('td', null, '—'), h('td', null, '—'), h('td', null, pc(B.f1med, 1) + ' · ' + pc(B.f1pos)), h('td', null, pc(B.f3med, 1) + ' · ' + pc(B.f3pos)), h('td', null, U.pct(base.irr, 2)), h('td', null, pc(base.exposure))),
         lv.map((o2, q) => { const sw = sweep[q].r; return h('tr', null, h('td', { style: { fontWeight: 700 } }, '−' + Math.round(o2.x * 100) + '%'), h('td', null, String(o2.n)), h('td', null, o2.n ? U.dur(o2.medDaysToHit) : '—'),
-          h('td', null, o2.n ? pc(o2.medFurther, 1) + ' / ' + pc(o2.worstFurther, 0) : '—'), h('td', null, o2.n ? (U.dur(o2.medRec) + (o2.unrecovered ? (zh ? '（' + o2.unrecovered + ' 次未收复）' : ' (' + o2.unrecovered + ' open)') : '')) : '—'),
+          h('td', null, o2.n ? pc(o2.medFurther, 1) + ' / ' + pc(o2.worstFurther, 0) : '—'), h('td', null, o2.n ? (U.dur(o2.medRec) + (o2.unrecovered ? (' (' + o2.unrecovered + ' open)') : '')) : '—'),
           h('td', { class: U.isNum(o2.f1med) && o2.f1med > B.f1med ? 'best' : '' }, o2.f1n ? pc(o2.f1med, 1) + ' · ' + pc(o2.f1pos) : '—'), h('td', { class: U.isNum(o2.f3med) && o2.f3med > B.f3med ? 'best' : '' }, o2.f3n ? pc(o2.f3med, 1) + ' · ' + pc(o2.f3pos) : '—'),
           h('td', { class: U.isNum(sw.irr) && sw.irr > base.irr ? 'best' : '' }, U.pct(sw.irr, 2)), h('td', null, pc(sw.exposure))); })))));
     // charts
-    const g2 = h('div', { class: 'grid-2' }); const c1 = h('div', { class: 'chart short' }), c2 = h('div', { class: 'chart short' });
-    g2.appendChild(h('div', null, h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0 } }, zh ? '触发后 1 年 / 3 年的中位收益' : 'Median return 1 / 3 years after the trigger'), c1));
-    g2.appendChild(h('div', null, h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0 } }, zh ? '“跌到 X% 才全部买入”的回测 IRR' : 'Backtest IRR of “wait for −X%, then all in”'), c2));
+    const g2 = h('div', { class: 'grid-2' });const c1 = h('div', { class: 'chart short' }), c2 = h('div', { class: 'chart short' });
+    g2.appendChild(h('div', null, h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0 } }, 'Median return 1 / 3 years after the trigger'), c1));
+    g2.appendChild(h('div', null, h('h4', { class: 'sh-h4', style: { borderTop: 0, paddingTop: 0 } }, 'Backtest IRR of “wait for −X%, then all in”'), c2));
     out.appendChild(g2);
-    const c3 = h('div', { class: 'chart' }); out.appendChild(h('h4', { class: 'sh-h4' }, (zh ? '回撤曲线与 −' : 'Drawdown with each −') + LS.dd.x + (zh ? '% 触发点' : '% trigger'))); out.appendChild(c3);
+    const c3 = h('div', { class: 'chart' });out.appendChild(h('h4', { class: 'sh-h4' }, 'Drawdown with each −' + LS.dd.x + '% trigger'));out.appendChild(c3);
     requestAnimationFrame(() => {
       const cats = DDX.map(x => '−' + x + '%');
       const a = U.chart(c1);
       if (a) a.setOption(U.baseOpt(tk, { legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8, textStyle: { color: tk.ink2, fontSize: 11.5 } }, grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
         tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, axisPointer: { type: 'shadow' }, valueFormatter: (v) => U.pct(v, 1) },
         xAxis: U.catAxis(tk, cats, { axisLabel: { color: tk.ink2, fontSize: 11.5, interval: 0 } }), yAxis: U.valAxis(tk, { scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }),
-        series: [{ name: zh ? '1 年后' : '1 yr later', type: 'bar', barMaxWidth: 18, itemStyle: { color: tk.s[1], borderRadius: [3, 3, 0, 0] }, data: lv.map(o2 => o2.f1n ? o2.f1med : null), markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.s[1], type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideEndTop', formatter: zh ? '任意日 1 年' : 'any day 1y' }, data: [{ yAxis: B.f1med }] } },
-          { name: zh ? '3 年后' : '3 yrs later', type: 'bar', barMaxWidth: 18, itemStyle: { color: tk.s[3], borderRadius: [3, 3, 0, 0] }, data: lv.map(o2 => o2.f3n ? o2.f3med : null), markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.s[3], type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideEndTop', formatter: zh ? '任意日 3 年' : 'any day 3y' }, data: [{ yAxis: B.f3med }] } }] }), true);
+        series: [{ name: '1 yr later', type: 'bar', barMaxWidth: 18, itemStyle: { color: tk.s[1], borderRadius: [3, 3, 0, 0] }, data: lv.map(o2 => o2.f1n ? o2.f1med : null), markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.s[1], type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideEndTop', formatter: 'any day 1y' }, data: [{ yAxis: B.f1med }] } },
+          { name: '3 yrs later', type: 'bar', barMaxWidth: 18, itemStyle: { color: tk.s[3], borderRadius: [3, 3, 0, 0] }, data: lv.map(o2 => o2.f3n ? o2.f3med : null), markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.s[3], type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideEndTop', formatter: 'any day 3y' }, data: [{ yAxis: B.f3med }] } }] }), true);
       const b2 = U.chart(c2);
       if (b2) b2.setOption(U.baseOpt(tk, { legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8, textStyle: { color: tk.ink2, fontSize: 11.5 } }, grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
-        tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, axisPointer: { type: 'shadow' }, formatter: (ps) => { const q = ps[0].dataIndex; const r = sweep[q].r; return U.ttHead(cats[q]) + U.ttRow(tk.s[2], 'IRR', U.pct(r.irr, 2)) + U.ttRow(tk.s[0], zh ? '平均仓位' : 'Avg exposure', U.pct(r.exposure, 0)) + U.ttRow(tk.s[0], zh ? '期末资产' : 'Ending', U.money(r.final)); } },
+        tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, axisPointer: { type: 'shadow' }, formatter: (ps) => { const q = ps[0].dataIndex; const r = sweep[q].r; return U.ttHead(cats[q]) + U.ttRow(tk.s[2], 'IRR', U.pct(r.irr, 2)) + U.ttRow(tk.s[0], 'Avg exposure', U.pct(r.exposure, 0)) + U.ttRow(tk.s[0], 'Ending', U.money(r.final)); } },
         xAxis: U.catAxis(tk, cats, { axisLabel: { color: tk.ink2, fontSize: 11.5, interval: 0 } }), yAxis: U.valAxis(tk, { scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => (v * 100).toFixed(0) + '%' } }),
-        series: [{ name: zh ? '等跌 X% 再全部买入' : 'Wait for −X%, then all in', type: 'bar', barMaxWidth: 22, itemStyle: { color: tk.s[2], borderRadius: [3, 3, 0, 0] }, data: sweep.map(x => x.r.irr),
-          markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ink2, type: 'dashed' }, label: { color: tk.ink2, fontSize: 10.5, position: 'insideEndTop', formatter: (zh ? '到账即投 ' : 'invest at once ') + U.pct(base.irr, 1) }, data: [{ yAxis: base.irr }] } }] }), true);
+        series: [{ name: 'Wait for −X%, then all in', type: 'bar', barMaxWidth: 22, itemStyle: { color: tk.s[2], borderRadius: [3, 3, 0, 0] }, data: sweep.map(x => x.r.irr),
+          markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ink2, type: 'dashed' }, label: { color: tk.ink2, fontSize: 10.5, position: 'insideEndTop', formatter: 'invest at once ' + U.pct(base.irr, 1) }, data: [{ yAxis: base.irr }] } }] }), true);
       const c = U.chart(c3);
       if (c) {
         const v = S.v; const step = Math.max(1, Math.floor((i1 - i0) / 1500)); const d = []; let pk = -Infinity;
@@ -930,18 +928,16 @@
         const lvx = lv.find(o2 => Math.round(o2.x * 100) === LS.dd.x);
         const pts = lvx ? lvx.hits.map(hh => { let pk2 = v[hh.peakI]; return { value: [U.ts(hh.i), v[hh.i] / pk2 - 1], hh }; }) : [];
         const o3 = U.baseOpt(tk, { grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true }, xAxis: U.timeAxis(tk), yAxis: U.valAxis(tk, { max: 0, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (x) => Math.round(x * 100) + '%' } }),
-          series: [U.lineSeries(zh ? '距前高' : 'From high', d, U.assetColor(key, tk), { sampling: null, areaStyle: { color: U.assetColor(key, tk), opacity: 0.1 }, markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideStartTop', formatter: '−' + LS.dd.x + '%' }, data: [{ yAxis: -LS.dd.x / 100 }] } }),
-            { name: zh ? '触发' : 'Trigger', type: 'scatter', data: pts, symbolSize: 9, itemStyle: { color: tk.pos, borderColor: tk.surface, borderWidth: 1.5 }, z: 5 }] });
-        o3.tooltip = { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (p) => { if (p.seriesType !== 'scatter') { const i = Core.idxOnOrBefore(Math.round(p.value[0] / U.dayMs)); return U.ttHead(Core.iso(i)) + U.ttRow(p.color, zh ? '距前高' : 'From high', U.pct(p.value[1], 1)); } const hh = p.data.hh; return U.ttHead((zh ? '触发 ' : 'Trigger ') + Core.iso(hh.i)) + U.ttRow(tk.s[0], zh ? '前高日期' : 'Previous high', Core.iso(hh.peakI)) + U.ttRow(tk.s[0], zh ? '之后再跌' : 'Fell further', U.pct(hh.further, 1)) + U.ttRow(tk.s[0], zh ? '1 年后' : '1 yr later', U.pct(hh.f1, 1)) + U.ttRow(tk.s[0], zh ? '3 年后' : '3 yrs later', U.pct(hh.f3, 1)) + U.ttRow(tk.s[0], zh ? '收复前高' : 'Recovered', hh.rec >= 0 ? Core.iso(hh.rec) : (zh ? '尚未' : 'not yet')); } };
+          series: [U.lineSeries('From high', d, U.assetColor(key, tk), { sampling: null, areaStyle: { color: U.assetColor(key, tk), opacity: 0.1 }, markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, position: 'insideStartTop', formatter: '−' + LS.dd.x + '%' }, data: [{ yAxis: -LS.dd.x / 100 }] } }),
+            { name: 'Trigger', type: 'scatter', data: pts, symbolSize: 9, itemStyle: { color: tk.pos, borderColor: tk.surface, borderWidth: 1.5 }, z: 5 }] });
+        o3.tooltip = { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (p) => { if (p.seriesType !== 'scatter') { const i = Core.idxOnOrBefore(Math.round(p.value[0] / U.dayMs)); return U.ttHead(Core.iso(i)) + U.ttRow(p.color, 'From high', U.pct(p.value[1], 1)); } const hh = p.data.hh; return U.ttHead('Trigger ' + Core.iso(hh.i)) + U.ttRow(tk.s[0], 'Previous high', Core.iso(hh.peakI)) + U.ttRow(tk.s[0], 'Fell further', U.pct(hh.further, 1)) + U.ttRow(tk.s[0], '1 yr later', U.pct(hh.f1, 1)) + U.ttRow(tk.s[0], '3 yrs later', U.pct(hh.f3, 1)) + U.ttRow(tk.s[0], 'Recovered', hh.rec >= 0 ? Core.iso(hh.rec) : 'not yet'); } };
         c.setOption(o3, true);
       }
     });
     // takeaway
     const best = sweep.reduce((p2, c2) => (c2.r.irr > p2.r.irr ? c2 : p2), sweep[0]);
     const l10 = lv[1], l20 = lv[3];
-    out.appendChild(h('div', { class: 'takeaway', html: zh
-      ? `在这个区间里，${b(U.assetName(key, true))} 距前高跌 10% 发生了 ${b(String(l10.n))} 次，跌 20% 发生了 ${b(String(l20.n))} 次；跌到 20% 之后，中位数还要再跌 ${b(U.pct(-l20.medFurther, 1))}（最深 ${U.pct(-l20.worstFurther, 0)}）。触发后 1 年的中位收益 ${U.pct(l20.f1med, 1)}，任意一天买入是 ${U.pct(B.f1med, 1)}。按你的资金计划，“等跌 X% 再买”里 IRR 最高的是 ${b('−' + best.x + '%')}（${U.pct(best.r.irr, 2)}），到账即投为 ${b(U.pct(base.irr, 2))}；默认三档阶梯（−10/−20/−30%）为 ${U.pct(ladder.irr, 2)}。等待的代价是长期持有现金（看“平均仓位”一列）。`
-      : `In this window ${b(U.assetName(key, true))} fell 10% from a high ${b(String(l10.n))} times and 20% ${b(String(l20.n))} times; after hitting −20% it typically fell another ${b(U.pct(-l20.medFurther, 1))} (worst ${U.pct(-l20.worstFurther, 0)}). The median 1-year return after the trigger was ${U.pct(l20.f1med, 1)} versus ${U.pct(B.f1med, 1)} for any day. With your funding plan, the best “wait for −X%” threshold was ${b('−' + best.x + '%')} (IRR ${U.pct(best.r.irr, 2)}) against ${b(U.pct(base.irr, 2))} for investing at once; the default three-step ladder (−10/−20/−30%) returned ${U.pct(ladder.irr, 2)}. The cost of waiting is holding cash for long stretches (see the exposure column).` }));
+    out.appendChild(h('div', { class: 'takeaway', html: `In this window ${b(U.assetName(key, true))} fell 10% from a high ${b(String(l10.n))} times and 20% ${b(String(l20.n))} times; after hitting −20% it typically fell another ${b(U.pct(-l20.medFurther, 1))} (worst ${U.pct(-l20.worstFurther, 0)}). The median 1-year return after the trigger was ${U.pct(l20.f1med, 1)} versus ${U.pct(B.f1med, 1)} for any day. With your funding plan, the best “wait for −X%” threshold was ${b('−' + best.x + '%')} (IRR ${U.pct(best.r.irr, 2)}) against ${b(U.pct(base.irr, 2))} for investing at once; the default three-step ladder (−10/−20/−30%) returned ${U.pct(ladder.irr, 2)}. The cost of waiting is holding cash for long stretches (see the exposure column).` }));
   };
 
   // ---------- robustness ----------
@@ -951,7 +947,7 @@
     const bar = h('div', { class: 'progress', hidden: true }, h('i'));
     const btn = h('button', { class: 'btn', type: 'button' }, t('lab.runRobust'));
     const ctl = h('div', { class: 'controls' },
-      U.ctl(t('lab.horizon'), U.select('rbH', [5, 10, 15, 20, 25, 30].map(y => [y, y + (I18N.lang === 'zh' ? ' 年' : ' yrs')]), R.horizon, (v) => { R.horizon = +v; save(); })),
+      U.ctl(t('lab.horizon'), U.select('rbH', [5, 10, 15, 20, 25, 30].map(y => [y, y + ' yrs']), R.horizon, (v) => { R.horizon = +v; save(); })),
       U.ctl(t('lab.step'), U.select('rbS', [[1, t('f.M')], [3, t('f.Q')], [6, t('f.H')], [12, t('f.Y')]], R.step, (v) => { R.step = +v; save(); })),
       U.ctl(t('lab.metric'), U.select('rbM', [['irr', t('k.irr')], ['final', t('k.final')], ['mdd', t('k.mdd')], ['maxLoss', t('k.maxLossPct')]], R.metric, (v) => { R.metric = v; save(); if (V.robustRes) drawRobust(out, V.robustRes); })),
       U.ctl(t('lab.robustRange'), U.select('rbR', [['period', t('lab.robustInPeriod')], ['full', t('lab.robustFull')]], R.range || 'period', (v) => { R.range = v; save(); })),
@@ -972,7 +968,7 @@
   function drawRobust(out, RR) {
     U.disposeIn(out); U.clear(out);
     const tk = U.tokens(); const { res, act } = RR; const M = LS.robust.metric;
-    if (!res.starts.length) { out.appendChild(h('div', { class: 'empty' }, I18N.lang === 'zh' ? '区间不足以容纳所选持有年数。' : 'The period is too short for the chosen horizon.')); return; }
+    if (!res.starts.length) { out.appendChild(h('div', { class: 'empty' }, 'The period is too short for the chosen horizon.')); return; }
     const get = (x) => x == null ? NaN : M === 'maxLoss' ? x.maxLoss : x[M];
     const fmt = M === 'final' ? (v) => U.moneyShort(v) : (v) => U.pct(v, 1);
     const hib = true; // all metrics: higher is better (mdd/maxLoss negative)
@@ -981,9 +977,9 @@
     // best count
     const bestCnt = act.map(() => 0);
     for (let w = 0; w < nW; w++) { let bk = -1, bv = -Infinity; act.forEach((_, k) => { const v = get(res.results[k][w]); if (U.isNum(v) && v > bv) { bv = v; bk = k; } }); if (bk >= 0) bestCnt[bk]++; }
-    out.appendChild(h('p', { class: 'note' }, (I18N.lang === 'zh' ? `共 ${nW} 个起点：${Core.iso(res.starts[0])} 至 ${Core.iso(res.starts[nW - 1])}，每个持有 ${LS.robust.horizon} 年。` : `${nW} start dates from ${Core.iso(res.starts[0])} to ${Core.iso(res.starts[nW - 1])}, each held ${LS.robust.horizon} years.`)));
+    out.appendChild(h('p', { class: 'note' }, `${nW} start dates from ${Core.iso(res.starts[0])} to ${Core.iso(res.starts[nW - 1])}, each held ${LS.robust.horizon} years.`));
     const tbl = h('table', { class: 'data' },
-      h('thead', null, h('tr', null, h('th', null, t('lab.strategies')), h('th', null, t('cmp.min')), h('th', null, t('cmp.p10')), h('th', null, t('cmp.median')), h('th', null, '90%'), h('th', null, t('cmp.maxv')), h('th', null, I18N.lang === 'zh' ? '均值' : 'Mean'), h('th', null, I18N.lang === 'zh' ? '排名第一' : 'Ranked #1'))),
+      h('thead', null, h('tr', null, h('th', null, t('lab.strategies')), h('th', null, t('cmp.min')), h('th', null, t('cmp.p10')), h('th', null, t('cmp.median')), h('th', null, '90%'), h('th', null, t('cmp.maxv')), h('th', null, 'Mean'), h('th', null, 'Ranked #1'))),
       h('tbody', null, stats.map((x, k) => h('tr', null, h('td', null, h('span', { class: 'th-asset' }, h('i', { style: { background: tk.s[x.s.slot || 0] } }), nameOf(x.s))),
         h('td', null, fmt(x.min)), h('td', null, fmt(x.p10)), h('td', { style: { fontWeight: 700 } }, fmt(x.med)), h('td', null, fmt(x.p90)), h('td', null, fmt(x.max)), h('td', null, fmt(x.mean)), h('td', null, U.pct(bestCnt[k] / nW, 0))))));
     out.appendChild(h('div', { class: 'table-wrap' }, tbl));
@@ -997,7 +993,7 @@
       if (c1) {
         const series = act.map((s, k) => U.lineSeries(nameOf(s), res.results[k].map((x, w) => [U.ts(res.starts[w]), get(x)]), tk.s[s.slot || 0], { sampling: null, lineStyle: { width: 1.6, color: tk.s[s.slot || 0] } }));
         const o = U.baseOpt(tk, { xAxis: U.timeAxis(tk), yAxis: U.valAxis(tk, { axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => M === 'final' ? U.moneyShort(v) : (v * 100).toFixed(0) + '%' } }), series });
-        o.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); let s2 = U.ttHead((I18N.lang === 'zh' ? '起点 ' : 'Start ') + Core.iso(i)); ps.slice().sort((a, b) => b.value[1] - a.value[1]).forEach(p => { s2 += U.ttRow(p.color, p.seriesName, fmt(p.value[1])); }); return s2; };
+        o.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); let s2 = U.ttHead('Start ' + Core.iso(i)); ps.slice().sort((a, b) => b.value[1] - a.value[1]).forEach(p => { s2 += U.ttRow(p.color, p.seriesName, fmt(p.value[1])); }); return s2; };
         c1.setOption(o, true);
       }
       const c2 = U.chart(boxEl);
@@ -1019,7 +1015,7 @@
         }), true);
       }
     });
-    out.appendChild(h('p', { class: 'note' }, I18N.lang === 'zh' ? '箱线图与胜率矩阵的编号对应上表策略顺序。胜率矩阵：第 i 行第 j 列 = 策略 i 在多少比例的起点上优于策略 j。' : 'Numbers in the box plot and matrix follow the table order. Matrix cell (row i, column j) = share of start dates where strategy i beat strategy j.'));
+    out.appendChild(h('p', { class: 'note' }, 'Numbers in the box plot and matrix follow the table order. Matrix cell (row i, column j) = share of start dates where strategy i beat strategy j.'));
   }
 
   // ---------- Monte Carlo ----------
@@ -1039,14 +1035,14 @@
         h('div', { class: 'stat' }, h('span', null, t('lab.mcP95')), h('b', null, U.moneyShort(q(4))), h('em', null, 'IRR ' + U.pct(irrOf(q(4)), 1))),
         h('div', { class: 'stat' }, h('span', null, t('lab.mcBelow')), h('b', null, U.pct(mc.pBelow, 1)))));
       const el = h('div', { class: 'chart' }); out.appendChild(el);
-      out.appendChild(h('p', { class: 'note' }, (I18N.lang === 'zh' ? `抽样自 ${U.assetName(P.key, true)} 的 ${mc.months} 个历史月度收益（${Core.iso(a).slice(0, 7)} 起）${P.real ? '，已扣除通胀（金额为今日购买力）' : ''}。深色带 = 25%–75% 情景，浅色带 = 5%–95% 情景。` : `Resampled from ${mc.months} historical monthly returns of ${U.assetName(P.key, true)} (from ${Core.iso(a).slice(0, 7)})${P.real ? ', after inflation (today\'s dollars)' : ''}. Dark band = 25th–75th percentile, light band = 5th–95th.`)));
+      out.appendChild(h('p', { class: 'note' }, `Resampled from ${mc.months} historical monthly returns of ${U.assetName(P.key, true)} (from ${Core.iso(a).slice(0, 7)})${P.real ? ', after inflation (today\'s dollars)' : ''}. Dark band = 25th–75th percentile, light band = 5th–95th.`));
       requestAnimationFrame(() => {
         const c = U.chart(el); if (!c) return;
         const xs = Array.from({ length: mc.H + 1 }, (_, m) => (m / 12).toFixed(2));
         const band = (lo, hi) => Array.from(mc.bands[lo], (v, m) => mc.bands[hi][m] - v);
         const col = tk.s[1];
         c.setOption(U.baseOpt(tk, {
-          xAxis: U.catAxis(tk, xs, { boundaryGap: false, axisLabel: { color: tk.muted, fontSize: 11.5, interval: (i) => i % (12 * Math.max(1, Math.ceil(P.years / Math.max(2, Math.floor(el.clientWidth / 56))))) === 0, formatter: (v) => Math.round(+v) + (I18N.lang === 'zh' ? '年' : 'y') } }),
+          xAxis: U.catAxis(tk, xs, { boundaryGap: false, axisLabel: { color: tk.muted, fontSize: 11.5, interval: (i) => i % (12 * Math.max(1, Math.ceil(P.years / Math.max(2, Math.floor(el.clientWidth / 56))))) === 0, formatter: (v) => Math.round(+v) + 'y' } }),
           yAxis: U.valAxis(tk, { axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => U.moneyShort(v) } }),
           series: [
             { name: 'p5', type: 'line', data: Array.from(mc.bands[0]), stack: 'b1', lineStyle: { width: 0 }, showSymbol: false, silent: true },
@@ -1058,12 +1054,12 @@
           ],
         }), true);
         const o = c.getOption();
-        c.setOption({ tooltip: Object.assign({}, o.tooltip[0], { formatter: (ps) => { const m = ps[0].dataIndex; return U.ttHead((m / 12).toFixed(1) + (I18N.lang === 'zh' ? ' 年' : ' yrs')) + U.ttRow(col, '95%', U.money(mc.bands[4][m])) + U.ttRow(col, '75%', U.money(mc.bands[3][m])) + U.ttRow(col, t('cmp.median'), U.money(mc.bands[2][m])) + U.ttRow(col, '25%', U.money(mc.bands[1][m])) + U.ttRow(col, '5%', U.money(mc.bands[0][m])) + U.ttRow(tk.muted, t('lab.mcContrib'), U.money(mc.contrib[m])); } }) });
+        c.setOption({ tooltip: Object.assign({}, o.tooltip[0], { formatter: (ps) => { const m = ps[0].dataIndex; return U.ttHead((m / 12).toFixed(1) + ' yrs') + U.ttRow(col, '95%', U.money(mc.bands[4][m])) + U.ttRow(col, '75%', U.money(mc.bands[3][m])) + U.ttRow(col, t('cmp.median'), U.money(mc.bands[2][m])) + U.ttRow(col, '25%', U.money(mc.bands[1][m])) + U.ttRow(col, '5%', U.money(mc.bands[0][m])) + U.ttRow(tk.muted, t('lab.mcContrib'), U.money(mc.contrib[m])); } }) });
       });
     };
     const ctl = h('div', { class: 'controls' },
       U.ctl(t('asset'), U.select('mcA', ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX'].map(k => [k, U.assetName(k, true)]), P.key, (v) => { P.key = v; save(); run(); })),
-      U.ctl(t('lab.mcSample'), U.select('mcS', [['full', I18N.lang === 'zh' ? '全部历史' : 'Full history'], ['1950', '1950+'], ['2000', '2000+'], ['2010', '2010+']], P.sample, (v) => { P.sample = v; save(); run(); })),
+      U.ctl(t('lab.mcSample'), U.select('mcS', [['full', 'Full history'], ['1950', '1950+'], ['2000', '2000+'], ['2010', '2010+']], P.sample, (v) => { P.sample = v; save(); run(); })),
       U.ctl(t('lab.mcYears'), U.numInput('mcY', P.years, (v) => { P.years = Math.max(1, Math.min(50, Math.round(v))); save(); run(); }, { min: 1, max: 50, style: 'width:80px' })),
       U.ctl(t('lab.initial'), U.numInput('mcI', P.initial, (v) => { P.initial = Math.max(0, v); save(); run(); }, { min: 0, step: 1000 })),
       U.ctl(t('lab.mcMonthly'), U.numInput('mcM', P.monthly, (v) => { P.monthly = Math.max(0, v); save(); run(); }, { min: 0, step: 100 })),
@@ -1091,7 +1087,7 @@
       if (f.freq === 'none' || !(+f.amount > 0)) { sumEl.textContent = t('lab.planSummaryNoRec', { i: U.money(+f.initial || 0) }); return; }
       const inf = Engine.inflows({ initial: +f.initial || 0, amount: +f.amount || 0, freq: f.freq, growth: (+f.growth || 0) / 100 }, n0, Math.max(n0, n1));
       let tot = 0; for (let i = n0; i <= n1; i++) tot += inf[i];
-      sumEl.textContent = t('lab.planSummary', { i: U.money(+f.initial || 0), a: U.money(+f.amount || 0), f: I18N.lang === 'zh' ? t('f.' + f.freq) : t('f.' + f.freq).toLowerCase(), t: U.money(tot) });
+      sumEl.textContent = t('lab.planSummary', { i: U.money(+f.initial || 0), a: U.money(+f.amount || 0), f: t('f.' + f.freq).toLowerCase(), t: U.money(tot) });
     };
     const fundGrid = h('div', { class: 'fieldgrid' },
       U.ctl(t('lab.initial'), U.numInput('fInit', f.initial, (v) => { f.initial = Math.max(0, v); save(); updSum(); V.renderStrategies(); V.schedule(); }, { min: 0, step: 1000 })),
@@ -1109,9 +1105,9 @@
     const config = h('aside', { class: 'lab-config' },
       h('div', { class: 'card stack' }, U.ctl(t('lab.scenario'), scSel), U.ctl(t('lab.defaultAsset'), assetSel),
         h('div', { class: 'fieldgrid' }, U.ctl(t('start'), startIn), U.ctl(t('end'), endIn)),
-        h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'lbl xs muted' }, I18N.lang === 'zh' ? '从著名的高点/低点开始' : 'Start at a famous top or bottom'), presetBtns)),
+        h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'lbl xs muted' }, 'Start at a famous top or bottom'), presetBtns)),
       h('div', { class: 'card stack' }, h('div', { class: 'panel-title' }, t('lab.funding')), fundGrid),
-      h('details', { class: 'card', open: (root.innerWidth || 1200) > 980 }, h('summary', { class: 'panel-title', style: { cursor: 'pointer' } }, t('lab.strategies') + ' (' + LS.strategies.filter(s => s.on).length + '/' + LS.strategies.length + ')' + ((root.innerWidth || 1200) > 980 ? '' : (I18N.lang === 'zh' ? ' · 点击展开编辑' : ' · tap to edit'))), h('div', { style: { marginTop: '10px' } }, V.parts.strats)),
+      h('details', { class: 'card', open: (root.innerWidth || 1200) > 980 }, h('summary', { class: 'panel-title', style: { cursor: 'pointer' } }, t('lab.strategies') + ' (' + LS.strategies.filter(s => s.on).length + '/' + LS.strategies.length + ')' + ((root.innerWidth || 1200) > 980 ? '' : ' · tap to edit')), h('div', { style: { marginTop: '10px' } }, V.parts.strats)),
       h('details', { class: 'card' }, h('summary', { class: 'panel-title', style: { cursor: 'pointer' } }, t('lab.advanced')), h('div', { style: { marginTop: '10px' } }, adv)),
     );
     V.parts.out = h('div', { class: 'stack' });
