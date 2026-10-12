@@ -210,6 +210,58 @@
     return { levels: out, base };
   };
 
+  // What happened after a fall from a high (SOXL Deep Dive, S6).
+  // v: a value series on the master calendar, used over [s, e].
+  // o: { lo, hi }      condition: lo <= fall below the reference high <= hi (fractions; hi may be omitted)
+  //    ref, win       reference high: 'ath' = highest close since s; 'roll' = highest close of the last `win` sessions
+  //    first          false: every qualifying day is a sample; true: only the first qualifying day of each fall
+  //    months         forward horizons in calendar months
+  // A fall starts on the first qualifying day after a close at the reference high and lasts until the next such
+  // close; every qualifying day belongs to the fall it occurs in. Forward returns end on the last session on or
+  // before the same calendar date m months later; a horizon that runs past e has no sample.
+  C.dipForward = function (v, s, e, o) {
+    const lo = o.lo, hi = o.hi == null ? Infinity : o.hi, win = o.ref === 'roll' ? Math.max(1, Math.round(o.win || 252)) : 0;
+    const n = e - s + 1; const dd = new Float64Array(n); const hiAt = new Int32Array(n);
+    if (!win) { let pk = -Infinity, pkI = s; for (let i = s; i <= e; i++) { if (v[i] >= pk) { pk = v[i]; pkI = i; } dd[i - s] = v[i] / pk - 1; hiAt[i - s] = pkI; } }
+    else { // sliding-window maximum (monotonic deque; ties keep the latest day so that a new high reads 0)
+      const dq = new Int32Array(n); let h0 = 0, h1 = 0;
+      for (let i = s; i <= e; i++) {
+        while (h1 > h0 && v[dq[h1 - 1]] <= v[i]) h1--;
+        dq[h1++] = i;
+        while (dq[h0] <= i - win) h0++;
+        dd[i - s] = v[i] / v[dq[h0]] - 1; hiAt[i - s] = dq[h0];
+      }
+    }
+    const eps = [], days = [], epOf = []; let armed = true, cur = null;
+    for (let i = s; i <= e; i++) {
+      const d = dd[i - s];
+      if (d >= 0) { if (cur) cur.endI = i; cur = null; armed = true; }
+      if (-d >= lo && -d <= hi) {
+        if (armed) { cur = { i, peakI: hiAt[i - s], depth: d, lowI: i, endI: -1, nDays: 0 }; eps.push(cur); armed = false; }
+        cur.nDays++; days.push(i); epOf.push(eps.length - 1);
+      }
+      if (cur && v[i] < v[cur.lowI]) cur.lowI = i; // lowest close from the first qualifying day until the fall ends
+    }
+    for (const p of eps) { p.recI = -1; const pk = v[p.peakI]; for (let i = p.i + 1; i <= e; i++) if (v[i] >= pk) { p.recI = i; break; } }
+    const D = Core.days;
+    const endOf = (i, m) => { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) return -1; const j = Core.idxOnOrBefore(t); return j > i && D[j] >= t - 7 ? j : -2; };
+    const samples = o.first ? eps.map((p, k) => [p.i, k]) : days.map((i, k) => [i, epOf[k]]);
+    const H = (o.months || []).map(m => {
+      const r = [], ann = [], ep = [], at = [], base = [];
+      for (const [i, k] of samples) { const j = endOf(i, m); if (j < 0) continue; const x = v[j] / v[i] - 1; r.push(x); ann.push(Math.pow(1 + x, 12 / m) - 1); ep.push(k); at.push(i); }
+      for (let i = s; i <= e; i++) { const j = endOf(i, m); if (j === -1) break; if (j >= 0) base.push(v[j] / v[i] - 1); }
+      return { m, r, ann, ep, at, base, baseAnn: base.map(x => Math.pow(1 + x, 12 / m) - 1), nEp: new Set(ep).size };
+    });
+    return { s, e, dd, hiAt, eps, days, epOf, H, endOf };
+  };
+  // Mean, share above zero, extremes and any quantile of a sample (linear interpolation, as Core.quantile)
+  C.summary = function (arr) {
+    const a = Float64Array.from(arr).sort(); const n = a.length;
+    let sum = 0, pos = 0; for (const x of a) { sum += x; if (x > 0) pos++; }
+    return { n, mean: n ? sum / n : NaN, pos: n ? pos / n : NaN, min: n ? a[0] : NaN, max: n ? a[n - 1] : NaN,
+      q: (p) => { if (!n) return NaN; const t = (n - 1) * p, lo = Math.floor(t), hi = Math.ceil(t); return a[lo] + (a[hi] - a[lo]) * (t - lo); } };
+  };
+
   // Leverage curve (daily reset)
   C.leverageStats = function (base, i0, i1, L, fee, spread) {
     const rf = Core.rfDaily; let x = 1, peak = 1, mdd = 0; let dead = false;

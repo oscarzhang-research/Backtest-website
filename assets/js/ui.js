@@ -52,10 +52,16 @@
   U.moneyShort = (x) => {
     if (!isNum(x)) return '—';
     const neg = x < 0; const a = Math.abs(x); let s;
-    if (a >= 1e9) s = (a / 1e9).toFixed(2) + 'B';
-    else if (a >= 1e6) s = (a / 1e6).toFixed(2) + 'M';
-    else if (a >= 1e4) s = (a / 1e3).toFixed(1) + 'K';
-    else s = Math.round(a).toLocaleString('en-US');
+    if (I.lang === 'zh') {
+      if (a >= 1e8) s = (a / 1e8).toFixed(a >= 1e10 ? 0 : 2) + '亿';
+      else if (a >= 1e4) s = (a / 1e4).toFixed(a >= 1e6 ? 0 : 1) + '万';
+      else s = Math.round(a).toLocaleString('en-US');
+    } else {
+      if (a >= 1e9) s = (a / 1e9).toFixed(2) + 'B';
+      else if (a >= 1e6) s = (a / 1e6).toFixed(2) + 'M';
+      else if (a >= 1e4) s = (a / 1e3).toFixed(1) + 'K';
+      else s = Math.round(a).toLocaleString('en-US');
+    }
     return (neg ? '−$' : '$') + s.replace(/(\.\d*?[1-9])0+(?=[^0-9]|$)/, '$1').replace(/\.0+(?=[^0-9]|$)/, '');
   };
   U.mult = (x) => isNum(x) ? (x >= 100 ? Math.round(x).toLocaleString('en-US') : x >= 10 ? x.toFixed(1) : x.toFixed(2)) + '×' : '—';
@@ -199,6 +205,8 @@
   U.ttRow = (color, name, val) => `<div style="display:flex;align-items:center;gap:8px;line-height:1.7"><span style="display:inline-block;width:12px;height:2px;border-radius:2px;background:${color}"></span><b style="font-variant-numeric:tabular-nums;min-width:64px">${val}</b><span style="opacity:.75">${U.esc(name)}</span></div>`;
   U.ttHead = (s) => `<div style="font-weight:700;margin-bottom:2px">${U.esc(s)}</div>`;
   U.fmtAxisPct = (d) => (v) => (v * 100).toFixed(d == null ? 0 : d) + '%';
+  // true when gains are shown in red and losses in green (the Chinese convention; see App.applyColors)
+  U.cnColors = () => typeof document !== 'undefined' && document.documentElement.classList.contains('cn-colors');
   U.heatBg = function (r, cap, tk) { // background colour for heat cells
     if (!isNum(r)) return '';
     const a = Math.min(1, Math.abs(r) / cap) * 0.55 + (r === 0 ? 0 : 0.06);

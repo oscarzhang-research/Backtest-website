@@ -12,7 +12,7 @@
 <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700;8..60,900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@700;900&family=Source+Code+Pro:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700;8..60,900&display=swap">
 <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -24,6 +24,8 @@
         <span class="brand-text"><span class="brand-name" data-i18n="brand">The Long Run</span><span class="brand-sub" data-i18n="brandSub">S&amp;P 500 · Nasdaq-100 · SMH · SOXX · VGT · SOXL</span></span>
       </a>
       <div class="tools">
+        <button class="tool-btn" id="btnLang" type="button" lang="zh-CN" title="切换到中文" aria-label="切换到中文"><span id="btnLangTxt">中文</span></button>
+        <button class="tool-btn" id="btnColor" type="button" title="Switch up/down color convention" aria-label="Switch up/down color convention"><span class="dot" style="background:var(--pos)"></span><span class="lbl" id="btnColorTxt">Green = up</span></button>
         <button class="tool-btn" id="btnTheme" type="button" aria-label="Theme"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5 A6.5 6.5 0 0 1 8 14.5 Z" fill="currentColor"/></svg><span class="lbl" id="btnThemeTxt">System</span></button>
       </div>
     </div>
