@@ -5,6 +5,8 @@ What was added in this round, and what could come next. The next steps are order
 ## Added in this round
 
 - **English and Chinese.** All ten tabs are in English by default; a header button switches to Chinese, and a separate button switches the up/down colors (green-up or red-up).
+- **SOXL Deep Dive S6: after a fall from the high.** Pick the fall (e.g. at least 50%, or a band such as 50–60%), the reference high (all-time or rolling), the sampling (every qualifying day or the first day of each fall), the horizons and the statistics; the page shows the distribution of total or annualized returns afterwards against buying on any day, and lists the falls one by one.
+  - Since 2010 SOXL closed at least 50% below its all-time high on 32% of trading days, in seven separate falls. A year later the median return was +97% (any day: +54%), but 58% of those days come from the 2022 fall alone.
 - **Repository and tooling.** The single-file artifact is split into modules, ECharts is bundled locally, and the repository has 43 unit tests, a browser smoke test, CI and a GitHub Pages workflow. The unit tests cover data integrity, metric definitions, engine invariants, a no-look-ahead test for 26 strategies, and replications of figures from J.P. Morgan, Vanguard, Schwab and the fund issuers.
 - **High-Sharpe D3 and F6: where the edge comes from.** The plan is rebuilt one ingredient at a time and compared with four static portfolios that use no rules.
   - On daily data from 2005 to 2026 the Sharpe ratio climbs in steps: SPY alone 0.56, the same five ETFs at equal weights 0.82, inverse-volatility weights 0.89, and the 200-day trend filter 0.99. So about 60% of the gain comes from the asset mix alone.
