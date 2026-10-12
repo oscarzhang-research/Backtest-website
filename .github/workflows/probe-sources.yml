@@ -1,0 +1,39 @@
+name: Probe data sources (temporary)
+on:
+  push:
+    branches: [claude/great-johnson-rp3hbj]
+    paths: [.github/workflows/probe-sources.yml, scripts/probe-sources.mjs]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Node fetch
+        continue-on-error: true
+        run: node scripts/probe-sources.mjs
+      - name: curl
+        continue-on-error: true
+        run: |
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+          for u in "https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=5d&interval=1d" "https://query2.finance.yahoo.com/v8/finance/chart/SPY?range=5d&interval=1d"; do
+            code=$(curl -s -o /tmp/out -w '%{http_code}' -A "$UA" --max-time 20 "$u"); echo "== $code $u"; head -c 200 /tmp/out; echo; done
+      - name: yfinance (curl_cffi browser impersonation)
+        continue-on-error: true
+        run: |
+          pip install --quiet yfinance
+          python - <<'PY'
+          import yfinance as yf
+          print('yfinance', yf.__version__)
+          for s in ['SPY', '^GSPC', 'TLT', '^VIX', 'SOXL']:
+              try:
+                  h = yf.Ticker(s).history(start='2026-09-01', interval='1d', auto_adjust=False, actions=True)
+                  print(s, len(h), 'rows'); print(h[['Close', 'Dividends', 'Stock Splits']].tail(4).to_string())
+              except Exception as e:
+                  print(s, 'ERROR', repr(e)[:300])
+          PY
