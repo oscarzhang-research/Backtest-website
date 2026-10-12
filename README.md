@@ -45,7 +45,7 @@ Full details are on the Methodology tab.
 | S&P 500 dividends (monthly) | 1928 → 2023-06, then SPY-implied | Robert Shiller via datahub.io |
 | SPY, QQQ, SOXX, TLT, IEF, GLD | from 1995 / 1999 / 2001 / 2002 / 2004 | Yahoo closes + dividends + splits (Johnbrick123/sp500-data) |
 | SMH, VGT | from 2006-09-29 | yfinance adjusted closes (public cache) |
-| SOXL, TQQQ | from 2010 | split-adjusted closes; SOXL simulated from SOXX before 2010 |
+| SOXL, TQQQ | from 2010 (simulated from 2001 / 1999) | Yahoo full-precision closes + distributions; before launch SOXL\* = 3× the PHLX Semiconductor index, TQQQ\* = 3× QQQ, calibrated on the real funds ([`scripts/rebuild-leveraged.js`](scripts/rebuild-leveraged.js)) |
 | Ten chip stocks | mostly from 1995 | Yahoo closes + dividends + splits |
 | T-bills · CPI-U · VIX | 1928+ · 1913+ · 1990+ | Ken French, FRED DTB3, then the U.S. Treasury · BLS · CBOE, then Yahoo |
 | 10-year yield · gold · USD/CNY (long-run and currency views) | 1953+ · 1960+ · 1981+ | FRED GS10, then the U.S. Treasury · World Bank · FRED H.10, then Yahoo |

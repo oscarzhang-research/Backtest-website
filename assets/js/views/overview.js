@@ -90,10 +90,10 @@
       SPX: { zh: '价格：1927-12-30 起；股息：Shiller（至2023-06）+ SPY 隐含股息率', en: 'Prices from 1927-12-30; dividends: Shiller (to 2023-06) + SPY-implied yield' },
       QQQ: { zh: 'QQQ 全收益（已扣费）；指数本身 1985 年发布', en: 'QQQ total return (net of fees); the index itself launched in 1985' },
       SMH: { zh: '日频数据自 2006-09-29；现ETF 2011-12-20 成立（此前为 HOLDRS）', en: 'Daily data from 2006-09-29; current ETF since 2011-12-20 (HOLDRS before)' },
-      SOXX: { zh: '自首个交易日起完整历史；2021 年更换跟踪指数', en: 'Full history from the first trading day; index changed in 2021' },
+      SOXX: { zh: '自首个交易日起完整历史（2010-10 以前为 IGW）；2010、2021 年两次更换跟踪指数', en: 'Full history from the first trading day (IGW until 2010-10); index changed in 2010 and 2021' },
       VGT: { zh: '日频数据自 2006-09-29；基金 2004-01-26 成立', en: 'Daily data from 2006-09-29; fund launched 2004-01-26' },
       SPY: { zh: '数据自 1995-01-03（基金 1993-01-22 成立）', en: 'Data from 1995-01-03 (fund launched 1993-01-22)' },
-      SOXL: { zh: '每日 3 倍杠杆；价格口径（不含少量分红）；2010-03-12 起真实数据', en: 'Daily 3× leverage; price only (small distributions excluded); real data from 2010-03-12' },
+      SOXL: { zh: '每日 3 倍杠杆；全收益（分红再投资）；2010-03-11 上市起真实数据', en: 'Daily 3× leverage; total return (distributions reinvested); real data from the 2010-03-11 launch' },
     };
     const card = h('article', { class: 'asset-card', style: { '--c': color } },
       h('div', { class: 'top' }, h('span', { class: 'tk' }, U.assetName(key, true)), h('span', { class: 'nm' }, t('a.' + key)), h('span', { class: 'kind' }, kind)),

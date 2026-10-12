@@ -13,7 +13,12 @@
   const XS = Object.assign({ start: '2010', mode: 'lump', hz: 5, period: 'all' }, U.store.get('soxl', {}));
   const save = () => U.store.set('soxl', XS);
   const V = { jobs: 0 };
-  const SIM_END = () => Core.S.SOXL.s; // first real SOXL close (2010-03-12)
+  const SIM_END = () => Core.S.SOXL.s; // SOXL's launch (2010-03-11): SOXL* is simulated up to and including this close
+  const CAL = () => Core.soxlCal || {};
+  // the 1× series set against SOXL: SOXX*, the PHLX Semiconductor index SOXL* is 3× of until SOXL's launch, SOXX afterwards
+  // (identical to SOXX from the launch on, so it only matters when the simulated years are in)
+  const UND = () => (Core.S.SOXXU ? 'SOXXU' : 'SOXX');
+  const undNm = (i0) => (i0 < SIM_END() && UND() === 'SOXXU' ? 'SOXX*' : 'SOXX');
   const START_OPTS = () => [['2001', zh() ? '2001 起（含模拟）' : 'From 2001 (incl. sim)'], ['2010', zh() ? '2010 起（真实）' : 'From 2010 (actual)'], ['2015', '2015'], ['2020', '2020'], ['2022', '2022']];
   const startIdx = (k) => k === '2001' ? Core.S.SOXLX.s : k === '2010' ? Core.S.SOXL.s : Core.idxOnOrAfter(Core.parseISO(k + '-01-01'));
   const legendOpt = (tk) => ({ top: 0, left: 0, right: 0, type: (root.innerWidth || 1200) < 640 ? 'scroll' : 'plain', icon: 'roundRect', itemWidth: 12, itemHeight: 8, textStyle: { color: tk.ink2, fontSize: 11.5 }, pageIconColor: tk.ink2, pageIconInactiveColor: tk.ruleStrong, pageTextStyle: { color: tk.muted, fontSize: 11 } });
@@ -34,14 +39,18 @@
     const cur = s.v[s.e] / pk - 1;
     const kv = h('div', { class: 'kv sx-kv' },
       h('div', null, h('span', null, U.lastPxLabel()), h('b', null, px ? '$' + px.toFixed(2) : '—'), h('span', null, (Core.lastPx.SOXL_d || '') + (U.live() ? (zh() ? ' 美东 ' : ' ') + U.live().et + (zh() ? '' : ' NY') : ''))),
-      h('div', null, h('span', null, zh() ? '上市以来年化' : 'CAGR since listing'), h('b', null, U.pct(m.cagr, 1)), h('span', null, (zh() ? '价格口径，' : 'price basis, ') + Core.iso(s.s).slice(0, 7) + '→')),
+      h('div', null, h('span', null, zh() ? '上市以来年化' : 'CAGR since listing'), h('b', null, U.pct(m.cagr, 1)), h('span', null, (zh() ? '全收益，' : 'total return, ') + Core.iso(s.s).slice(0, 7) + '→')),
       h('div', null, h('span', null, zh() ? '年化波动' : 'Volatility'), h('b', null, U.pct(m.vol, 0)), h('span', null, zh() ? 'SOXX 的约 3 倍' : '≈3× SOXX')),
       h('div', null, h('span', null, zh() ? '最大回撤（真实）' : 'Max drawdown (actual)'), h('b', { class: 'neg' }, U.pct(m.mdd, 1)), h('span', null, Core.iso(m.mddPeakI).slice(0, 7) + ' → ' + Core.iso(m.mddTroughI).slice(0, 7))),
       h('div', null, h('span', null, zh() ? '最大回撤（含模拟）' : 'Max drawdown (incl. sim)'), h('b', { class: 'neg' }, U.pct(mx.mdd, 2)), h('span', null, Core.iso(mx.mddPeakI).slice(0, 7) + ' → ' + Core.iso(mx.mddTroughI).slice(0, 7))),
       h('div', null, h('span', null, zh() ? '距历史高点' : 'From all-time high'), h('b', { class: cur < -0.001 ? 'neg' : '' }, U.pct(cur, 1)), h('span', null, Core.asOf)));
     const facts = h('div', { class: 'facts' }, f.facts.slice(0, 4).map(([k, v, note]) => h('div', null, h('span', null, L(k)), h('b', { class: L(v).length > 22 ? 'long' : null }, L(v)), note ? h('em', null, L(note)) : null)));
     return h('div', { class: 'card stack' }, h('div', { class: 'card-head' }, h('span', { class: 'th-asset' }, h('i', { style: { background: colSOXL(tk) } }), h('h3', null, L(f.name))), h('span', { class: 'right' }, h('button', { class: 'btn ghost small', type: 'button', onclick: () => { App.show('funds'); setTimeout(() => { const x = document.getElementById('fund-SOXL'); if (x) x.scrollIntoView({ behavior: 'smooth' }); }, 120); } }, zh() ? '完整档案与官方业绩核对 →' : 'Full profile & official-return check →'))), kv, facts,
-      h('p', { class: 'note' }, zh() ? `“SOXL*”在 ${Core.iso(SIM_END())} 之前是模拟值：SOXX 日总回报 × 3 − 2 × 国库券利率 − 每年 ${((Core.soxlCal && Core.soxlCal.c) * 100 || 2.9).toFixed(1)}% 综合拖累（费率、互换利差与未计分红），用 2010–2026 年真实 SOXL 校准（月度相关 ${(Core.soxlCal && Core.soxlCal.monthlyCorr) || 0.999}、跟踪误差 ${U.pct((Core.soxlCal && Core.soxlCal.monthlyTE) || 0.03, 1)}/年）。真实 SOXL 为价格口径，比官方总回报每年低约 1–1.6 个百分点（分红未计入），结论偏保守。` : `“SOXL*” before ${Core.iso(SIM_END())} is simulated: 3 × SOXX daily total return − 2 × T-bill rate − a ${((Core.soxlCal && Core.soxlCal.c) * 100 || 2.9).toFixed(1)}% annual drag (fees, swap spreads, uncounted distributions), calibrated on real 2010–2026 SOXL (monthly correlation ${(Core.soxlCal && Core.soxlCal.monthlyCorr) || 0.999}, tracking error ${U.pct((Core.soxlCal && Core.soxlCal.monthlyTE) || 0.03, 1)}/yr). Real SOXL is price-only, about 1–1.6 points a year below the official total return, so conclusions here lean conservative.`));
+      h('p', { class: 'note' }, (() => {
+        const c = CAL(), fit = c.fit || ['2010-03-11', '2021-08-24'], cc = U.pct(c.c != null ? c.c : 0.0069, 2), corr = c.monthlyCorr || 0.999, te = U.pct(c.monthlyTE != null ? c.monthlyTE : 0.027, 1);
+        return zh() ? `“SOXL*”到 ${Core.iso(SIM_END())}（SOXL 上市）为止是模拟值：费城半导体指数（SOXL 上市至 2021-08-24 跟踪的指数）的日收益加上 SOXX 的分红，记作“SOXX*”；SOXL* = 3 × SOXX* − 2 × 国库券利率 − 每年 ${cc} 的综合成本，成本用 ${fit[0]} 至 ${fit[1]} 的真实 SOXL 校准（月度相关 ${corr}、跟踪误差 ${te}/年）。上市以后为真实 SOXL（全收益，含分红）。2010-10-15 以前，今天叫 SOXX 的那只基金是 IGW，跟踪的是另一个半导体指数，所以本页凡是拿 SOXL 和 1 倍指数比较的地方，模拟段都用 SOXX*（之后 SOXX* 就是 SOXX）。详见“方法论”。`
+          : `“SOXL*” up to SOXL's launch on ${Core.iso(SIM_END())} is simulated: the daily return of the PHLX Semiconductor index (which SOXL tracked from its launch until 2021-08-24) plus SOXX's distributions — call it “SOXX*” — gives SOXL* = 3 × SOXX* − 2 × the T-bill rate − a ${cc} annual cost, calibrated on real SOXL from ${fit[0]} to ${fit[1]} (monthly correlation ${corr}, tracking error ${te} a year). From the launch on it is real SOXL (total return, distributions included). Until 2010-10-15 the fund now called SOXX was IGW, tracking a different semiconductor index, so wherever this page sets SOXL against its unleveraged index, the simulated years use SOXX* (which is simply SOXX afterwards). See Methodology.`;
+      })()));
   }
 
   // ---------- S1: full history ----------
@@ -49,7 +58,8 @@
     const ctl = h('div', { class: 'controls' }); const el = h('div', { class: 'chart tall' }); const ddEl = h('div', { class: 'chart short' }); const tbl = h('div'); const tw = h('div');
     const draw = () => {
       const i0 = startIdx(XS.start), i1 = Core.N - 1;
-      const keys = [['SOXLX', i0 < SIM_END() ? (zh() ? 'SOXL（含模拟）' : 'SOXL (incl. sim)') : 'SOXL'], ['SOXX', 'SOXX'], ['QQQ', U.assetName('QQQ', true)], ['SPY', 'SPY']];
+      const xn = undNm(i0);
+      const keys = [['SOXLX', i0 < SIM_END() ? (zh() ? 'SOXL（含模拟）' : 'SOXL (incl. sim)') : 'SOXL'], [UND(), xn], ['QQQ', U.assetName('QQQ', true)], ['SPY', 'SPY']];
       const step = Math.max(1, Math.floor((i1 - i0) / 1500));
       const simEnd = SIM_END();
       U.clear(tbl); U.clear(tw);
@@ -72,18 +82,18 @@
         h('tbody', null, ms.map(({ k, m }, q) => h('tr', null, h('td', null, h('span', { class: 'th-asset' }, h('i', { style: { background: U.assetColor(k, tk) } }), keys[q][1])), h('td', { style: { fontWeight: 700 } }, U.moneyShort(10000 * (1 + m.total))), h('td', null, U.pct(m.cagr, 1)), h('td', null, U.pct(m.vol, 0)), h('td', null, U.num(m.sharpe, 2)), h('td', { class: 'neg' }, U.pct(m.mdd, 1)), h('td', null, U.dur(m.longestUWdays)), h('td', null, U.pct(m.worstYear, 1), h('span', { class: 'hint' }, m.worstYearL)), h('td', null, U.pct(m.bestYear, 1), h('span', { class: 'hint' }, m.bestYearL))))))));
       const a = ms[0].m, x = ms[1].m;
       tw.appendChild(take(zh()
-        ? `从 ${Core.iso(i0)} 起，$1 万放在 SOXL${i0 < SIM_END() ? '（2010 年前为模拟）' : ''} 变成 ${b(U.moneyShort(10000 * (1 + a.total)))}（年化 ${b(U.pct(a.cagr, 1))}），放在 SOXX 变成 ${b(U.moneyShort(10000 * (1 + x.total)))}（${U.pct(x.cagr, 1)}）。SOXL 的最大回撤 ${b(U.pct(a.mdd, 1))}，意味着跌掉后需要涨 ${b(U.mult(1 / (1 + a.mdd)))} 才能回本。${XS.start === '2001' ? '从 2001 年开始的人，要等到 2010 年代末才勉强回本：同样的资产，起点不同，结局天差地别。' : '切换上方起点（尤其是“2001 起”）可以看到起点对结局的巨大影响。'}`
-        : `From ${Core.iso(i0)}, $10k in SOXL${i0 < SIM_END() ? ' (simulated before 2010)' : ''} became ${b(U.moneyShort(10000 * (1 + a.total)))} (${b(U.pct(a.cagr, 1))} a year) versus ${b(U.moneyShort(10000 * (1 + x.total)))} in SOXX (${U.pct(x.cagr, 1)}). SOXL's ${b(U.pct(a.mdd, 1))} worst drawdown needs a ${b(U.mult(1 / (1 + a.mdd)))} gain just to break even. ${XS.start === '2001' ? 'An investor starting in 2001 barely broke even by the late 2010s: same asset, different start, wildly different outcome.' : 'Switch the start above (especially “From 2001”) to see how much the starting point matters.'}`));
+        ? `从 ${Core.iso(i0)} 起，$1 万放在 SOXL${i0 < SIM_END() ? '（2010 年前为模拟）' : ''} 变成 ${b(U.moneyShort(10000 * (1 + a.total)))}（年化 ${b(U.pct(a.cagr, 1))}），放在 ${xn} 变成 ${b(U.moneyShort(10000 * (1 + x.total)))}（${U.pct(x.cagr, 1)}）。SOXL 的最大回撤 ${b(U.pct(a.mdd, 1))}，意味着跌掉后需要涨 ${b(U.mult(1 / (1 + a.mdd)))} 才能回本。${XS.start === '2001' ? '从 2001 年开始的人，要等到 2010 年代末才勉强回本：同样的资产，起点不同，结局天差地别。' : '切换上方起点（尤其是“2001 起”）可以看到起点对结局的巨大影响。'}`
+        : `From ${Core.iso(i0)}, $10k in SOXL${i0 < SIM_END() ? ' (simulated before 2010)' : ''} became ${b(U.moneyShort(10000 * (1 + a.total)))} (${b(U.pct(a.cagr, 1))} a year) versus ${b(U.moneyShort(10000 * (1 + x.total)))} in ${xn} (${U.pct(x.cagr, 1)}). SOXL's ${b(U.pct(a.mdd, 1))} worst drawdown needs a ${b(U.mult(1 / (1 + a.mdd)))} gain just to break even. ${XS.start === '2001' ? 'An investor starting in 2001 barely broke even by the late 2010s: same asset, different start, wildly different outcome.' : 'Switch the start above (especially “From 2001”) to see how much the starting point matters.'}`));
     };
     ctl.appendChild(U.ctl(zh() ? '起点' : 'Start', U.seg('sxStart', START_OPTS(), XS.start, (v) => { XS.start = v; save(); draw(); })));
     requestAnimationFrame(draw);
-    return section('sx-hist', 'S1', { zh: '全部历史：SOXL vs SOXX', en: 'The whole history: SOXL vs SOXX' }, { zh: '$1 万的增长（对数坐标）与回撤', en: 'Growth of $10k (log scale) and drawdowns' }, ctl, el, ddEl, tbl, tw);
+    return section('sx-hist', 'S1', { zh: '全部历史：SOXL vs SOXX', en: 'The whole history: SOXL vs SOXX' }, { zh: '$1 万的增长（对数坐标）与回撤；含模拟段时 SOXX* 见页首说明', en: 'Growth of $10k (log scale) and drawdowns; for SOXX* with the simulated years see the note at the top' }, ctl, el, ddEl, tbl, tw);
   }
 
   // ---------- S2: 3x isn't 3x (calendar years) ----------
   function years(tk) {
     const el = h('div', { class: 'chart tall' }); const tw = h('div'); const tblH = h('div');
-    const sx = Core.periodReturns(Core.S.SOXX.v, Core.S.SOXX.s, Core.N - 1, 'Y');
+    const sx = Core.periodReturns(Core.S[UND()].v, Core.S[UND()].s, Core.N - 1, 'Y'); // SOXX* in the simulated years
     const sl = Core.periodReturns(Core.S.SOXLX.v, Core.S.SOXLX.s, Core.N - 1, 'Y');
     const simYear = Core.year[SIM_END()];
     const pts = sx.filter(p => p.full || p.y === Core.year[Core.N - 1]).map(p => { const q = sl.find(z => z.label === p.label); return q ? { y: p.y, x: p.r, s: q.r, sim: p.y < simYear, mixed: p.y === simYear, ytd: !p.full } : null; }).filter(Boolean);
@@ -95,8 +105,8 @@
       const narrow = el.clientWidth < 620;
       c.setOption(U.baseOpt(tk, {
         legend: legendOpt(tk), grid: { left: 8, right: 20, top: 56, bottom: 26, containLabel: true },
-        tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (p) => { if (p.seriesType !== 'scatter') return ''; const d = p.data.d; return U.ttHead(d.y + (d.ytd ? (zh() ? '（年初至今）' : ' (YTD)') : '') + (d.sim ? (zh() ? '（模拟）' : ' (simulated)') : d.mixed ? (zh() ? '（部分模拟）' : ' (partly simulated)') : '')) + U.ttRow(colSOXX(tk), 'SOXX', U.pct(d.x, 1)) + U.ttRow(colSOXL(tk), 'SOXL', U.pct(d.s, 1)) + U.ttRow(tk.s[0], zh() ? '3 × SOXX' : '3 × SOXX', U.pct(3 * d.x, 1)); } },
-        xAxis: U.valAxis(tk, { name: zh() ? 'SOXX 当年收益 →' : 'SOXX calendar-year return →', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tk.muted, fontSize: 11 }, min: +xMin.toFixed(2), max: +xMax.toFixed(2), axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' }, splitLine: { lineStyle: { color: tk.rule } } }),
+        tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (p) => { if (p.seriesType !== 'scatter') return ''; const d = p.data.d; return U.ttHead(d.y + (d.ytd ? (zh() ? '（年初至今）' : ' (YTD)') : '') + (d.sim ? (zh() ? '（模拟）' : ' (simulated)') : d.mixed ? (zh() ? '（部分模拟）' : ' (partly simulated)') : '')) + U.ttRow(colSOXX(tk), d.sim || d.mixed ? 'SOXX*' : 'SOXX', U.pct(d.x, 1)) + U.ttRow(colSOXL(tk), d.sim || d.mixed ? 'SOXL*' : 'SOXL', U.pct(d.s, 1)) + U.ttRow(tk.s[0], d.sim || d.mixed ? '3 × SOXX*' : '3 × SOXX', U.pct(3 * d.x, 1)); } },
+        xAxis: U.valAxis(tk, { name: zh() ? 'SOXX 当年收益（模拟年份为 SOXX*）→' : 'SOXX calendar-year return (SOXX* in simulated years) →', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tk.muted, fontSize: 11 }, min: +xMin.toFixed(2), max: +xMax.toFixed(2), axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' }, splitLine: { lineStyle: { color: tk.rule } } }),
         yAxis: U.valAxis(tk, { name: zh() ? 'SOXL 当年收益' : 'SOXL calendar-year return', nameGap: 10, nameTextStyle: { color: tk.muted, fontSize: 11, align: 'left' }, min: -1, max: +yMax.toFixed(2), axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }),
         series: [
           { name: zh() ? '简单 3 倍（3 × SOXX）' : 'Naive 3× (3 × SOXX)', type: 'line', data: [[-1 / 3, -1], [Math.min(xMax, yMax / 3), Math.min(3 * xMax, yMax)]], showSymbol: false, lineStyle: { color: tk.ruleStrong, type: 'dashed', width: 1.2 }, itemStyle: { color: tk.ruleStrong }, silent: true, z: 1 },
@@ -114,11 +124,12 @@
     const below = gaps.filter(g => g.g < 0).length;
     tblH.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data heat' },
       h('thead', null, h('tr', null, h('th', null, zh() ? '年份' : 'Year'), h('th', null, 'SOXX'), h('th', null, '3 × SOXX'), h('th', null, 'SOXL'), h('th', null, zh() ? 'SOXL − 3×SOXX' : 'SOXL − 3×SOXX'))),
-      h('tbody', null, pts.slice().reverse().map(p => h('tr', null, h('td', null, String(p.y) + (p.ytd ? '*' : '') + (p.sim ? (zh() ? ' 模拟' : ' sim') : p.mixed ? (zh() ? ' 部分模拟' : ' part-sim') : '')), h('td', { style: { background: U.heatBg(p.x, 1, tk) } }, U.pct(p.x, 1)), h('td', null, U.pct(3 * p.x, 1)), h('td', { style: { background: U.heatBg(p.s, 2, tk), fontWeight: 600 } }, U.pct(p.s, 1)), h('td', { class: U.signCls(p.s - 3 * p.x) }, U.pct(p.s - 3 * p.x, 1, true))))))));
+      h('tbody', null, pts.slice().reverse().map(p => h('tr', null, h('td', null, String(p.y) + (p.ytd ? '*' : '') + (p.sim ? (zh() ? ' 模拟' : ' sim') : p.mixed ? (zh() ? ' 部分模拟' : ' part-sim') : '')), h('td', { style: { background: U.heatBg(p.x, 1, tk) } }, U.pct(p.x, 1)), h('td', null, U.pct(3 * p.x, 1)), h('td', { style: { background: U.heatBg(p.s, 2, tk), fontWeight: 600 } }, U.pct(p.s, 1)), h('td', { class: U.signCls(p.s - 3 * p.x) }, U.pct(p.s - 3 * p.x, 1, true))))))),
+      h('p', { class: 'note' }, zh() ? '模拟年份的 SOXX 一栏为 SOXX*（费城半导体指数加 SOXX 分红），SOXL 一栏为 SOXL*。' : 'In simulated years the SOXX column is SOXX* (the PHLX index plus SOXX\'s distributions) and the SOXL column is SOXL*.'));
     tw.appendChild(take(zh()
       ? `2011–2025 年的 ${real.length} 个完整年份里，SOXL 有 ${b(below + ' 年')}跑输“3 × SOXX”。偏差最大的不利年份是 ${b(String(worstGap.y))}（SOXX ${U.pct(worstGap.p.x, 1)}，SOXL ${U.pct(worstGap.p.s, 1)}，比 3 倍少 ${U.pct(-worstGap.g, 0)}），最有利的是 ${b(String(bestGap.y))}（多 ${U.pct(bestGap.g, 0)}）。规律：趋势顺畅的年份（点在虚线上方），复利会让杠杆“超过 3 倍”；来回震荡的年份（波动大），每日重置会持续损耗。两条曲线是 (1+r)³·e^(−3σ²) − 1 的理论值：同样涨 30%，波动 45% 的年份 SOXL 只能赚到波动 25% 年份的一部分。`
       : `In ${real.length} full actual years since 2011, SOXL trailed “3 × SOXX” in ${b(below)}. The worst gap was ${b(String(worstGap.y))} (SOXX ${U.pct(worstGap.p.x, 1)}, SOXL ${U.pct(worstGap.p.s, 1)}: ${U.pct(-worstGap.g, 0)} short of 3×), the best ${b(String(bestGap.y))} (${U.pct(bestGap.g, 0)} ahead). In smooth trending years (points above the dashed line) compounding lets leverage beat 3×; in choppy, volatile years the daily reset keeps bleeding. The curves are the theoretical (1+r)³·e^(−3σ²) − 1: for the same +30% year, a 45%-vol year leaves SOXL with far less than a 25%-vol year.`));
-    return section('sx-years', 'S2', { zh: '“3 倍”不是 3 倍：逐年对照', en: '“3×” is not 3×: year by year' }, { zh: '每个点是一个自然年；空心点为模拟年份，* 为年初至今', en: 'One point per calendar year; hollow = simulated, * = year to date' }, el, tw, h('details', null, h('summary', { class: 'linkbtn' }, zh() ? '展开逐年数据表' : 'Show the yearly table'), tblH));
+    return section('sx-years', 'S2', { zh: '“3 倍”不是 3 倍：逐年对照', en: '“3×” is not 3×: year by year' }, { zh: '每个点是一个自然年；空心点为模拟年份（SOXL* 对 SOXX*），* 为年初至今', en: 'One point per calendar year; hollow = simulated (SOXL* against SOXX*), * = year to date' }, el, tw, h('details', null, h('summary', { class: 'linkbtn' }, zh() ? '展开逐年数据表' : 'Show the yearly table'), tblH));
   }
 
   // ---------- S3: holding-period odds ----------
@@ -128,7 +139,7 @@
     const draw = () => {
       const key = XS.period === 'all' ? 'SOXLX' : 'SOXL';
       const a = XS.period === 'all' ? Core.S.SOXLX.s : Core.S.SOXL.s, e = Core.N - 1;
-      const L3 = Core.S[key].v, X = Core.S.SOXX.v;
+      const L3 = Core.S[key].v, X = Core.S[UND()].v, xn = undNm(a);
       const rows = HS.map(([H, lab]) => {
         let n = 0, beat = 0, beat3 = 0, lossUp = 0, loss = 0; const rl = [], rx = [];
         for (let i = a; i + H <= e; i++) {
@@ -145,19 +156,19 @@
           tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, valueFormatter: (v) => U.pct(v, 1) },
           xAxis: U.catAxis(tk, rows.map(r => r.lab), { axisLabel: { color: tk.ink2, interval: 0 } }), yAxis: U.valAxis(tk, { min: 0, max: 1, scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }),
           series: [
-            U.lineSeries(zh() ? 'SOXL 跑赢 SOXX' : 'SOXL beats SOXX', rows.map(r => r.beat), colSOXL(tk), { showSymbol: true, sampling: null }),
-            U.lineSeries(zh() ? 'SOXL ≥ 3 × SOXX' : 'SOXL ≥ 3 × SOXX', rows.map(r => r.beat3), tk.s[1], { showSymbol: true, sampling: null }),
+            U.lineSeries(zh() ? `SOXL 跑赢 ${xn}` : `SOXL beats ${xn}`, rows.map(r => r.beat), colSOXL(tk), { showSymbol: true, sampling: null }),
+            U.lineSeries(`SOXL ≥ 3 × ${xn}`, rows.map(r => r.beat3), tk.s[1], { showSymbol: true, sampling: null }),
             U.lineSeries(zh() ? 'SOXL 亏损' : 'SOXL loses money', rows.map(r => r.loss), tk.s[8], { showSymbol: true, sampling: null }),
-            U.lineSeries(zh() ? 'SOXX 赚钱但 SOXL 亏钱' : 'SOXX up but SOXL down', rows.map(r => r.lossUp), tk.s[0], { showSymbol: true, sampling: null, lineStyle: { width: 1.6, type: 'dashed', color: tk.s[0] } }),
+            U.lineSeries(zh() ? `${xn} 赚钱但 SOXL 亏钱` : `${xn} up but SOXL down`, rows.map(r => r.lossUp), tk.s[0], { showSymbol: true, sampling: null, lineStyle: { width: 1.6, type: 'dashed', color: tk.s[0] } }),
           ] }), true);
       });
       tbl.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-        h('thead', null, h('tr', null, h('th', null, zh() ? '持有期' : 'Holding'), h('th', null, zh() ? '窗口数' : 'Windows'), h('th', null, zh() ? 'SOXL 中位数' : 'SOXL median'), h('th', null, zh() ? 'SOXX 中位数' : 'SOXX median'), h('th', null, zh() ? 'SOXL 最差 5%' : 'SOXL worst 5%'), h('th', null, zh() ? 'SOXL 最好 5%' : 'SOXL best 5%'), h('th', null, zh() ? 'SOXL 亏损概率' : 'Chance SOXL loses'), h('th', null, zh() ? '跑赢 SOXX' : 'Beats SOXX'), h('th', null, '≥ 3×SOXX'))),
+        h('thead', null, h('tr', null, h('th', null, zh() ? '持有期' : 'Holding'), h('th', null, zh() ? '窗口数' : 'Windows'), h('th', null, zh() ? 'SOXL 中位数' : 'SOXL median'), h('th', null, zh() ? `${xn} 中位数` : `${xn} median`), h('th', null, zh() ? 'SOXL 最差 5%' : 'SOXL worst 5%'), h('th', null, zh() ? 'SOXL 最好 5%' : 'SOXL best 5%'), h('th', null, zh() ? 'SOXL 亏损概率' : 'Chance SOXL loses'), h('th', null, zh() ? `跑赢 ${xn}` : `Beats ${xn}`), h('th', null, '≥ 3×' + xn))),
         h('tbody', null, rows.map(r => h('tr', null, h('td', null, r.lab), h('td', null, r.n.toLocaleString()), h('td', { style: { fontWeight: 700 } }, U.pct(r.medL, 1)), h('td', null, U.pct(r.medX, 1)), h('td', { class: 'neg' }, U.pct(r.p5, 1)), h('td', null, U.pct(r.p95, 0)), h('td', null, U.pct(r.loss, 0)), h('td', null, U.pct(r.beat, 0)), h('td', null, U.pct(r.beat3, 0))))))));
       const y1 = rows[3], y5 = rows[6];
       tw.appendChild(take(zh()
-        ? `${XS.period === 'all' ? '含 2001–2010 模拟段，' : '只用 2010 年以来真实数据，'}任选一天买入并持有 1 年：SOXL 亏损的概率 ${b(U.pct(y1.loss, 0))}，最差 5% 的情况亏 ${b(U.pct(-y1.p5, 0))} 以上；能做到“≥ 3 倍 SOXX”的只有 ${b(U.pct(y1.beat3, 0))}。持有 5 年，跑赢 SOXX 的概率是 ${b(U.pct(y5.beat, 0))}，但最差 5% 仍是 ${U.pct(y5.p5, 0)}。持有越久，结果越依赖路径而不是方向——这正是监管机构反复提示“杠杆 ETF 主要为单日交易设计”的原因。`
-        : `${XS.period === 'all' ? 'Including the 2001–2010 simulation, ' : 'Using real data since 2010 only, '}buying on a random day and holding a year: SOXL lost money ${b(U.pct(y1.loss, 0))} of the time, with the worst 5% losing more than ${b(U.pct(-y1.p5, 0))}; only ${b(U.pct(y1.beat3, 0))} of windows delivered ≥ 3× SOXX. Over 5 years SOXL beat SOXX in ${b(U.pct(y5.beat, 0))} of windows, yet the worst 5% was still ${U.pct(y5.p5, 0)}. The longer you hold, the more the result depends on the path rather than the direction — which is why regulators stress that leveraged ETFs are designed for single-day use.`));
+        ? `${XS.period === 'all' ? '含 2001–2010 模拟段，' : '只用 2010 年以来真实数据，'}任选一天买入并持有 1 年：SOXL 亏损的概率 ${b(U.pct(y1.loss, 0))}，最差 5% 的情况亏 ${b(U.pct(-y1.p5, 0))} 以上；能做到“≥ 3 倍 ${xn}”的只有 ${b(U.pct(y1.beat3, 0))}。持有 5 年，跑赢 ${xn} 的概率是 ${b(U.pct(y5.beat, 0))}，但最差 5% 仍是 ${U.pct(y5.p5, 0)}。持有越久，结果越依赖路径而不是方向——这正是监管机构反复提示“杠杆 ETF 主要为单日交易设计”的原因。`
+        : `${XS.period === 'all' ? 'Including the 2001–2010 simulation, ' : 'Using real data since 2010 only, '}buying on a random day and holding a year: SOXL lost money ${b(U.pct(y1.loss, 0))} of the time, with the worst 5% losing more than ${b(U.pct(-y1.p5, 0))}; only ${b(U.pct(y1.beat3, 0))} of windows delivered ≥ 3× ${xn}. Over 5 years SOXL beat ${xn} in ${b(U.pct(y5.beat, 0))} of windows, yet the worst 5% was still ${U.pct(y5.p5, 0)}. The longer you hold, the more the result depends on the path rather than the direction — which is why regulators stress that leveraged ETFs are designed for single-day use.`));
     };
     ctl.appendChild(U.ctl(zh() ? '样本' : 'Sample', U.seg('sxPeriod', [['actual', zh() ? '2010 起（真实）' : 'From 2010 (actual)'], ['all', zh() ? '2001 起（含模拟）' : 'From 2001 (incl. sim)']], XS.period, (v) => { XS.period = v; save(); draw(); })));
     requestAnimationFrame(draw);
@@ -169,13 +180,15 @@
     const ctl = h('div', { class: 'controls' }); const el = h('div', { class: 'chart' }); const tw = h('div');
     const draw = () => {
       const a = startIdx(XS.start === '2001' ? '2001' : XS.start), e = Core.N - 1;
-      const X = Core.S.SOXX.v, rf = Core.rfDaily;
+      const X = Core.S[UND()].v, rf = Core.rfDaily, xn = undNm(a), L0 = SIM_END();
+      // each unit of leverage above 1 costs c / 2 a year, c being the calibrated cost of the 3× fund on this series (SOXX* in
+      // the simulated years, SOXX afterwards), so the 3× line reproduces SOXL* and SOXL
+      const cSim = CAL().c != null ? CAL().c : 0.0069, cEtf = CAL().etf && CAL().etf.c != null ? CAL().etf.c : 0.0249;
       const Ls = []; for (let l = 0; l <= 4.0001; l += 0.1) Ls.push(+l.toFixed(1));
       const yrs = Core.yearsBetween(a, e);
       const res = Ls.map(l => {
-        const cost = l > 1 ? 0.0145 * (l - 1) / 252 : 0;
         let x = 1, pk = 1, mdd = 0;
-        for (let i = a + 1; i <= e; i++) { const r = X[i] / X[i - 1] - 1; const rl = l * r - (l - 1) * rf[i] - cost; x *= 1 + rl; if (x <= 1e-12) { x = 0; mdd = -1; break; } if (x > pk) pk = x; else mdd = Math.min(mdd, x / pk - 1); }
+        for (let i = a + 1; i <= e; i++) { const r = X[i] / X[i - 1] - 1; const rl = l * r - (l - 1) * rf[i] - (l > 1 ? (l - 1) * (i <= L0 ? cSim : cEtf) / 2 / 252 : 0); x *= 1 + rl; if (x <= 1e-12) { x = 0; mdd = -1; break; } if (x > pk) pk = x; else mdd = Math.min(mdd, x / pk - 1); }
         return { l, cagr: x > 0 ? Math.pow(x, 1 / yrs) - 1 : -1, mdd };
       });
       const best = res.reduce((p, c) => c.cagr > p.cagr ? c : p, res[0]);
@@ -188,7 +201,7 @@
           yAxis: [U.valAxis(tk, { name: zh() ? '年化收益' : 'CAGR', nameGap: 12, nameTextStyle: { color: tk.muted, fontSize: 11, align: 'left' }, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }), U.valAxis(tk, { name: zh() ? '最大回撤' : 'Max DD', min: -1, max: 0, splitLine: { show: false }, nameGap: 12, nameTextStyle: { color: tk.muted, fontSize: 11, align: 'right' }, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } })],
           series: [
             U.lineSeries(zh() ? '年化收益' : 'CAGR', res.map(r => [r.l, r.cagr]), tk.s[1], { sampling: null, markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: tk.s[1] }, label: { show: true, position: 'top', color: tk.ink, fontSize: 11, formatter: () => (zh() ? '最优 ' : 'best ') + best.l.toFixed(1) + '×' }, data: [{ coord: [best.l, best.cagr] }] },
-              markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 11, formatter: (p) => p.value === 1 ? 'SOXX 1×' : 'SOXL 3×' }, data: [{ xAxis: 1 }, { xAxis: 3 }] } }),
+              markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 11, formatter: (p) => p.value === 1 ? xn + ' 1×' : 'SOXL 3×' }, data: [{ xAxis: 1 }, { xAxis: 3 }] } }),
             U.lineSeries(zh() ? '最大回撤（右轴）' : 'Max drawdown (right)', res.map(r => [r.l, r.mdd]), tk.s[8], { yAxisIndex: 1, sampling: null, lineStyle: { width: 1.6, type: 'dashed', color: tk.s[8] } }),
           ] });
         o.tooltip.formatter = (ps) => { const l = ps[0].value[0]; const r = at(l) || res[0]; return U.ttHead(l.toFixed(1) + '×') + U.ttRow(tk.s[1], zh() ? '年化' : 'CAGR', U.pct(r.cagr, 1)) + U.ttRow(tk.s[8], zh() ? '最大回撤' : 'Max DD', U.pct(r.mdd, 1)); };
@@ -196,17 +209,17 @@
       });
       const r1 = at(1), r3 = at(3), r2 = at(2);
       tw.appendChild(take(zh()
-        ? `${Core.iso(a)} 至今，用 SOXX 的每日收益模拟不同杠杆（每多 1 倍杠杆，每年额外 1.45% 的费用与融资利差，3 倍时即 2.9%，与 SOXL 校准一致）：年化收益在 ${b(best.l.toFixed(1) + '×')} 左右达到最高（${U.pct(best.cagr, 1)}）；1×（SOXX）${U.pct(r1.cagr, 1)}，2× ${U.pct(r2.cagr, 1)}，3× ${b(U.pct(r3.cagr, 1))}，最大回撤分别为 ${U.pct(r1.mdd, 0)}、${U.pct(r2.mdd, 0)}、${b(U.pct(r3.mdd, 0))}。` + (best.l < 3 ? `3 倍在最优点右侧：超过最优点之后，多加的杠杆只会增加回撤、降低长期收益——这是“波动拖累”的数学结果（凯利准则）。` : `在这段特别顺利的行情里，最优杠杆甚至达到 3 倍以上——但这只能事后知道，而且回撤同样惊人。`) + `换几个起点就会发现，最优杠杆随行情剧烈变化（2001 年起只有约 1 倍多），而 3 倍在多数起点下都偏高。`
-        : `From ${Core.iso(a)}, simulating leverage on SOXX's daily returns (1.45% a year of fees and financing spread per extra unit of leverage — 2.9% at 3×, matching the SOXL calibration): CAGR peaks near ${b(best.l.toFixed(1) + '×')} (${U.pct(best.cagr, 1)}); 1× (SOXX) ${U.pct(r1.cagr, 1)}, 2× ${U.pct(r2.cagr, 1)}, 3× ${b(U.pct(r3.cagr, 1))}, with max drawdowns of ${U.pct(r1.mdd, 0)}, ${U.pct(r2.mdd, 0)} and ${b(U.pct(r3.mdd, 0))}. ` + (best.l < 3 ? `3× sits to the right of the peak: beyond it, extra leverage only adds drawdown and lowers long-run growth — the mathematics of volatility drag (the Kelly criterion).` : `In this unusually smooth stretch the optimum is 3× or more — but only in hindsight, and with equally brutal drawdowns.`) + ` Try other start dates: the optimum swings widely (only a little above 1× from 2001), and 3× is too much for most of them.`));
+        ? `${Core.iso(a)} 至今，用 ${xn} 的每日收益模拟不同的每日重置杠杆（借入的部分按国库券利率计息；每多 1 倍杠杆，每年再扣 SOXL 校准成本的一半${a < L0 ? `：模拟段 ${U.pct(cSim / 2, 2)}，2010 年起 ${U.pct(cEtf / 2, 2)}` : `（${U.pct(cEtf / 2, 2)}）`}，所以 3 倍这一点就是 SOXL${a < L0 ? '*' : ''}）：年化收益在 ${b(best.l.toFixed(1) + '×')} 左右达到最高（${U.pct(best.cagr, 1)}）；1×（${xn}）${U.pct(r1.cagr, 1)}，2× ${U.pct(r2.cagr, 1)}，3× ${b(U.pct(r3.cagr, 1))}，最大回撤分别为 ${U.pct(r1.mdd, 0)}、${U.pct(r2.mdd, 0)}、${b(U.pct(r3.mdd, 0))}。` + (best.l < 3 ? `3 倍在最优点右侧：超过最优点之后，多加的杠杆只会增加回撤、降低长期收益——这是“波动拖累”的数学结果（凯利准则）。` : `在这段特别顺利的行情里，最优杠杆甚至达到 3 倍以上——但这只能事后知道，而且回撤同样惊人。`) + `换几个起点就会发现，最优杠杆随行情剧烈变化（2001 年起只有约 1 倍多），而 3 倍在多数起点下都偏高。`
+        : `From ${Core.iso(a)}, simulating daily-reset leverage on ${xn}'s daily returns (borrowing at the T-bill rate, plus half of SOXL's calibrated cost per extra unit of leverage${a < L0 ? ` — ${U.pct(cSim / 2, 2)} in the simulated years, ${U.pct(cEtf / 2, 2)} from 2010` : ` (${U.pct(cEtf / 2, 2)})`} — so the 3× point is SOXL${a < L0 ? '*' : ''} itself): CAGR peaks near ${b(best.l.toFixed(1) + '×')} (${U.pct(best.cagr, 1)}); 1× (${xn}) ${U.pct(r1.cagr, 1)}, 2× ${U.pct(r2.cagr, 1)}, 3× ${b(U.pct(r3.cagr, 1))}, with max drawdowns of ${U.pct(r1.mdd, 0)}, ${U.pct(r2.mdd, 0)} and ${b(U.pct(r3.mdd, 0))}. ` + (best.l < 3 ? `3× sits to the right of the peak: beyond it, extra leverage only adds drawdown and lowers long-run growth — the mathematics of volatility drag (the Kelly criterion).` : `In this unusually smooth stretch the optimum is 3× or more — but only in hindsight, and with equally brutal drawdowns.`) + ` Try other start dates: the optimum swings widely (only a little above 1× from 2001), and 3× is too much for most of them.`));
     };
     ctl.appendChild(U.ctl(zh() ? '起点' : 'Start', U.seg('sxLevStart', START_OPTS(), XS.start, (v) => { XS.start = v; save(); App.renderView('soxl'); })));
     requestAnimationFrame(draw);
-    return section('sx-lev', 'S4', { zh: '多少倍杠杆最划算？', en: 'How much leverage actually pays?' }, { zh: '在 SOXX 上模拟 0–4 倍每日重置杠杆', en: 'Simulating 0–4× daily-reset leverage on SOXX' }, ctl, el, tw);
+    return section('sx-lev', 'S4', { zh: '多少倍杠杆最划算？', en: 'How much leverage actually pays?' }, { zh: '在 SOXX（模拟段为 SOXX*）上模拟 0–4 倍每日重置杠杆', en: 'Simulating 0–4× daily-reset leverage on SOXX (SOXX* in the simulated years)' }, ctl, el, tw);
   }
 
   // ---------- S5: drawdown episodes ----------
   function episodes(tk) {
-    const e = Core.N - 1; const X = Core.S.SOXX.v;
+    const e = Core.N - 1; const X = Core.S[UND()].v; // SOXX* in the simulated years
     const simEps = Core.drawdownEpisodes(Core.S.SOXLX.v, Core.S.SOXLX.s, SIM_END(), 0.4).map(p => Object.assign({}, p, { sim: true, open: p.recI < 0 }));
     // recovery of simulated episodes is searched on the spliced series (they may only recover after 2010)
     for (const p of simEps) { p.recI = -1; const pk = Core.S.SOXLX.v[p.peakI]; for (let i = p.troughI; i <= e; i++) if (Core.S.SOXLX.v[i] >= pk) { p.recI = i; break; } }
@@ -218,7 +231,7 @@
     let under = 0, n = 0, pk = -Infinity; for (let i = Core.S.SOXL.s; i <= e; i++) { const y = Core.S.SOXL.v[i]; if (y > pk) pk = y; if (y / pk - 1 <= -0.5) under++; n++; }
     const real = rows.filter(x => !x.sim);
     const xsMin = Math.min(...real.map(x => -x.xs)), xsMax = Math.max(...real.map(x => -x.xs)), slMin = Math.min(...real.map(x => -x.p.depth)), slMax = Math.max(...real.map(x => -x.p.depth));
-    return section('sx-dd', 'S5', { zh: '回撤：跌一半是家常便饭', en: 'Drawdowns: halving is routine' }, { zh: 'SOXL 所有 ≥ 40% 的回撤（* 为模拟段，2010 年起单独按真实价格计算）', en: 'Every SOXL drawdown of 40%+ (* = simulated era; from 2010 measured on real prices alone)' }, tbl,
+    return section('sx-dd', 'S5', { zh: '回撤：跌一半是家常便饭', en: 'Drawdowns: halving is routine' }, { zh: 'SOXL 所有 ≥ 40% 的回撤（* 为模拟段，同期一栏为 SOXX*；2010 年起单独按真实价格计算）', en: 'Every SOXL drawdown of 40%+ (* = simulated era, against SOXX*; from 2010 measured on real prices alone)' }, tbl,
       take(zh()
         ? `2010 年以来的真实 SOXL 共有 ${b(real.length + ' 次')} ≥ 40% 的回撤；有 ${b(U.pct(under / n, 0))} 的交易日处在“比历史高点低一半以上”的状态。这些回撤期间 SOXX 只跌了 ${U.pct(xsMin, 0)}–${U.pct(xsMax, 0)}，SOXL 却跌了 ${b(U.pct(slMin, 0) + '–' + U.pct(slMax, 0))}；从 −90% 回本需要上涨 900%。含模拟段的 2000 年代，SOXL* 跌幅超过 99%，相当于“清零”。`
         : `Real SOXL has had ${b(String(real.length))} drawdowns of 40% or more since 2010, and spent ${b(U.pct(under / n, 0))} of all trading days more than 50% below its high. In those episodes SOXX fell only ${U.pct(xsMin, 0)}–${U.pct(xsMax, 0)} while SOXL fell ${b(U.pct(slMin, 0) + '–' + U.pct(slMax, 0))}; recovering from −90% requires a 900% gain. In the simulated 2000s SOXL* lost more than 99% — effectively wiped out.`));
@@ -304,13 +317,15 @@
   // or the start of the data; earlier history still counts for highs, lows and averages)
   const dipTo = (S0) => DS.end ? Math.min(S0.e, Math.max(S0.s, Core.idxOnOrBefore(Core.parseISO(DS.end)))) : S0.e;
   const dipFrom = (S0) => DS.start ? Math.min(dipTo(S0), Math.max(S0.s, Core.idxOnOrAfter(Core.parseISO(DS.start)))) : S0.s;
-  const dipUnl = () => DIP_UNDER[DS.key] || DS.key; // the unlevered series: trend and volatility
-  const dipSig = (c) => c.sig === 'under' && DIP_UNDER[DS.key] ? DIP_UNDER[DS.key] : dipKey(); // fall and rebound
+  // the index behind a leveraged fund: SOXX* when SOXL's simulated years are in (SOXL* is 3× SOXX*), else DIP_UNDER
+  const dipUnder = () => (DS.key === 'SOXL' && DS.sim && Core.S.SOXXU ? 'SOXXU' : DIP_UNDER[DS.key] || null);
+  const dipUnl = () => dipUnder() || DS.key; // the unlevered series: trend and volatility
+  const dipSig = (c) => c.sig === 'under' && dipUnder() ? dipUnder() : dipKey(); // fall and rebound
   const nmOf = (k) => k === 'SOXLX' ? 'SOXL*' : U.assetName(k, true);
   const condsOn = (c) => DIP_CONDS.filter(k => c[k].on);
   // one condition in words: long for sentences, short for table rows
   function condTxt(c, k, short) {
-    const Z = zh(), sig = nmOf(dipSig(c)), unl = nmOf(dipUnl()), sigP = c.sig === 'under' && DIP_UNDER[DS.key] ? sig + ' ' : '';
+    const Z = zh(), sig = nmOf(dipSig(c)), unl = nmOf(dipUnl()), sigP = c.sig === 'under' && dipUnder() ? sig + ' ' : '';
     const range = (lo, hi) => hi == null ? (Z ? `${pctN(lo)} 以上` : `at least ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`;
     const rangeS = (lo, hi) => hi == null ? `≥${pctN(lo)}` : `${pctN(lo)}–${pctN(hi)}`;
     if (k === 'dd') {
@@ -378,7 +393,7 @@
         top.appendChild(U.ctl(Z ? '起点' : 'Start', span(di, from !== d0 ? reset(Z ? '从头开始' : 'From the start', Z ? `从数据起点 ${d0} 开始` : `From the start of the data, ${d0}`, () => { DS.start = null; }) : null)));
         top.appendChild(U.ctl(Z ? '终点' : 'End', span(de, to !== d1 ? reset(Z ? '到最新' : 'To the latest', Z ? `用到最新一天 ${d1}` : `Up to the latest session, ${d1}`, () => { DS.end = null; }) : null)));
       }
-      if (DIP_UNDER[DS.key]) top.appendChild(U.ctl(Z ? '跌幅和反弹按' : 'Fall and rebound measured on', U.seg('dipSig', [['self', U.assetName(DS.key, true)], ['under', U.assetName(DIP_UNDER[DS.key], true) + (Z ? '（标的指数）' : ' (the index)')]], c.sig, (v) => { if (v !== c.sig) DS.c = dipSwapSig(c, DS.key); redo(); })));
+      if (dipUnder()) top.appendChild(U.ctl(Z ? '跌幅和反弹按' : 'Fall and rebound measured on', U.seg('dipSig', [['self', nmOf(dipKey())], ['under', nmOf(dipUnder()) + (Z ? '（标的指数）' : ' (the index)')]], c.sig, (v) => { if (v !== c.sig) DS.c = dipSwapSig(c, DS.key); redo(); })));
       top.appendChild(U.ctl(Z ? '取样' : 'Sampling', U.seg('dipFirst', [['all', Z ? '每个符合条件的交易日' : 'Every qualifying day'], ['first', Z ? '每轮只取第一天' : 'First day of each fall']], DS.first ? 'first' : 'all', (v) => { DS.first = v === 'first'; redo(); })));
       top.appendChild(U.ctl(Z ? '样本权重' : 'Weights', U.seg('dipW', [['day', Z ? '每天相同' : 'Each day'], ['fall', Z ? '每轮相同' : 'Each fall']], DS.wFall ? 'fall' : 'day', (v) => { DS.wFall = v === 'fall'; redo(); })));
       top.appendChild(U.ctl(Z ? '收益口径' : 'Returns', U.seg('dipAnn', [['abs', Z ? '累计收益' : 'Total return'], ['ann', Z ? '年化收益' : 'Annualized']], DS.ann ? 'ann' : 'abs', (v) => { DS.ann = v === 'ann'; redo(); })));
@@ -469,7 +484,7 @@
       const stt = statusOf(DS.c), allOk = stt.every(x => x.ok);
       ctx = DIP_CTX;
       const v = ctx.v, s = ctx.s, e = ctx.e, Z = zh(), c = DS.c, own = from > s, ownEnd = e < S0.e; // the visitor set a later start / an earlier end
-      const nm = nmOf(key), nmH = U.esc(nm), col = U.assetColor(DS.key, tk), cmpKey = DIP_UNDER[DS.key] || null, cmpNm = cmpKey ? nmOf(cmpKey) : '';
+      const nm = nmOf(key), nmH = U.esc(nm), col = U.assetColor(DS.key, tk), cmpKey = dipUnder(), cmpNm = cmpKey ? nmOf(cmpKey) : '';
       const epWord = c.dd.on ? (Z ? '轮下跌' : 'falls') : (Z ? '个时段' : 'spells');
       // ---- today ----
       const eNow = S0.e, lv = eNow === Core.N - 1 ? U.live() : null; // the newest session may still be trading
@@ -597,7 +612,7 @@
       const act = condsOn(c), tog = (k, on) => { const c2 = dipCopy(c); c2[k].on = on; return c2; };
       if (act.length > 1) for (const k of act) combos.push({ kind: 'alt', name: (Z ? '去掉：' : 'Without: ') + condTxt(c, k, true), c: tog(k, false) });
       for (const k of DIP_CONDS) if (!c[k].on) combos.push({ kind: 'alt', name: (Z ? '加上：' : 'Plus: ') + condTxt(c, k, true), c: tog(k, true) });
-      if (DIP_UNDER[DS.key] && (c.dd.on || c.reb.on)) { const c2 = dipSwapSig(c, DS.key); combos.push({ kind: 'alt', name: Z ? `跌幅和反弹改按 ${nmOf(dipSig(c2))} 计算（门槛按 ${DIP_LEV[DS.key]} 倍换算）` : `Fall and rebound measured on ${nmOf(dipSig(c2))} (thresholds converted for ${DIP_LEV[DS.key]}×)`, c: c2 }); }
+      if (dipUnder() && (c.dd.on || c.reb.on)) { const c2 = dipSwapSig(c, DS.key); combos.push({ kind: 'alt', name: Z ? `跌幅和反弹改按 ${nmOf(dipSig(c2))} 计算（门槛按 ${DIP_LEV[DS.key]} 倍换算）` : `Fall and rebound measured on ${nmOf(dipSig(c2))} (thresholds converted for ${DIP_LEV[DS.key]}×)`, c: c2 }); }
       if (c.dd.on) { const c2 = dipCopy(c); c2.dd.deep = !c.dd.deep; combos.push({ kind: 'alt', name: c2.dd.deep ? (Z ? '跌幅改看这一轮最深' : 'Fall measured at its deepest so far') : (Z ? '跌幅改看现在离高点' : 'Fall measured from the high to today'), c: c2 }); }
       DSAVED.forEach((x, j) => combos.push({ kind: 'saved', name: x.name || comboTxt(x.c, true), c: x.c, j }));
       for (const x of combos) {
@@ -675,8 +690,8 @@
             showPk ? h('td', { class: 'nowrap' }, p.recI >= 0 ? Core.iso(p.recI) : (Z ? '尚未' : 'not yet')) : null, DS.first ? null : h('td', null, p.nDays.toLocaleString('en-US')),
             months.map((m, hh) => { const y = fr(p.i, hh); return h('td', { class: U.signCls(y) }, fmtR(y)); }))))))));
       out.appendChild(h('p', { class: 'note' }, Z
-        ? `条件的定义——距高点的跌幅：收盘价相对参照高点（所选数据里截至当天的最高收盘价，或最近 N 个交易日的最高收盘价）的跌幅；“这一轮最深”= 从这一轮的高点到目前为止最低收盘价的跌幅；“这一轮”从收盘价回到参照高点的那天算起。距阶段低点的反弹：收盘价相对这一轮最低收盘价（或最近 N 个交易日的最低收盘价）的涨幅。${DIP_UNDER[DS.key] ? `跌幅和反弹可以按 ${U.assetName(DS.key, true)} 本身或 ${nmOf(DIP_UNDER[DS.key])} 计算；切换时门槛按 ${DIP_LEV[DS.key]} 倍杠杆近似换算（1 + 杠杆收益 ≈（1 + 指数收益）^${DIP_LEV[DS.key]}，例如跌 50% ≈ 指数跌 ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}）。` : ''}恐慌程度用 VIX（1990 年起）或 ${nmOf(dipUnl())} 最近 20 个交易日的年化波动率；趋势看 ${nmOf(dipUnl())} 与它的均线；大盘看标普500 全收益与它的均线。所有条件都只用当天收盘及以前的数据，勾选的条件同时满足的交易日才算符合条件。设了起点时，只有起点及之后的交易日算作买入日（「任意一天买入」的对照组也一样）；高点、低点、均线和波动率仍然连同起点之前的数据一起计算，所以起点之前就开始的一轮下跌，跌幅照样从它真正的高点算起，并从起点后第一次符合条件的那天开始计入。设了终点时，数据只用到终点那天：买入日在起点和终点之间，持有期也必须在终点之前结束（所以持有期越长，能用的买入日越少），终点之后的价格一概不用。这样可以先用一段历史找规律，再把起点设在这个终点之后，用之后的数据检验。最上面一行的“今天”始终是最新一个交易日。有跌幅条件时，一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次回到参照高点为止；没有跌幅条件时，相隔不超过 21 个交易日的符合条件日子算作同一个时段。“每轮相同”的权重下，同一轮里的样本合计权重为 1，分位数按加权的经验分布插值。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日；年化 =（1 + 累计收益）^(12/m) − 1。${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${U.assetName(DS.key, true)} 为价格口径（不含少量分红）。` : '全收益口径（股息再投资）。'}${key === 'SOXLX' ? '2010-03-12 以前为模拟值（见页首说明）。' : ''}不计交易成本与税。历史统计不是预测。`
-        : `Definitions — fall from the high: the close against the reference high (the highest close in the selected data up to that day, or of the last N sessions); “deepest so far” is the fall from this fall's high to its lowest close to date; “this fall” starts at the last close at the reference high. Rise from the low: the close against the lowest close of this fall (or of the last N sessions). ${DIP_UNDER[DS.key] ? `The fall and the rebound can be measured on ${U.assetName(DS.key, true)} itself or on ${nmOf(DIP_UNDER[DS.key])}; switching converts the thresholds as if the fund compounded ${DIP_LEV[DS.key]}× the index (1 + fund return ≈ (1 + index return)^${DIP_LEV[DS.key]}, so a 50% fall ≈ an index fall of ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}). ` : ''}Fear is the VIX (from 1990) or ${nmOf(dipUnl())}'s annualized volatility over the last 20 sessions; trend is ${nmOf(dipUnl())} against its moving average; the market is the S&P 500 total return against its moving average. Every condition uses only closes up to that day, and a day qualifies when all ticked conditions hold. With a start date, only sessions from that day on count as purchases (the any-day baseline too); highs, lows, averages and volatility still use the history before it, so a fall that began earlier is still measured from its real high and enters on its first qualifying day from the start. With an end date the data stop there: purchases fall between the start and the end, and each holding period must also finish by the end (so longer horizons use fewer purchases); no price after the end is used. That lets you look for a pattern in one stretch of history and test it on the years after, by moving the start past that end. The status line at the top always shows the latest session. With the fall condition, a fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it; without it, qualifying days at most 21 sessions apart form one spell. With each fall weighing the same, the samples of a fall add up to a weight of 1 and percentiles interpolate the weighted distribution. Forward returns use calendar months, ending on the last session on or before the same date m months later; annualized = (1 + total return)^(12/m) − 1. ${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${U.assetName(DS.key, true)} is price-only (its small distributions are left out).` : 'Total return, dividends reinvested.'}${key === 'SOXLX' ? ' Before 2010-03-12 the series is simulated (see the top of the page).' : ''} No costs or taxes. Past statistics are not a forecast.`));
+        ? `条件的定义——距高点的跌幅：收盘价相对参照高点（所选数据里截至当天的最高收盘价，或最近 N 个交易日的最高收盘价）的跌幅；“这一轮最深”= 从这一轮的高点到目前为止最低收盘价的跌幅；“这一轮”从收盘价回到参照高点的那天算起。距阶段低点的反弹：收盘价相对这一轮最低收盘价（或最近 N 个交易日的最低收盘价）的涨幅。${dipUnder() ? `跌幅和反弹可以按 ${nmOf(key)} 本身或 ${nmOf(dipUnder())} 计算；切换时门槛按 ${DIP_LEV[DS.key]} 倍杠杆近似换算（1 + 杠杆收益 ≈（1 + 指数收益）^${DIP_LEV[DS.key]}，例如跌 50% ≈ 指数跌 ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}）。` : ''}恐慌程度用 VIX（1990 年起）或 ${nmOf(dipUnl())} 最近 20 个交易日的年化波动率；趋势看 ${nmOf(dipUnl())} 与它的均线；大盘看标普500 全收益与它的均线。所有条件都只用当天收盘及以前的数据，勾选的条件同时满足的交易日才算符合条件。设了起点时，只有起点及之后的交易日算作买入日（「任意一天买入」的对照组也一样）；高点、低点、均线和波动率仍然连同起点之前的数据一起计算，所以起点之前就开始的一轮下跌，跌幅照样从它真正的高点算起，并从起点后第一次符合条件的那天开始计入。设了终点时，数据只用到终点那天：买入日在起点和终点之间，持有期也必须在终点之前结束（所以持有期越长，能用的买入日越少），终点之后的价格一概不用。这样可以先用一段历史找规律，再把起点设在这个终点之后，用之后的数据检验。最上面一行的“今天”始终是最新一个交易日。有跌幅条件时，一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次回到参照高点为止；没有跌幅条件时，相隔不超过 21 个交易日的符合条件日子算作同一个时段。“每轮相同”的权重下，同一轮里的样本合计权重为 1，分位数按加权的经验分布插值。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日；年化 =（1 + 累计收益）^(12/m) − 1。全收益口径（股息、分红再投资）。${key === 'SOXLX' ? `SOXL 上市（${Core.iso(SIM_END())}）以前为模拟值，按标的计算的条件在那几年用 SOXX*（见页首说明）。` : ''}不计交易成本与税。历史统计不是预测。`
+        : `Definitions — fall from the high: the close against the reference high (the highest close in the selected data up to that day, or of the last N sessions); “deepest so far” is the fall from this fall's high to its lowest close to date; “this fall” starts at the last close at the reference high. Rise from the low: the close against the lowest close of this fall (or of the last N sessions). ${dipUnder() ? `The fall and the rebound can be measured on ${nmOf(key)} itself or on ${nmOf(dipUnder())}; switching converts the thresholds as if the fund compounded ${DIP_LEV[DS.key]}× the index (1 + fund return ≈ (1 + index return)^${DIP_LEV[DS.key]}, so a 50% fall ≈ an index fall of ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}). ` : ''}Fear is the VIX (from 1990) or ${nmOf(dipUnl())}'s annualized volatility over the last 20 sessions; trend is ${nmOf(dipUnl())} against its moving average; the market is the S&P 500 total return against its moving average. Every condition uses only closes up to that day, and a day qualifies when all ticked conditions hold. With a start date, only sessions from that day on count as purchases (the any-day baseline too); highs, lows, averages and volatility still use the history before it, so a fall that began earlier is still measured from its real high and enters on its first qualifying day from the start. With an end date the data stop there: purchases fall between the start and the end, and each holding period must also finish by the end (so longer horizons use fewer purchases); no price after the end is used. That lets you look for a pattern in one stretch of history and test it on the years after, by moving the start past that end. The status line at the top always shows the latest session. With the fall condition, a fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it; without it, qualifying days at most 21 sessions apart form one spell. With each fall weighing the same, the samples of a fall add up to a weight of 1 and percentiles interpolate the weighted distribution. Forward returns use calendar months, ending on the last session on or before the same date m months later; annualized = (1 + total return)^(12/m) − 1. Total return, dividends and distributions reinvested.${key === 'SOXLX' ? ` Before SOXL's launch on ${Core.iso(SIM_END())} the series is simulated, and conditions on the index use SOXX* for those years (see the top of the page).` : ''} No costs or taxes. Past statistics are not a forecast.`));
     }
     buildCtl(); requestAnimationFrame(draw);
     return sec;
@@ -735,7 +750,7 @@
     const ctl = h('div', { class: 'controls' }); const el = h('div', { class: 'chart short' }); const tw = h('div');
     const draw = () => {
       const H = XS.hz; const key = 'SOXLX'; const a = Core.S.SOXLX.s, e = Core.N - 1;
-      const L3 = Core.S[key].v, X = Core.S.SOXX.v;
+      const L3 = Core.S[key].v, X = Core.S[UND()].v, xn = undNm(a);
       const pts = [];
       for (let i = a; i <= e; i++) {
         if (i !== a && Core.month[i] === Core.month[i - 1]) continue;
@@ -748,7 +763,7 @@
         const c = U.chart(el); if (!c) return;
         const o = U.baseOpt(tk, { legend: legendOpt(tk), grid: { left: 8, right: 16, top: 30, bottom: 8, containLabel: true }, xAxis: U.timeAxis(tk), yAxis: U.valAxis(tk, { axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }),
           series: [U.lineSeries(zh() ? 'SOXL（含模拟）' : 'SOXL (incl. sim)', pts.map(p => [U.ts(p.i), p.l]), colSOXL(tk), { sampling: null, markArea: { silent: true, itemStyle: { color: U.isDark(tk) ? 'rgba(144,133,233,0.10)' : 'rgba(74,58,167,0.07)' }, data: [[{ xAxis: U.ts(a) }, { xAxis: U.ts(SIM_END()) }]] }, markLine: { silent: true, symbol: 'none', data: [{ yAxis: 0 }], lineStyle: { color: tk.ruleStrong, type: 'solid' }, label: { show: false } } }),
-            U.lineSeries('SOXX', pts.map(p => [U.ts(p.i), p.x]), colSOXX(tk), { sampling: null, lineStyle: { width: 1.5, color: colSOXX(tk) } })] });
+            U.lineSeries(xn, pts.map(p => [U.ts(p.i), p.x]), colSOXX(tk), { sampling: null, lineStyle: { width: 1.5, color: colSOXX(tk) } })] });
         o.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); let s = U.ttHead((zh() ? '起点 ' : 'Start ') + Core.iso(i)); ps.forEach(p => { s += U.ttRow(p.color, p.seriesName, U.pct(p.value[1], 1) + (zh() ? '/年' : '/yr')); }); return s; };
         c.setOption(o, true);
       });
@@ -757,8 +772,8 @@
       const neg = (arr) => arr.filter(p => p.l < 0).length / Math.max(1, arr.length);
       const worst = pts.reduce((p, c) => c.l < p.l ? c : p, pts[0]), bestP = pts.reduce((p, c) => c.l > p.l ? c : p, pts[0]);
       tw.appendChild(take(zh()
-        ? `每月初买入、持有 ${H} 年：全部 ${pts.length} 个起点中，SOXL 年化跑赢 SOXX 的占 ${b(U.pct(beat(pts), 0))}，年化为负的占 ${b(U.pct(neg(pts), 0))}；只看 2010 年以后的真实起点（${realPts.length} 个），跑赢比例 ${b(U.pct(beat(realPts), 0))}、为负 ${U.pct(neg(realPts), 0)}。最好的起点 ${Core.iso(bestP.i).slice(0, 7)}（年化 ${U.pct(bestP.l, 0)}），最差 ${Core.iso(worst.i).slice(0, 7)}（${U.pct(worst.l, 0)}）。同一只 ETF，结果主要取决于你“恰好”在哪一年进场。`
-        : `Buying at each month-start and holding ${H} years: across ${pts.length} starts SOXL's annualized return beat SOXX's ${b(U.pct(beat(pts), 0))} of the time and was negative ${b(U.pct(neg(pts), 0))} of the time; for real post-2010 starts only (${realPts.length}) the figures are ${b(U.pct(beat(realPts), 0))} and ${U.pct(neg(realPts), 0)}. Best start ${Core.iso(bestP.i).slice(0, 7)} (${U.pct(bestP.l, 0)} a year), worst ${Core.iso(worst.i).slice(0, 7)} (${U.pct(worst.l, 0)}). Same ETF; the outcome mostly depends on the year you happened to start.`));
+        ? `每月初买入、持有 ${H} 年：全部 ${pts.length} 个起点中，SOXL 年化跑赢 ${xn} 的占 ${b(U.pct(beat(pts), 0))}，年化为负的占 ${b(U.pct(neg(pts), 0))}；只看 2010 年以后的真实起点（${realPts.length} 个），跑赢比例 ${b(U.pct(beat(realPts), 0))}、为负 ${U.pct(neg(realPts), 0)}。最好的起点 ${Core.iso(bestP.i).slice(0, 7)}（年化 ${U.pct(bestP.l, 0)}），最差 ${Core.iso(worst.i).slice(0, 7)}（${U.pct(worst.l, 0)}）。同一只 ETF，结果主要取决于你“恰好”在哪一年进场。`
+        : `Buying at each month-start and holding ${H} years: across ${pts.length} starts SOXL's annualized return beat ${xn}'s ${b(U.pct(beat(pts), 0))} of the time and was negative ${b(U.pct(neg(pts), 0))} of the time; for real post-2010 starts only (${realPts.length}) the figures are ${b(U.pct(beat(realPts), 0))} and ${U.pct(neg(realPts), 0)}. Best start ${Core.iso(bestP.i).slice(0, 7)} (${U.pct(bestP.l, 0)} a year), worst ${Core.iso(worst.i).slice(0, 7)} (${U.pct(worst.l, 0)}). Same ETF; the outcome mostly depends on the year you happened to start.`));
     };
     ctl.appendChild(U.ctl(zh() ? '持有年数' : 'Holding years', U.seg('sxHz', [[3, zh() ? '3 年' : '3 yrs'], [5, zh() ? '5 年' : '5 yrs'], [10, zh() ? '10 年' : '10 yrs']], XS.hz, (v) => { XS.hz = +v; save(); draw(); })));
     requestAnimationFrame(draw);

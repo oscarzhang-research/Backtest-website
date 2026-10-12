@@ -470,19 +470,25 @@
   add('a.AMAT.d', '应用材料：沉积、刻蚀等半导体设备；1995 年起', 'Applied Materials: deposition, etch and other chip equipment; from 1995');
   add('a.SOXL', 'SOXL 三倍做多半导体', 'SOXL 3× Semiconductors');
   add('a.SOXL.s', 'SOXL', 'SOXL');
-  add('a.SOXL.d', 'Direxion 每日 3 倍做多纽约证交所半导体指数；2010-03 上市，仅价格（分红极少）', 'Direxion daily 3× NYSE Semiconductor Index; listed 2010-03; price only (distributions are tiny)');
+  add('a.SOXL.d', 'Direxion 每日 3 倍做多纽约证交所半导体指数（2021-08-24 以前为费城半导体指数）；2010-03 上市，全收益（分红再投资）', 'Direxion daily 3× NYSE Semiconductor Index (the PHLX Semiconductor index until 2021-08-24); listed 2010-03; total return (distributions reinvested)');
   add('a.SOXLX', 'SOXL（2001 起·含模拟）', 'SOXL (from 2001, incl. simulation)');
   add('a.SOXLX.s', 'SOXL*', 'SOXL*');
-  add('a.SOXLX.d', '2001-07 至 2010-03 为用 SOXX 日收益 ×3 并扣除融资与费用后的模拟值（经 2010–2026 实盘校准），之后为真实 SOXL', '2001-07 to 2010-03 simulated as 3× SOXX daily total return less financing and costs (calibrated on 2010–2026 actuals); real SOXL afterwards');
+  add('a.SOXLX.d', '2001-07 至 2010-03（SOXL 上市）为模拟值：费城半导体指数日收益加 SOXX 分红（即 SOXX*）× 3，扣除融资与成本（用 2010–2021 年实盘校准）；之后为真实 SOXL', '2001-07 to 2010-03 (SOXL\'s launch) simulated: 3× the PHLX Semiconductor index\'s daily return plus SOXX\'s distributions (SOXX*), less financing and costs (calibrated on actuals in 2010–2021); real SOXL afterwards');
+  add('a.SOXXU', 'SOXX*（2010 年前为费城半导体指数）', 'SOXX* (PHLX index before 2010)');
+  add('a.SOXXU.s', 'SOXX*', 'SOXX*');
+  add('a.SOXXU.d', 'SOXL* 的 1 倍标的：SOXL 上市（2010-03-11）以前为费城半导体指数日收益加 SOXX 分红，之后为 SOXX', 'The 1× series behind SOXL*: the PHLX Semiconductor index plus SOXX\'s distributions before SOXL\'s launch (2010-03-11), SOXX afterwards');
   add('a.TQQQ', 'TQQQ 三倍做多纳指100', 'TQQQ 3× Nasdaq-100');
   add('a.TQQQ.s', 'TQQQ', 'TQQQ');
-  add('a.TQQQ.d', 'ProShares 每日 3 倍做多纳斯达克100；2010-02 上市，仅价格', 'ProShares daily 3× Nasdaq-100; listed 2010-02; price only');
+  add('a.TQQQ.d', 'ProShares 每日 3 倍做多纳斯达克100；2010-02 上市，全收益（分红再投资）', 'ProShares daily 3× Nasdaq-100; listed 2010-02; total return (distributions reinvested)');
+  add('a.TQQQX', 'TQQQ（1999 起·含模拟）', 'TQQQ (from 1999, incl. simulation)');
+  add('a.TQQQX.s', 'TQQQ*', 'TQQQ*');
+  add('a.TQQQX.d', '1999-03 至 2010-02 为用 QQQ 日总回报 ×3 并扣除融资与费用后的模拟值（经 2010 年以来的实盘校准），之后为真实 TQQQ', '1999-03 to 2010-02 simulated as 3× QQQ daily total return less financing and costs (calibrated on actuals since 2010); real TQQQ afterwards');
   add('a.TLT', 'TLT 20年+美债', 'TLT 20Y+ Treasuries');
   add('a.TLT.s', 'TLT', 'TLT');
   add('a.TLT.d', '长期美国国债', 'Long-term Treasuries');
   add('simNote', '* 含 2001–2010 模拟段', '* includes simulated 2001–2010');
   add('ov.cardsTitle', '全部标的 · 从数据起点至今', 'Every instrument · from data start to today');
-  add('ov.cardsLede', '每张卡片都用各自完整的日频历史计算（全收益；SOXL 为价格口径）。起点不同，年化收益不能直接横向比较；公平对比请到「走势对比」选择共同区间。', 'Each card uses its own full daily history (total return; SOXL is price-only). Start dates differ, so do not compare annual returns across cards; use Compare for a common window.');
+  add('ov.cardsLede', '每张卡片都用各自完整的日频历史计算（全收益）。起点不同，年化收益不能直接横向比较；公平对比请到「走势对比」选择共同区间。', 'Each card uses its own full daily history (total return). Start dates differ, so do not compare annual returns across cards; use Compare for a common window.');
 
   // New single-asset strategies
   const ST2 = [

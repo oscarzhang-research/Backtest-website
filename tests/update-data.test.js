@@ -156,12 +156,20 @@ test('a missing bar on a new session counts as a flat day that the next session 
   assert.throws(() => applyUpdate(truncate(DATA, k), src2, { now: NOW }), /AMD: no data for 3/);
 });
 
-test('SOXLX (simulated before 2010) follows SOXL; price-only series ignore distributions', () => {
+test('SOXL* and TQQQ* follow SOXL and TQQQ; the leveraged funds count distributions like every other ETF', () => {
+  assert.equal(PRICE_ONLY.size, 0, 'no series is price-only since the 2026-10 rebuild');
+  assert.deepEqual(MIRRORS, { SOXLX: 'SOXL', TQQQX: 'TQQQ' });
   const k = 3; const src = fixtures(N - 1 - k - 30, N - 1);
-  for (const key of PRICE_ONLY) { const b = src.etf[key].bars; b[b.length - 1].div = 1; } // a distribution in the new data
+  for (const key of ['SOXL', 'TQQQ']) { const b = src.etf[key].bars; b[b.length - 1].div = 1; } // a distribution on the last new session
   const { data } = applyUpdate(truncate(DATA, k), src, { now: NOW });
-  for (const key of PRICE_ONLY) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);
-  assert.deepEqual(data.etf.SOXLX.r.slice(-k), data.etf.SOXL.r.slice(-k));
+  for (const [sim, real] of Object.entries(MIRRORS)) {
+    assert.deepEqual(data.etf[sim].r.slice(-k), data.etf[real].r.slice(-k), sim);
+    assert.deepEqual(data.etf[sim].r.slice(0, -k), DATA.etf[sim].r.slice(0, -k), sim + ': the simulated stretch is never touched');
+  }
+  for (const key of ['SOXL', 'TQQQ']) {
+    const o = data.etf[key].r, o0 = DATA.etf[key].r, last = Core.S[key].v[N - 2];
+    assert.ok(Math.abs(o[o.length - 1] / 1e6 - (o0[o0.length - 1] / 1e6 + 1 / last)) < 2e-6, key + ': the distribution adds to the last return');
+  }
 });
 
 test('T-bill rate and USD/CNY: provisional values are rebuilt from the latest observation', () => {
@@ -209,7 +217,8 @@ const nyTime = (hm, iso = DATA.asOf) => {
 test('a live update adds the session that is still trading, marked provisional', () => {
   const src = fixtures(N - 1 - 1 - 30, N - 1); src.tbill = src.cny = src.cpi = src.gs10 = null; // what a live download holds
   const t = truncate(DATA, 1);
-  assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:29'))), t.asOf);
+  // a calendar date, not a session: at 09:29 on a Monday it is the Sunday before
+  assert.equal(lastOpenedDay(nyTime('09:29')), Core.days[N - 1] - 1);
   assert.equal(codec.isoOf(lastOpenedDay(nyTime('09:30'))), DATA.asOf);
   // the ordinary update leaves the session out until it has closed
   assert.equal(applyUpdate(t, src, { now: nyTime('14:05') }).report.added.length, 0);

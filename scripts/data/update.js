@@ -23,9 +23,10 @@ const TOL_OK = 3e-4;        // |difference in a daily return| that still counts 
 const TOL_FAIL = 3e-3;      // any larger difference in the verification window stops the update
 const MAX_SOFT = 2;         // differences between TOL_OK and TOL_FAIL tolerated per series
 const REVISE_MAX = 0.03;    // the largest correction allowed in the revision window
-const PRICE_ONLY = new Set(['SOXL', 'TQQQ']);   // built from closes only (distributions excluded), as originally
-const MIRRORS = { SOXLX: 'SOXL' };              // simulated SOXL before 2010-03-12, the real SOXL afterwards
-const LEVERAGED = new Set(['SOXL', 'TQQQ', 'SOXLX']);
+const PRICE_ONLY = new Set();                     // series built from closes only, distributions excluded (none since SOXL
+                                                  // and TQQQ were rebuilt as total return by scripts/rebuild-leveraged.js)
+const MIRRORS = { SOXLX: 'SOXL', TQQQX: 'TQQQ' }; // simulated before the fund's launch, the real fund afterwards
+const LEVERAGED = new Set(['SOXL', 'TQQQ', 'SOXLX', 'TQQQX']);
 const RF_EXACT_UNTIL = '2025-12-19';            // last FRED DTB3 value in the original build (then the Fed funds target midpoint)
 const SPY_FEE = 0.000945;                       // SPY's expense ratio, added back to its yield to estimate the index yield
 
