@@ -778,6 +778,11 @@
     rollCache.set(ck, out);
     return out;
   };
+  // Drop every cached series, indicator and rolling statistic (needed after the underlying data changes, e.g. in tests)
+  E.clearCaches = function () {
+    seriesCache.clear(); rollCache.clear();
+    for (const k in Core.S) delete Core.S[k]._ind;
+  };
 
   MR.fixed = {
     sched: 'Q', warm: () => 0,
