@@ -224,195 +224,406 @@
         : `Real SOXL has had ${b(String(real.length))} drawdowns of 40% or more since 2010, and spent ${b(U.pct(under / n, 0))} of all trading days more than 50% below its high. In those episodes SOXX fell only ${U.pct(xsMin, 0)}–${U.pct(xsMax, 0)} while SOXL fell ${b(U.pct(slMin, 0) + '–' + U.pct(slMax, 0))}; recovering from −90% requires a 900% gain. In the simulated 2000s SOXL* lost more than 99% — effectively wiped out.`));
   }
 
-  // ---------- S6: after a fall from the high — forward returns ----------
+  // ---------- S6: after a fall from the high — forward returns under combinations of conditions ----------
   const DIP_KEYS = ['SOXL', 'SOXX', 'SMH', 'TQQQ', 'QQQ', 'SPX'];
+  const DIP_UNDER = { SOXL: 'SOXX', TQQQ: 'QQQ' }; // the unlevered index behind a leveraged ETF
   const DIP_HZ = [1, 3, 6, 12, 24, 36, 60, 120]; // months
   const DIP_WIN = [63, 126, 252, 504, 756, 1260]; // sessions
+  const DIP_LWIN = [21, 63, 126, 252];
+  const DIP_MA = [20, 50, 100, 200];
   const DIP_STATS = ['mean', 'p50', 'p25', 'p75', 'p10', 'p90', 'p5', 'p95', 'min', 'max', 'pos'];
+  const DIP_CONDS = ['dd', 'reb', 'fear', 'trend', 'mkt'];
+  const DIP_CMP = ['p50', 'mean', 'p25', 'p75', 'pos'];
+  const dipNum = (x, lo, hi, def) => (typeof x === 'number' && isFinite(x) && x >= lo && x <= hi ? x : def);
+  // one combination of conditions, with defaults for anything missing or invalid
+  const dipClean = (c) => {
+    c = c || {}; const a = c.dd || {}, r = c.reb || {}, f = c.fear || {}, t = c.trend || {}, m = c.mkt || {};
+    const o = { sig: c.sig === 'under' ? 'under' : 'self', ref: c.ref === 'roll' ? 'roll' : 'ath', win: DIP_WIN.includes(c.win) ? c.win : 252,
+      dd: { on: a.on !== false, lo: dipNum(a.lo, 1, 99, 50), hi: null, deep: !!a.deep },
+      reb: { on: !!r.on, lo: dipNum(r.lo, 0, 1000, 20), hi: null, low: r.low === 'roll' ? 'roll' : 'fall', lwin: DIP_LWIN.includes(r.lwin) ? r.lwin : 63, days: Math.round(dipNum(r.days, 0, 500, 0)) },
+      fear: { on: !!f.on, by: f.by === 'vol' ? 'vol' : 'vix', below: f.below !== false, x: dipNum(f.x, 1, 300, f.by === 'vol' ? 35 : 25) },
+      trend: { on: !!t.on, n: DIP_MA.includes(t.n) ? t.n : 50, above: t.above !== false },
+      mkt: { on: !!m.on, n: DIP_MA.includes(m.n) ? m.n : 200, above: m.above !== false } };
+    o.dd.hi = dipNum(a.hi, o.dd.lo + 0.1, 99.9, null); o.reb.hi = dipNum(r.hi, o.reb.lo + 0.1, 1000, null);
+    return o;
+  };
+  const dipCopy = (c) => dipClean(JSON.parse(JSON.stringify(c)));
+  const DIP_LEV = { SOXL: 3, TQQQ: 3 };
+  // move the fall and rebound between a leveraged fund and its index, converting the thresholds as if the fund
+  // compounded L times the index's log return (1 + r_fund ≈ (1 + r_index)^L): SOXL −50% ≈ SOXX −20.6%
+  const dipSwapSig = (c, key) => {
+    const c2 = dipCopy(c), L = DIP_LEV[key] || 1, f = c.sig === 'under' ? L : 1 / L; c2.sig = c.sig === 'under' ? 'self' : 'under';
+    const snap = (x) => { const r = Math.round(x * 10) / 10, n = Math.round(r); return f > 1 && Math.abs(r - n) <= 0.15 ? n : r; }; // switching back restores 50% rather than 49.9%
+    const fall = (x) => x == null ? null : snap((1 - Math.pow(1 - x / 100, f)) * 100), rise = (x) => x == null ? null : snap((Math.pow(1 + x / 100, f) - 1) * 100);
+    c2.dd.lo = Math.min(99, Math.max(1, fall(c.dd.lo))); c2.dd.hi = fall(c.dd.hi); c2.reb.lo = rise(c.reb.lo); c2.reb.hi = rise(c.reb.hi);
+    return dipClean(c2);
+  };
   const DS = (() => {
-    const d = Object.assign({ key: 'SOXL', sim: false, lo: 50, hi: null, ref: 'ath', win: 252, first: false, ann: false, hz: [1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'] }, U.store.get('soxlDip', {}));
+    const st = U.store.get('soxlDip', {}) || {};
+    const d = Object.assign({ key: 'SOXL', sim: false, first: false, wFall: false, ann: false, hz: [1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'], cmp: 'p50' }, st);
+    d.c = dipClean(st.c || (st.lo != null ? { ref: st.ref, win: st.win, dd: { lo: st.lo, hi: st.hi } } : null)); // earlier versions kept the fall at the top level
+    for (const k of ['lo', 'hi', 'ref', 'win']) delete d[k];
     if (!DIP_KEYS.includes(d.key)) d.key = 'SOXL';
-    if (!(d.lo >= 1 && d.lo <= 99)) d.lo = 50;
-    if (!(d.hi > d.lo && d.hi < 100)) d.hi = null;
-    if (!DIP_WIN.includes(d.win)) d.win = 252;
     d.hz = Array.isArray(d.hz) ? d.hz.filter(m => Number.isInteger(m) && m >= 1 && m <= 360) : []; if (!d.hz.length) d.hz = [12];
     d.stats = Array.isArray(d.stats) ? d.stats.filter(k => /^(mean|min|max|pos|p\d+(\.\d)?)$/.test(k)) : []; if (!d.stats.length) d.stats = ['p50'];
+    if (!DIP_CMP.includes(d.cmp)) d.cmp = 'p50';
+    for (const k of ['sim', 'first', 'wFall', 'ann']) d[k] = !!d[k];
     return d;
   })();
-  const saveD = () => U.store.set('soxlDip', DS);
+  // saved combinations; three examples until the visitor saves or deletes one
+  const DSAVED = (() => {
+    const x = U.store.get('soxlDipSaved', null);
+    if (Array.isArray(x)) return x.slice(0, 30).map(o => ({ name: o && typeof o.name === 'string' ? o.name.slice(0, 60) : null, c: dipClean(o && o.c) }));
+    return [{ reb: { on: true, lo: 20 }, fear: { on: true } }, { reb: { on: true, lo: 20 }, mkt: { on: true } }, { trend: { on: true }, mkt: { on: true } }].map(c => ({ name: null, c: dipClean(c) }));
+  })();
+  const saveD = () => { U.store.set('soxlDip', DS); U.store.set('soxlDipSaved', DSAVED); };
   const hzLab = (m) => m % 12 === 0 ? (zh() ? `${m / 12} 年` : `${m / 12} year${m === 12 ? '' : 's'}`) : (zh() ? `${m} 个月` : `${m} month${m === 1 ? '' : 's'}`);
   const winLab = (w) => zh() ? { 63: '3 个月', 126: '6 个月', 252: '1 年', 504: '2 年', 756: '3 年', 1260: '5 年' }[w] : { 63: '3 months', 126: '6 months', 252: '1 year', 504: '2 years', 756: '3 years', 1260: '5 years' }[w];
   const hzShort = (m) => m % 12 === 0 ? m / 12 + (zh() ? '年' : 'Y') : m + (zh() ? '个月' : 'M');
   const winAdj = (w) => ({ 63: '3-month', 126: '6-month', 252: '1-year', 504: '2-year', 756: '3-year', 1260: '5-year' }[w]);
+  const lwinLab = (w) => zh() ? { 21: '1 个月', 63: '3 个月', 126: '6 个月', 252: '1 年' }[w] : { 21: '1 month', 63: '3 months', 126: '6 months', 252: '1 year' }[w];
+  const lwinAdj = (w) => ({ 21: '1-month', 63: '3-month', 126: '6-month', 252: '1-year' }[w]);
   const statP = (k) => k === 'min' ? 0 : k === 'max' ? 1 : k === 'mean' || k === 'pos' ? null : parseFloat(k.slice(1)) / 100;
   const statLab = (k) => k === 'mean' ? (zh() ? '平均' : 'Mean') : k === 'p50' ? (zh() ? '中位数' : 'Median') : k === 'min' ? (zh() ? '最低' : 'Lowest') : k === 'max' ? (zh() ? '最高' : 'Highest') : k === 'pos' ? (zh() ? '正收益占比' : 'Share > 0') : 'P' + k.slice(1);
   const statRank = (k) => k === 'mean' ? -1 : k === 'pos' ? 2 : statP(k);
   const statVal = (st, k) => k === 'mean' ? st.mean : k === 'pos' ? st.pos : k === 'min' ? st.min : k === 'max' ? st.max : st.q(statP(k));
   const fmtR = (x) => !U.isNum(x) ? '—' : Math.abs(x) >= 10 ? (x < 0 ? '-' : '') + Math.round(Math.abs(x) * 100).toLocaleString('en-US') + '%' : U.pct(x, 1);
+  const pctN = (x) => +x.toFixed(1) + '%'; // a percentage the visitor typed
   const fade = (c, a) => /^#[0-9a-f]{6}$/i.test(c) ? `rgba(${parseInt(c.slice(1, 3), 16)}, ${parseInt(c.slice(3, 5), 16)}, ${parseInt(c.slice(5, 7), 16)}, ${a})` : c;
   // log-axis ticks at 1-2-5 multiples of the growth factor (1 + return) covering [lo, hi]
   const logTicks = (lo, hi) => { const out = []; for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k++) for (const m of [1, 2, 5]) { const t = m * Math.pow(10, k); if (t >= lo && t <= hi) out.push(+t.toPrecision(3)); } return out.length > 9 ? out.filter(t => Math.abs(Math.log10(t) - Math.round(Math.log10(t))) < 1e-9) : out; };
   const multLab = (y) => { const x = y - 1; return Math.abs(x) < 1e-9 ? '0%' : (x > 0 ? '+' : '') + Math.round(x * 100).toLocaleString('en-US') + '%'; };
+  const dipKey = () => DS.key === 'SOXL' && DS.sim ? 'SOXLX' : DS.key; // the series bought
+  const dipUnl = () => DIP_UNDER[DS.key] || DS.key; // the unlevered series: trend and volatility
+  const dipSig = (c) => c.sig === 'under' && DIP_UNDER[DS.key] ? DIP_UNDER[DS.key] : dipKey(); // fall and rebound
+  const nmOf = (k) => k === 'SOXLX' ? 'SOXL*' : U.assetName(k, true);
+  const condsOn = (c) => DIP_CONDS.filter(k => c[k].on);
+  // one condition in words: long for sentences, short for table rows
+  function condTxt(c, k, short) {
+    const Z = zh(), sig = nmOf(dipSig(c)), unl = nmOf(dipUnl()), sigP = c.sig === 'under' && DIP_UNDER[DS.key] ? sig + ' ' : '';
+    const range = (lo, hi) => hi == null ? (Z ? `${pctN(lo)} 以上` : `at least ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`;
+    const rangeS = (lo, hi) => hi == null ? `≥${pctN(lo)}` : `${pctN(lo)}–${pctN(hi)}`;
+    if (k === 'dd') {
+      const d = c.dd, refZ = c.ref === 'ath' ? '历史最高点' : `过去 ${winLab(c.win)}的最高点`, refE = c.ref === 'ath' ? 'its all-time high' : `its ${winAdj(c.win)} high`;
+      if (short) return Z ? `${sigP}${d.deep ? '最深' : ''}跌${rangeS(d.lo, d.hi)}${c.ref === 'roll' ? `（${winLab(c.win)}高点）` : ''}` : `${sigP}${d.deep ? 'deepest ' : ''}fall ${rangeS(d.lo, d.hi)}${c.ref === 'roll' ? ` (${winAdj(c.win)} high)` : ''}`;
+      return d.deep ? (Z ? `${sig} 这一轮从${refZ}最深跌了 ${range(d.lo, d.hi)}` : `${sig}'s fall from ${refE} reached ${range(d.lo, d.hi)}`)
+        : (Z ? `${sig} 比${refZ}低 ${range(d.lo, d.hi)}` : `${sig} ${range(d.lo, d.hi)} below ${refE}`);
+    }
+    if (k === 'reb') {
+      const r = c.reb, near = r.lo === 0 && r.hi != null, lowZ = r.low === 'fall' ? '这一轮最低点' : `最近 ${lwinLab(r.lwin)}的最低点`, lowE = r.low === 'fall' ? 'the low of this fall' : `its ${lwinAdj(r.lwin)} low`;
+      if (short) return Z ? (near ? `${sigP}离低点<${pctN(r.hi)}` : `${sigP}反弹${rangeS(r.lo, r.hi)}`) + (r.low === 'roll' ? `（${lwinLab(r.lwin)}低点）` : '') + (r.days ? `·低点≥${r.days}天前` : '')
+        : (near ? `${sigP}within ${pctN(r.hi)} of the low` : `${sigP}rebound ${rangeS(r.lo, r.hi)}`) + (r.low === 'roll' ? ` (${lwinAdj(r.lwin)} low)` : '') + (r.days ? `, low ≥${r.days} sessions old` : '');
+      const dz = r.days ? (Z ? `，且低点至少在 ${r.days} 个交易日前` : `, the low at least ${r.days} sessions old`) : '';
+      return (near ? (Z ? `${sig} 离${lowZ}不到 ${pctN(r.hi)}` : `${sig} within ${pctN(r.hi)} of ${lowE}`) : (Z ? `${sig} 比${lowZ}高 ${range(r.lo, r.hi)}` : `${sig} ${range(r.lo, r.hi)} above ${lowE}`)) + dz;
+    }
+    if (k === 'fear') {
+      const f = c.fear, x = f.by === 'vix' ? String(+f.x.toFixed(1)) : pctN(f.x);
+      if (short) return (f.by === 'vix' ? 'VIX' : (Z ? `${unl}波动率` : `${unl} vol`)) + (f.below ? '<' : '≥') + x;
+      const what = f.by === 'vix' ? 'VIX' : (Z ? `${unl} 近 20 日波动率` : `${unl}'s 20-day volatility`);
+      return Z ? `${what}${f.below ? '低于' : '不低于'} ${x}` : `${what} ${f.below ? 'below' : 'at or above'} ${x}`;
+    }
+    if (k === 'trend') {
+      const t = c.trend;
+      if (short) return Z ? `${unl}在${t.n}日线${t.above ? '上' : '下'}` : `${unl} ${t.above ? 'above' : 'below'} ${t.n}-day MA`;
+      return Z ? `${unl} 在 ${t.n} 日均线${t.above ? '上方' : '下方'}` : `${unl} ${t.above ? 'above' : 'below'} its ${t.n}-day average`;
+    }
+    const m = c.mkt;
+    if (short) return Z ? `标普在${m.n}日线${m.above ? '上' : '下'}` : `S&P ${m.above ? 'above' : 'below'} ${m.n}-day MA`;
+    return Z ? `标普500 在 ${m.n} 日均线${m.above ? '上方' : '下方'}` : `S&P 500 ${m.above ? 'above' : 'below'} its ${m.n}-day average`;
+  }
+  const comboTxt = (c, short) => { const a = condsOn(c); return a.length ? a.map(k => condTxt(c, k, short)).join(short ? ' · ' : (zh() ? '；' : '; ')) : (zh() ? '不设条件' : 'no conditions'); };
+  let DIP_CTX = null; // forward-horizon ends, baseline and cached signals; rebuilt when the instrument or horizons change
   function dips(tk) {
-    const ctl = h('div', { class: 'controls' }); const ctl2 = h('div', { class: 'controls', style: { marginTop: '12px' } }); const out = h('div', { class: 'stack', style: { marginTop: '12px' } });
+    const top = h('div', { class: 'controls' }), hzRow = h('div', { class: 'controls', style: { marginTop: '12px' } }), condBox = h('div', { style: { marginTop: '14px' } }), out = h('div', { class: 'stack', style: { marginTop: '12px' } });
+    const sec = section('sx-dip', 'S6', { zh: 'SOXL 从高点下跌之后发生了什么？', en: 'What happened after SOXL fell from its high?' }, { zh: '自选跌幅、反弹、恐慌、趋势和大盘条件，组合起来看之后的收益', en: 'Combine conditions on the fall, the rebound, fear, the trend and the market, and see what came next' }, top, condBox, hzRow, out);
     const chip = (label, on, fn) => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(on), onclick: fn }, label);
     const flip = (arr, x) => { const k = arr.indexOf(x); if (k >= 0) { if (arr.length > 1) arr.splice(k, 1); } else arr.push(x); };
     const redo = () => { saveD(); buildCtl(); draw(); };
+    const numBox = (id, val, lo, hi, step, fn, opt) => {
+      const i = h('input', { type: 'number', id, value: val == null ? '' : String(val), min: lo, max: hi, step, inputmode: 'decimal', placeholder: opt ? (zh() ? '不限' : 'none') : null });
+      i.addEventListener('change', () => { const x = parseFloat(i.value); fn(isFinite(x) ? x : null); });
+      return i;
+    };
+    const fld = (txt, el) => { if (el && /^(INPUT|SELECT)$/.test(el.tagName)) el.setAttribute('aria-label', txt); return h('div', { class: 'dip-f' }, h('span', null, txt), el); };
+    // a condition card: tick box and settings; an unticked card keeps its settings for the comparison table
+    const card = (k, title, ...body) => {
+      const cb = h('input', { type: 'checkbox', id: 'dipOn-' + k }); cb.checked = DS.c[k].on;
+      cb.addEventListener('change', () => { DS.c[k].on = cb.checked; redo(); });
+      return h('div', { class: 'dip-cond' + (DS.c[k].on ? '' : ' off') }, h('label', { class: 'dip-head', for: 'dipOn-' + k }, cb, title), h('div', { class: 'dip-body' }, ...body));
+    };
     function buildCtl() {
-      U.clear(ctl); U.clear(ctl2);
-      ctl.appendChild(U.ctl(zh() ? '标的' : 'Instrument', U.select('dipKey', DIP_KEYS.map(k => [k, U.assetName(k, true)]), DS.key, (v) => { DS.key = v; redo(); })));
-      ctl.appendChild(U.ctl(zh() ? '距高点跌了至少（%）' : 'Fall from the high: at least (%)', U.numInput('dipLo', DS.lo, (v) => { DS.lo = Math.min(99, Math.max(1, Math.round(v * 10) / 10)); if (DS.hi != null && DS.hi <= DS.lo) DS.hi = null; redo(); }, { min: 1, max: 99, step: 1 })));
-      const hiIn = h('input', { type: 'number', id: 'dipHi', value: DS.hi == null ? '' : String(DS.hi), min: 2, max: 99, step: 1, inputmode: 'decimal', placeholder: zh() ? '不限' : 'no limit' });
-      hiIn.addEventListener('change', () => { const x = parseFloat(hiIn.value); DS.hi = isFinite(x) && x > DS.lo && x < 100 ? Math.round(x * 10) / 10 : null; redo(); });
-      ctl.appendChild(U.ctl(zh() ? '且至多（%，可留空）' : 'and at most (%, optional)', hiIn));
-      ctl.appendChild(U.ctl(zh() ? '参照高点' : 'Reference high', U.seg('dipRef', [['ath', zh() ? '历史最高' : 'All-time high'], ['roll', zh() ? '滚动高点' : 'Rolling high']], DS.ref, (v) => { DS.ref = v; redo(); })));
-      if (DS.ref === 'roll') ctl.appendChild(U.ctl(zh() ? '回看' : 'Look-back', U.select('dipWin', DIP_WIN.map(w => [w, winLab(w)]), DS.win, (v) => { DS.win = +v; redo(); })));
-      ctl.appendChild(U.ctl(zh() ? '取样' : 'Sampling', U.seg('dipFirst', [['all', zh() ? '每个符合条件的交易日' : 'Every qualifying day'], ['first', zh() ? '每轮下跌只取第一天' : 'First day of each fall']], DS.first ? 'first' : 'all', (v) => { DS.first = v === 'first'; redo(); })));
-      if (DS.key === 'SOXL') ctl.appendChild(U.ctl(zh() ? '数据' : 'Data', U.seg('dipSim', [['real', zh() ? '2010 起（真实）' : 'From 2010 (actual)'], ['sim', zh() ? '2001 起（含模拟）' : 'From 2001 (incl. sim)']], DS.sim ? 'sim' : 'real', (v) => { DS.sim = v === 'sim'; redo(); })));
-      ctl2.appendChild(U.ctl(zh() ? '收益口径' : 'Returns', U.seg('dipAnn', [['abs', zh() ? '累计收益' : 'Total return'], ['ann', zh() ? '年化收益' : 'Annualized']], DS.ann ? 'ann' : 'abs', (v) => { DS.ann = v === 'ann'; redo(); })));
-      // horizons: presets plus the visitor's own (a custom horizon disappears when switched off)
+      U.clear(top); U.clear(hzRow); U.clear(condBox);
+      const c = DS.c, Z = zh(), unlNm = nmOf(dipUnl());
+      top.appendChild(U.ctl(Z ? '买入的标的' : 'Instrument bought', U.select('dipKey', DIP_KEYS.map(k => [k, U.assetName(k, true)]), DS.key, (v) => { DS.key = v; redo(); })));
+      if (DS.key === 'SOXL') top.appendChild(U.ctl(Z ? '数据' : 'Data', U.seg('dipSim', [['real', Z ? '2010 起（真实）' : 'From 2010 (actual)'], ['sim', Z ? '2001 起（含模拟）' : 'From 2001 (incl. sim)']], DS.sim ? 'sim' : 'real', (v) => { DS.sim = v === 'sim'; redo(); })));
+      if (DIP_UNDER[DS.key]) top.appendChild(U.ctl(Z ? '跌幅和反弹按' : 'Fall and rebound measured on', U.seg('dipSig', [['self', U.assetName(DS.key, true)], ['under', U.assetName(DIP_UNDER[DS.key], true) + (Z ? '（标的指数）' : ' (the index)')]], c.sig, (v) => { if (v !== c.sig) DS.c = dipSwapSig(c, DS.key); redo(); })));
+      top.appendChild(U.ctl(Z ? '取样' : 'Sampling', U.seg('dipFirst', [['all', Z ? '每个符合条件的交易日' : 'Every qualifying day'], ['first', Z ? '每轮只取第一天' : 'First day of each fall']], DS.first ? 'first' : 'all', (v) => { DS.first = v === 'first'; redo(); })));
+      top.appendChild(U.ctl(Z ? '样本权重' : 'Weights', U.seg('dipW', [['day', Z ? '每天相同' : 'Each day'], ['fall', Z ? '每轮相同' : 'Each fall']], DS.wFall ? 'fall' : 'day', (v) => { DS.wFall = v === 'fall'; redo(); })));
+      top.appendChild(U.ctl(Z ? '收益口径' : 'Returns', U.seg('dipAnn', [['abs', Z ? '累计收益' : 'Total return'], ['ann', Z ? '年化收益' : 'Annualized']], DS.ann ? 'ann' : 'abs', (v) => { DS.ann = v === 'ann'; redo(); })));
+      // the conditions
+      condBox.appendChild(h('p', { class: 'note', style: { margin: '0 0 8px' } }, Z ? '条件：打勾的条件必须同时满足。没打勾的条件也可以先设好参数，下方「条件组合对比」会显示加上它之后的结果。' : 'Conditions: every ticked condition must hold. Unticked ones keep their settings, and the comparison table below shows what adding each would do.'));
+      condBox.appendChild(h('div', { class: 'dip-conds' },
+        card('dd', Z ? '距高点的跌幅' : 'Fall from the high',
+          fld(Z ? '至少（%）' : 'At least (%)', numBox('dipDdLo', c.dd.lo, 1, 99, 1, (x) => { c.dd.lo = x == null ? 50 : Math.min(99, Math.max(1, Math.round(x * 10) / 10)); if (c.dd.hi != null && c.dd.hi <= c.dd.lo) c.dd.hi = null; redo(); })),
+          fld(Z ? '至多（%，可空）' : 'At most (%, optional)', numBox('dipDdHi', c.dd.hi, 2, 99, 1, (x) => { c.dd.hi = x != null && x > c.dd.lo && x < 100 ? Math.round(x * 10) / 10 : null; redo(); }, true)),
+          fld(Z ? '口径' : 'Measured', U.seg('dipDeep', [['cur', Z ? '现在离高点' : 'Today'], ['deep', Z ? '这一轮最深' : 'Deepest so far']], c.dd.deep ? 'deep' : 'cur', (v) => { c.dd.deep = v === 'deep'; redo(); })),
+          fld(Z ? '参照高点' : 'Reference high', U.seg('dipRef', [['ath', Z ? '历史最高' : 'All-time'], ['roll', Z ? '滚动高点' : 'Rolling']], c.ref, (v) => { c.ref = v; redo(); })),
+          c.ref === 'roll' ? fld(Z ? '回看' : 'Look-back', U.select('dipWin', DIP_WIN.map(w => [w, winLab(w)]), c.win, (v) => { c.win = +v; redo(); })) : null),
+        card('reb', Z ? '距阶段低点的反弹' : 'Rise from the low',
+          fld(Z ? '至少（%）' : 'At least (%)', numBox('dipRbLo', c.reb.lo, 0, 1000, 5, (x) => { c.reb.lo = x == null ? 0 : Math.min(1000, Math.max(0, Math.round(x * 10) / 10)); if (c.reb.hi != null && c.reb.hi <= c.reb.lo) c.reb.hi = null; redo(); })),
+          fld(Z ? '至多（%，可空）' : 'At most (%, optional)', numBox('dipRbHi', c.reb.hi, 1, 1000, 5, (x) => { c.reb.hi = x != null && x > c.reb.lo ? Math.round(x * 10) / 10 : null; redo(); }, true)),
+          fld(Z ? '低点' : 'Low', U.seg('dipLow', [['fall', Z ? '这一轮最低' : 'Of this fall'], ['roll', Z ? '最近一段最低' : 'Recent']], c.reb.low, (v) => { c.reb.low = v; redo(); })),
+          c.reb.low === 'roll' ? fld(Z ? '回看' : 'Look-back', U.select('dipLwin', DIP_LWIN.map(w => [w, lwinLab(w)]), c.reb.lwin, (v) => { c.reb.lwin = +v; redo(); })) : null,
+          fld(Z ? '低点至少在几个交易日前' : 'Low at least … sessions old', numBox('dipRbDays', c.reb.days, 0, 500, 5, (x) => { c.reb.days = x == null ? 0 : Math.min(500, Math.max(0, Math.round(x))); redo(); }))),
+        card('fear', Z ? '恐慌程度' : 'Fear gauge',
+          fld(Z ? '指标' : 'Measure', U.seg('dipFearBy', [['vix', 'VIX'], ['vol', Z ? `${unlNm} 20 日波动率` : `${unlNm} 20-day vol`]], c.fear.by, (v) => { if (v !== c.fear.by) { c.fear.by = v; c.fear.x = v === 'vix' ? 25 : 35; } redo(); })),
+          fld(Z ? '条件' : 'Condition', U.seg('dipFearBelow', [['1', Z ? '低于' : 'Below'], ['0', Z ? '不低于' : 'At or above']], c.fear.below ? '1' : '0', (v) => { c.fear.below = v === '1'; redo(); })),
+          fld(c.fear.by === 'vix' ? (Z ? '数值' : 'Level') : (Z ? '年化（%）' : 'Annualized (%)'), numBox('dipFearX', c.fear.x, 1, 300, 1, (x) => { c.fear.x = x == null ? (c.fear.by === 'vix' ? 25 : 35) : Math.min(300, Math.max(1, x)); redo(); }))),
+        card('trend', Z ? '趋势' : 'Trend',
+          fld(Z ? `${unlNm} 在` : `${unlNm} is`, U.seg('dipTrAbove', [['1', Z ? '均线上方' : 'Above'], ['0', Z ? '均线下方' : 'Below']], c.trend.above ? '1' : '0', (v) => { c.trend.above = v === '1'; redo(); })),
+          fld(Z ? '均线' : 'Average', U.select('dipTrN', DIP_MA.map(n => [n, Z ? `${n} 日` : `${n}-day`]), c.trend.n, (v) => { c.trend.n = +v; redo(); }))),
+        card('mkt', Z ? '大盘环境' : 'Broad market',
+          fld(Z ? '标普500 在' : 'S&P 500 is', U.seg('dipMkAbove', [['1', Z ? '均线上方' : 'Above'], ['0', Z ? '均线下方' : 'Below']], c.mkt.above ? '1' : '0', (v) => { c.mkt.above = v === '1'; redo(); })),
+          fld(Z ? '均线' : 'Average', U.select('dipMkN', DIP_MA.map(n => [n, Z ? `${n} 日` : `${n}-day`]), c.mkt.n, (v) => { c.mkt.n = +v; redo(); })))));
+      // horizons and statistics: presets plus the visitor's own (a custom one disappears when switched off)
       const hzN = U.numInput('dipHzN', 18, () => {}, { min: 1, max: 360, step: 1 }); hzN.style.width = '72px';
-      const hzU = U.select('dipHzU', [['m', zh() ? '个月' : 'months'], ['y', zh() ? '年' : 'years']], 'm', () => {});
+      const hzU = U.select('dipHzU', [['m', Z ? '个月' : 'months'], ['y', Z ? '年' : 'years']], 'm', () => {});
       const addHz = () => { const x = parseFloat(hzN.value); const m = Math.round(hzU.value === 'y' ? x * 12 : x); if (!(m >= 1 && m <= 360)) return; if (!DS.hz.includes(m)) DS.hz.push(m); redo(); };
-      ctl2.appendChild(U.ctl(zh() ? '时间跨度（点击开关，也可自定义）' : 'Horizons (click to switch, or add your own)', h('div', { class: 'chips', style: { alignItems: 'center' } },
-        Array.from(new Set(DIP_HZ.concat(DS.hz))).sort((a, c) => a - c).map(m => chip(hzLab(m), DS.hz.includes(m), () => { flip(DS.hz, m); redo(); })),
-        h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, hzN, hzU, h('button', { type: 'button', class: 'btn small ghost', onclick: addHz }, zh() ? '+ 添加' : '+ Add')))));
+      hzRow.appendChild(U.ctl(Z ? '时间跨度（点击开关，也可自定义）' : 'Horizons (click to switch, or add your own)', h('div', { class: 'chips', style: { alignItems: 'center' } },
+        Array.from(new Set(DIP_HZ.concat(DS.hz))).sort((a, c2) => a - c2).map(m => chip(hzLab(m), DS.hz.includes(m), () => { flip(DS.hz, m); redo(); })),
+        h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, hzN, hzU, h('button', { type: 'button', class: 'btn small ghost', onclick: addHz }, Z ? '+ 添加' : '+ Add')))));
       const pN = U.numInput('dipPN', 33, () => {}, { min: 1, max: 99, step: 1 }); pN.style.width = '72px';
       const addP = () => { const x = Math.round(parseFloat(pN.value) * 10) / 10; if (!(x >= 1 && x <= 99)) return; const k = 'p' + x; if (!DS.stats.includes(k)) DS.stats.push(k); redo(); };
-      ctl2.appendChild(U.ctl(zh() ? '统计量（点击开关，也可自定义分位）' : 'Statistics (click to switch, or add a percentile)', h('div', { class: 'chips', style: { alignItems: 'center' } },
-        Array.from(new Set(DIP_STATS.concat(DS.stats))).sort((a, c) => statRank(a) - statRank(c)).map(k => chip(statLab(k), DS.stats.includes(k), () => { flip(DS.stats, k); redo(); })),
-        h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, h('span', { class: 'muted', style: { fontSize: '13px' } }, 'P'), pN, h('button', { type: 'button', class: 'btn small ghost', onclick: addP }, zh() ? '+ 添加' : '+ Add')))));
+      hzRow.appendChild(U.ctl(Z ? '统计量（点击开关，也可自定义分位）' : 'Statistics (click to switch, or add a percentile)', h('div', { class: 'chips', style: { alignItems: 'center' } },
+        Array.from(new Set(DIP_STATS.concat(DS.stats))).sort((a, c2) => statRank(a) - statRank(c2)).map(k => chip(statLab(k), DS.stats.includes(k), () => { flip(DS.stats, k); redo(); })),
+        h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, h('span', { class: 'muted', style: { fontSize: '13px' } }, 'P'), pN, h('button', { type: 'button', class: 'btn small ghost', onclick: addP }, Z ? '+ 添加' : '+ Add')))));
+    }
+    // ---- the computation, cached per instrument and horizons ----
+    let ctx = null;
+    const getC = (id, fn) => { if (!ctx.cache.has(id)) ctx.cache.set(id, fn()); return ctx.cache.get(id); };
+    const maOf = (k, n) => getC(`ma|${k}|${n}`, () => { const S = Core.S[k]; return Calc.sma(S.v, S.s, ctx.e, n); });
+    const volOf = () => getC('vol|' + dipUnl(), () => { const S = Core.S[dipUnl()]; return Calc.rvol(S.v, S.s, ctx.e, 20); });
+    const fearVal = (f, i) => f.by === 'vix' ? Core.vix[i] : volOf()[i];
+    const fearOk = (f, y) => isFinite(y) && (f.below ? y < (f.by === 'vix' ? f.x : f.x / 100) : y >= (f.by === 'vix' ? f.x : f.x / 100));
+    const maMask = (k, n, above) => getC(`mask|ma|${k}|${n}|${above}`, () => { const v = Core.S[k].v, ma = maOf(k, n), m = new Uint8Array(ctx.n); for (let q = 0; q < ctx.n; q++) { const i = ctx.s + q; m[q] = isFinite(ma[i]) && (above ? v[i] > ma[i] : v[i] < ma[i]) ? 1 : 0; } return m; });
+    const fearMask = (f) => getC(`mask|fear|${f.by}|${f.below}|${f.x}|${dipUnl()}`, () => { const m = new Uint8Array(ctx.n); for (let q = 0; q < ctx.n; q++) m[q] = fearOk(f, fearVal(f, ctx.s + q)) ? 1 : 0; return m; });
+    function maskOf(c) {
+      const parts = [];
+      if (c.fear.on) parts.push(fearMask(c.fear));
+      if (c.trend.on) parts.push(maMask(dipUnl(), c.trend.n, c.trend.above));
+      if (c.mkt.on) parts.push(maMask('SPX', c.mkt.n, c.mkt.above));
+      if (parts.length < 2) return parts[0] || null;
+      const m = new Uint8Array(ctx.n); for (let q = 0; q < ctx.n; q++) { let ok = 1; for (const p of parts) if (!p[q]) { ok = 0; break; } m[q] = ok; } return m;
+    }
+    const refOf = (c) => { const k = dipSig(c); return getC(`ref|${k}|${c.ref}|${c.win}`, () => Calc.dipRef(Core.S[k].v, ctx.s, ctx.e, c.ref, c.win)); };
+    const rollOf = (c) => { const k = dipSig(c); return getC(`roll|${k}|${c.reb.lwin}`, () => Calc.rollMin(Core.S[k].v, ctx.s, ctx.e, c.reb.lwin)); };
+    function run(c, opts) {
+      return Calc.dipStudy(ctx, Object.assign({ sv: Core.S[dipSig(c)].v, ref: refOf(c), roll: c.reb.on && c.reb.low === 'roll' ? rollOf(c) : null, mask: maskOf(c), first: DS.first, wFall: DS.wFall,
+        dd: { on: c.dd.on, lo: c.dd.lo / 100, hi: c.dd.hi == null ? null : c.dd.hi / 100, deep: c.dd.deep },
+        reb: { on: c.reb.on, lo: c.reb.lo / 100, hi: c.reb.hi == null ? null : c.reb.hi / 100, low: c.reb.low, days: c.reb.days } }, opts || {}));
+    }
+    const baseSum = (h, ann) => getC(`base|${h}|${ann}`, () => Calc.summary(ann ? ctx.base[h].map(x => Math.pow(1 + x, 12 / ctx.months[h]) - 1) : ctx.base[h]));
+    const annOf = (arr, m) => arr.map(x => Math.pow(1 + x, 12 / m) - 1);
+    const shareAtMost = (arr, w, x) => { let a = 0, t = 0; arr.forEach((y, j) => { const ww = w ? w[j] : 1; t += ww; if (y <= x) a += ww; }); return t ? a / t : NaN; };
+    // each ticked condition on the latest session
+    function statusOf(c) {
+      const i = ctx.e, q = i - ctx.s, out2 = [], k = dipSig(c), sv = Core.S[k].v, R = refOf(c), Z = zh();
+      const rng = (lo, hi) => hi == null ? (Z ? `${pctN(lo)} 以上` : `≥ ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`;
+      if (c.dd.on) { const x = c.dd.deep ? 1 - R.low[q] / sv[R.pk[q]] : -R.dd[q]; out2.push({ ok: x >= c.dd.lo / 100 && (c.dd.hi == null || x <= c.dd.hi / 100), now: Z ? `${nmOf(k)} ${c.dd.deep ? '这一轮最深跌了' : '距高点'} ${U.pct(c.dd.deep ? x : -x, 1)}` : (c.dd.deep ? `${nmOf(k)}'s fall has reached ${U.pct(x, 1)}` : `${nmOf(k)} is ${U.pct(x, 1)} below the high`), need: (Z ? '跌幅 ' : 'fall ') + rng(c.dd.lo, c.dd.hi) }); }
+      if (c.reb.on) { const ro = c.reb.low === 'roll' ? rollOf(c) : null, lv = ro ? ro.val[q] : R.low[q], la = ro ? ro.at[q] : R.lowAt[q], x = sv[i] / lv - 1; out2.push({ ok: x >= c.reb.lo / 100 && (c.reb.hi == null || x <= c.reb.hi / 100) && (!c.reb.days || i - la >= c.reb.days), now: Z ? `${nmOf(k)} 距低点 ${U.pct(x, 1, true)}（低点在 ${i - la} 个交易日前）` : `${nmOf(k)} ${U.pct(x, 1, true)} from the low (${i - la} sessions ago)`, need: (Z ? '反弹 ' : 'rebound ') + rng(c.reb.lo, c.reb.hi) + (c.reb.days ? (Z ? `，低点至少 ${c.reb.days} 天前` : `, low ≥ ${c.reb.days} sessions old`) : '') }); }
+      if (c.fear.on) { const y = fearVal(c.fear, i); out2.push({ ok: fearOk(c.fear, y), now: c.fear.by === 'vix' ? `VIX ${U.num(y, 1)}` : (Z ? `${nmOf(dipUnl())} 20 日波动率 ${U.pct(y, 0)}` : `${nmOf(dipUnl())} 20-day vol ${U.pct(y, 0)}`), need: (c.fear.below ? (Z ? '低于 ' : 'below ') : (Z ? '不低于 ' : 'at least ')) + (c.fear.by === 'vix' ? +c.fear.x.toFixed(1) : pctN(c.fear.x)) }); }
+      const maNow = (key, n, above) => { const g = Core.S[key].v[i] / maOf(key, n)[i] - 1; return { ok: isFinite(g) && (above ? g > 0 : g < 0), now: Z ? `${nmOf(key)} 比 ${n} 日均线${g >= 0 ? '高' : '低'} ${U.pct(Math.abs(g), 1)}` : `${nmOf(key)} ${U.pct(Math.abs(g), 1)} ${g >= 0 ? 'above' : 'below'} its ${n}-day average`, need: Z ? (above ? '在均线上方' : '在均线下方') : (above ? 'above it' : 'below it') }; };
+      if (c.trend.on) out2.push(maNow(dipUnl(), c.trend.n, c.trend.above));
+      if (c.mkt.on) out2.push(maNow('SPX', c.mkt.n, c.mkt.above));
+      return out2;
     }
     function draw() {
       U.disposeIn(out); U.clear(out);
-      const key = DS.key === 'SOXL' && DS.sim ? 'SOXLX' : DS.key; const S = Core.S[key]; const v = S.v, s = S.s, e = S.e;
-      const nm = key === 'SOXLX' ? 'SOXL*' : U.assetName(DS.key, true), nmH = U.esc(nm); const col = U.assetColor(DS.key, tk);
-      const months = DS.hz.slice().sort((a, c) => a - c);
-      const R = Calc.dipForward(v, s, e, { lo: DS.lo / 100, hi: DS.hi == null ? null : DS.hi / 100, ref: DS.ref, win: DS.win, first: DS.first, months });
-      const cond = DS.hi == null ? (zh() ? `${DS.lo}% 以上` : `at least ${DS.lo}%`) : `${DS.lo}%–${DS.hi}%`;
-      const condIn = zh() && DS.hi == null ? cond : cond + ' '; // inside a Chinese sentence: “跌了 50% 以上的…” but “跌了 50%–60% 的…”
-      const refTxt = DS.ref === 'ath' ? (zh() ? '历史最高点' : 'its all-time high') : (zh() ? `过去 ${winLab(DS.win)}的最高点` : `its ${winAdj(DS.win)} high`);
-      const dNow = R.dd[e - s], qNow = -dNow >= DS.lo / 100 && (DS.hi == null || -dNow <= DS.hi / 100);
-      out.appendChild(h('p', { class: 'callout', html: zh()
-        ? `${Core.iso(e)}：${nmH} 收盘比${refTxt}（${Core.iso(R.hiAt[e - s])}）低 ${b(U.pct(-dNow, 1))}，${qNow ? b('符合') : '不符合'}当前条件（跌了 ${U.esc(cond)}）。`
-        : `${Core.iso(e)}: ${nmH} closed ${b(U.pct(-dNow, 1))} below ${refTxt} (${Core.iso(R.hiAt[e - s])}) — ${qNow ? b('inside') : 'outside'} the current condition (a fall of ${U.esc(cond)}).` }));
-      if (!R.days.length) { out.appendChild(h('div', { class: 'empty' }, zh() ? '所选区间内没有一天符合条件，换一个跌幅或参照高点试试。' : 'No day in the selected history met the condition; try another fall or reference high.')); return; }
-      const sel = DS.stats.slice().sort((a, c) => statRank(a) - statRank(c));
-      const rows = R.H.map(H => {
-        const stA = Calc.summary(H.r), stN = Calc.summary(H.ann), bsA = Calc.summary(H.base), bsN = Calc.summary(H.baseAnn), rsA = Calc.summary(H.rest), rsN = Calc.summary(H.restAnn);
-        const cnt = new Map(); for (const k of H.ep) cnt.set(k, (cnt.get(k) || 0) + 1);
-        let big = null; for (const [k, c] of cnt) if (!big || c > big.c) big = { ep: k, c };
-        return { H, st: DS.ann ? stN : stA, bs: DS.ann ? bsN : bsA, rs: DS.ann ? rsN : rsA, stA, stN, bsA, bsN, big, thin: H.nEp < 3 || stA.n < (DS.first ? 5 : 20) };
+      const key = dipKey(), S0 = Core.S[key], months = DS.hz.slice().sort((a, c2) => a - c2), id = key + '|' + months.join(',');
+      if (!DIP_CTX || DIP_CTX.id !== id) DIP_CTX = Object.assign(Calc.dipContext(S0.v, S0.s, S0.e, months), { id });
+      ctx = DIP_CTX;
+      const v = ctx.v, s = ctx.s, e = ctx.e, Z = zh(), c = DS.c;
+      const nm = nmOf(key), nmH = U.esc(nm), col = U.assetColor(DS.key, tk), cmpKey = DIP_UNDER[DS.key] || null, cmpNm = cmpKey ? nmOf(cmpKey) : '';
+      const epWord = c.dd.on ? (Z ? '轮下跌' : 'falls') : (Z ? '个时段' : 'spells');
+      // ---- today ----
+      const stt = statusOf(c), allOk = stt.every(x => x.ok);
+      out.appendChild(h('div', { class: 'callout', html: (Z ? `<b>${Core.iso(e)} 收盘</b>：` : `<b>Close of ${Core.iso(e)}</b>: `) + (stt.length
+        ? stt.map(x => `${x.ok ? '✓' : '✗'} ${U.esc(x.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(x.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? `。${allOk ? b('今天符合全部条件') : '今天不符合全部条件'}。` : `. ${allOk ? b('All conditions hold today') : 'Not all conditions hold today'}.`)
+        : (Z ? '没有勾选任何条件，下面的结果就是任意一天买入。' : 'No condition is ticked, so the results below are simply buying on any day.')) }));
+      const R = run(c, { cmp: cmpKey ? Core.S[cmpKey].v : null, mae: true, rest: true });
+      const h1 = Math.max(0, months.indexOf(12)); // the reference horizon for counts and sentences
+      const rows = R.H.map((H, h) => {
+        const stA = Calc.summary(H.r, H.w), stN = Calc.summary(H.ann, H.w);
+        let big = null; for (const [k, n] of H.cnt) if (!big || n > big.n) big = { ep: k, n };
+        return { H, h, st: DS.ann ? stN : stA, stA, stN, bs: baseSum(h, DS.ann), bsA: baseSum(h, false), bsN: baseSum(h, true),
+          rs: Calc.summary(DS.ann ? annOf(H.rest, H.m) : H.rest), cs: cmpKey ? Calc.summary(DS.ann ? annOf(H.cmp, H.m) : H.cmp, H.w) : null, ms: Calc.summary(H.mae, H.w),
+          big, thin: H.nEp < 3 || stA.n < (DS.first ? 5 : 20) };
       });
-      // ---- chart: distribution by horizon (log scale of the growth multiple) ----
-      const g = (x) => U.isNum(x) ? Math.max(1e-3, 1 + x) : null;
-      const cats = rows.map(x => hzLab(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '') + (x.thin ? ' †' : ''));
-      const el1 = h('div', { class: 'chart' }); out.appendChild(el1);
-      requestAnimationFrame(() => {
-        const c = U.chart(el1); if (!c) return; const narrow = el1.clientWidth < 640;
-        const row = (x, k) => U.ttRow(k[1], k[0], fmtR(k[2]));
-        const vals = []; for (const x of rows) if (x.st.n) vals.push(g(x.st.q(0.1)), g(x.st.q(0.9)), g(x.st.mean), g(x.bs.q(0.5)));
-        const lo0 = Math.min(1, ...vals.filter(U.isNum)), hi0 = Math.max(1, ...vals.filter(U.isNum)); const yLo = lo0 / 1.15, yHi = hi0 * 1.15; const ticks = logTicks(yLo, yHi);
-        c.setOption(U.baseOpt(tk, {
-          legend: legendOpt(tk), grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
-          tooltip: { trigger: 'axis', confine: true, axisPointer: { type: 'shadow' }, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 },
-            formatter: (ps) => { const x = rows[ps[0].dataIndex]; if (!x.st.n) return U.ttHead(hzLab(x.H.m)) + (zh() ? '没有样本' : 'No samples');
-              return U.ttHead(hzLab(x.H.m) + (DS.ann ? (zh() ? ' · 年化' : ' · annualized') : '') + ' · n = ' + x.st.n.toLocaleString('en-US') + (zh() ? `，${x.H.nEp} 轮` : `, ${x.H.nEp} falls`)) +
-                [[zh() ? 'P90' : 'P90', col, x.st.q(0.9)], ['P75', col, x.st.q(0.75)], [zh() ? '中位数' : 'Median', col, x.st.q(0.5)], ['P25', col, x.st.q(0.25)], ['P10', col, x.st.q(0.1)], [zh() ? '平均' : 'Mean', tk.ink, x.st.mean], [zh() ? '任意一天·中位数' : 'Any day: median', tk.ink2, x.bs.q(0.5)]].map(k => row(x, k)).join(''); } },
-          xAxis: U.catAxis(tk, narrow ? rows.map(x => hzShort(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '')) : cats, { axisLabel: { color: tk.ink2, fontSize: narrow ? 10.5 : 11.5, interval: 0 } }),
-          yAxis: U.valAxis(tk, { type: 'log', logBase: 10, min: yLo, max: yHi, axisLabel: { color: tk.muted, fontSize: 11.5, customValues: ticks, formatter: multLab }, axisTick: { show: false, customValues: ticks } }),
-          series: [
-            { name: zh() ? 'P25–P75（须线 P10–P90）' : 'P25–P75 (whiskers P10–P90)', type: 'boxplot', boxWidth: [10, 34], itemStyle: { color: fade(col, 0.2), borderColor: col, borderWidth: 1.6 },
-              data: rows.map(x => x.st.n ? [x.st.q(0.1), x.st.q(0.25), x.st.q(0.5), x.st.q(0.75), x.st.q(0.9)].map(g) : []),
-              markLine: { silent: true, symbol: 'none', data: [{ yAxis: 1 }], lineStyle: { color: tk.ruleStrong, type: 'solid' }, label: { show: false } } },
-            { name: zh() ? '平均' : 'Mean', type: 'scatter', symbol: 'diamond', symbolSize: 11, itemStyle: { color: tk.ink }, data: rows.map(x => g(x.st.mean)) },
-            { name: zh() ? '任意一天买入（中位数）' : 'Bought on any day (median)', type: 'scatter', symbol: 'emptyCircle', symbolSize: 10, itemStyle: { color: tk.ink2, borderWidth: 2 }, data: rows.map(x => g(x.bs.q(0.5))) },
-          ],
-        }), true);
-      });
-      // ---- table ----
-      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-        h('thead', null, h('tr', null, h('th', null, zh() ? '时间跨度' : 'Horizon'), h('th', null, zh() ? '样本' : 'Samples'), h('th', null, zh() ? '独立下跌' : 'Separate falls'),
-          sel.map(k => h('th', null, statLab(k))), h('th', { title: zh() ? '同一时期任意一天买入、持有同样长度的中位数' : 'Median of buying on any day of the same history and holding as long' }, zh() ? '任意一天·中位数' : 'Any day: median'))),
-        h('tbody', null, rows.map(x => h('tr', { class: x.thin ? 'muted' : '' },
-          h('td', { class: 'nowrap' }, cats[rows.indexOf(x)]), h('td', null, x.st.n.toLocaleString('en-US')), h('td', null, String(x.H.nEp)),
-          sel.map(k => { const y = statVal(x.st, k); return k === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y), style: k === 'p50' || k === 'mean' ? { fontWeight: 700 } : null }, fmtR(y)); }),
-          h('td', { class: U.signCls(x.bs.q(0.5)) }, fmtR(x.bs.q(0.5)))))))));
-      const notes = [zh() ? '箱体为 P25–P75，须线为 P10–P90，横线为中位数，◆ 为平均，○ 为任意一天买入的中位数；纵轴为对数坐标。' : 'Box: P25–P75; whiskers: P10–P90; line: median; ◆ mean; ○ median from any day. Log scale.'];
-      if (DS.ann && months.some(m => m < 12)) notes.push(zh() ? '* 不足一年的收益年化后会被放大很多倍，只适合相互比较。' : '* Annualizing horizons under a year magnifies them many times over; compare them with each other only.');
-      if (rows.some(x => x.thin)) notes.push(zh() ? '† 独立下跌不足 3 轮或样本太少：只能当作个例，不是统计规律。' : '† Fewer than three separate falls, or too few samples: anecdotes, not statistics.');
-      out.appendChild(h('p', { class: 'note' }, notes.join(' ')));
-      const r1 = rows.find(x => x.H.m === 12 && x.st.n) || rows.find(x => x.st.n);
-      // ---- how to read the table: the median of the qualifying days vs the median of any day ----
-      if (r1) {
-        const an = DS.ann && r1.H.m !== 12, st = r1.st, hz = hzLab(r1.H.m), n = st.n.toLocaleString('en-US'), nb = r1.bs.n.toLocaleString('en-US'), nr = r1.rs.n.toLocaleString('en-US');
-        const up = st.mean > st.q(0.5);
-        out.appendChild(h('div', { class: 'callout', html: zh()
-          ? `<b>怎么读这张表</b>：「中位数」只统计符合条件的日子——${DS.first ? `这里是每轮下跌里第一次符合条件的那一天，共 ${n} 天` : `这里是收盘比${refTxt}低 ${U.esc(condIn)}的 ${n} 个交易日`}。每一天都买入、持有 ${hz}，把这些${an ? '年化' : ''}收益从低到高排好，取正中间那个（一半比它高、一半比它低），得到 ${b(fmtR(st.q(0.5)))}。「任意一天·中位数」把同一段历史里的每个交易日（${nb} 天）都当作买入日、完全不挑时机，得到 ${b(fmtR(r1.bs.q(0.5)))}，它是对照组。两者之差，就是“等跌到这个程度再买”在历史上多赚（或少赚）的部分${DS.first ? '' : `；去掉符合条件的这 ${n} 天，其余 ${nr} 天的中位数是 ${fmtR(r1.rs.q(0.5))}`}。平均值会被少数${up ? '暴涨' : '暴跌'}的样本拉${up ? '高' : '低'}，所以同样这些天的平均是 ${fmtR(st.mean)}。`
-          : `<b>How to read the table.</b> “Median” counts only the qualifying days — ${DS.first ? `here the first qualifying day of each fall, ${n} days in all` : `here the ${n} trading days on which ${nmH} closed ${U.esc(cond)} below ${refTxt}`}. Buy on each of them, hold ${hz}, sort the ${an ? 'annualized ' : ''}returns and take the middle one (half did better, half worse): ${b(fmtR(st.q(0.5)))}. “Any day: median” treats every trading day of the same history (${nb} days) as a purchase date, with no timing at all: ${b(fmtR(r1.bs.q(0.5)))}. That is the baseline. The gap between the two is what waiting for this fall added (or cost) in the past${DS.first ? '' : `; leaving out the ${n} qualifying days, the other ${nr} days had a median of ${fmtR(r1.rs.q(0.5))}`}. The mean is pulled ${up ? 'up by a few huge gains' : 'down by a few deep losses'}, so the same days average ${fmtR(st.mean)}.` }));
+      const r1 = rows[h1] && rows[h1].st.n ? rows[h1] : rows.find(x => x.st.n);
+      const sel = DS.stats.slice().sort((a, c2) => statRank(a) - statRank(c2));
+      const epDates = R.eps.map(p => Core.iso(p.i).slice(0, 7));
+      if (!R.days.length) out.appendChild(h('div', { class: 'empty' }, Z ? '所选数据里没有一天同时满足这些条件；换一组条件，或看下方「条件组合对比」。' : 'No day in the selected history met all these conditions; try another set, or see the comparison table below.'));
+      else {
+        // ---- chart: distribution by horizon (log scale of the growth multiple) ----
+        const g = (x) => U.isNum(x) ? Math.max(1e-3, 1 + x) : null;
+        const cats = rows.map(x => hzLab(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '') + (x.thin ? ' †' : ''));
+        const el1 = h('div', { class: 'chart' }); out.appendChild(el1);
+        requestAnimationFrame(() => {
+          const ch = U.chart(el1); if (!ch) return; const narrow = el1.clientWidth < 640;
+          const row = (k) => U.ttRow(k[1], k[0], fmtR(k[2]));
+          const vals = []; for (const x of rows) if (x.st.n) vals.push(g(x.st.q(0.1)), g(x.st.q(0.9)), g(x.st.mean), g(x.bs.q(0.5)));
+          const lo0 = Math.min(1, ...vals.filter(U.isNum)), hi0 = Math.max(1, ...vals.filter(U.isNum)); const yLo = lo0 / 1.15, yHi = hi0 * 1.15; const ticks = logTicks(yLo, yHi);
+          ch.setOption(U.baseOpt(tk, {
+            legend: legendOpt(tk), grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
+            tooltip: { trigger: 'axis', confine: true, axisPointer: { type: 'shadow' }, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 },
+              formatter: (ps) => { const x = rows[ps[0].dataIndex]; if (!x.st.n) return U.ttHead(hzLab(x.H.m)) + (Z ? '没有样本' : 'No samples');
+                return U.ttHead(hzLab(x.H.m) + (DS.ann ? (Z ? ' · 年化' : ' · annualized') : '') + ' · n = ' + x.st.n.toLocaleString('en-US') + (Z ? `，${x.H.nEp} ${epWord}` : `, ${x.H.nEp} ${epWord}`)) +
+                  [['P90', col, x.st.q(0.9)], ['P75', col, x.st.q(0.75)], [Z ? '中位数' : 'Median', col, x.st.q(0.5)], ['P25', col, x.st.q(0.25)], ['P10', col, x.st.q(0.1)], [Z ? '平均' : 'Mean', tk.ink, x.st.mean], [Z ? '任意一天·中位数' : 'Any day: median', tk.ink2, x.bs.q(0.5)]].map(row).join(''); } },
+            xAxis: U.catAxis(tk, narrow ? rows.map(x => hzShort(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '')) : cats, { axisLabel: { color: tk.ink2, fontSize: narrow ? 10.5 : 11.5, interval: 0 } }),
+            yAxis: U.valAxis(tk, { type: 'log', logBase: 10, min: yLo, max: yHi, axisLabel: { color: tk.muted, fontSize: 11.5, customValues: ticks, formatter: multLab }, axisTick: { show: false, customValues: ticks } }),
+            series: [
+              { name: Z ? 'P25–P75（须线 P10–P90）' : 'P25–P75 (whiskers P10–P90)', type: 'boxplot', boxWidth: [10, 34], itemStyle: { color: fade(col, 0.2), borderColor: col, borderWidth: 1.6 },
+                data: rows.map(x => x.st.n ? [x.st.q(0.1), x.st.q(0.25), x.st.q(0.5), x.st.q(0.75), x.st.q(0.9)].map(g) : []),
+                markLine: { silent: true, symbol: 'none', data: [{ yAxis: 1 }], lineStyle: { color: tk.ruleStrong, type: 'solid' }, label: { show: false } } },
+              { name: Z ? '平均' : 'Mean', type: 'scatter', symbol: 'diamond', symbolSize: 11, itemStyle: { color: tk.ink }, data: rows.map(x => g(x.st.mean)) },
+              { name: Z ? '任意一天买入（中位数）' : 'Bought on any day (median)', type: 'scatter', symbol: 'emptyCircle', symbolSize: 10, itemStyle: { color: tk.ink2, borderWidth: 2 }, data: rows.map(x => g(x.bs.q(0.5))) },
+            ],
+          }), true);
+        });
+        // ---- table ----
+        out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, Z ? '时间跨度' : 'Horizon'), h('th', null, Z ? '样本' : 'Samples'), h('th', null, Z ? (c.dd.on ? '独立下跌' : '独立时段') : (c.dd.on ? 'Separate falls' : 'Separate spells')),
+            sel.map(k => h('th', null, statLab(k))), h('th', { title: Z ? '同一段历史里任意一天买入、持有同样长度的中位数' : 'Median of buying on any day of the same history and holding as long' }, Z ? '任意一天·中位数' : 'Any day: median'),
+            cmpKey ? h('th', { title: Z ? `同样这些日子买 ${cmpNm}（不加杠杆）的中位数` : `Median of buying ${cmpNm} (no leverage) on the same days` }, Z ? `同期 ${cmpNm}·中位数` : `${cmpNm} same days: median`) : null)),
+          h('tbody', null, rows.map(x => h('tr', { class: x.thin ? 'muted' : '' },
+            h('td', { class: 'nowrap' }, cats[x.h]), h('td', null, x.st.n.toLocaleString('en-US')), h('td', null, String(x.H.nEp)),
+            sel.map(k => { const y = statVal(x.st, k); return k === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y), style: k === 'p50' || k === 'mean' ? { fontWeight: 700 } : null }, fmtR(y)); }),
+            h('td', { class: U.signCls(x.bs.q(0.5)) }, fmtR(x.bs.q(0.5))),
+            cmpKey ? h('td', { class: U.signCls(x.cs.q(0.5)) }, fmtR(x.cs.q(0.5))) : null))))));
+        const notes = [Z ? '箱体为 P25–P75，须线为 P10–P90，横线为中位数，◆ 为平均，○ 为任意一天买入的中位数；纵轴为对数坐标。' : 'Box: P25–P75; whiskers: P10–P90; line: median; ◆ mean; ○ median from any day. Log scale.'];
+        if (DS.wFall) notes.push(Z ? '每轮相同：同一轮里的样本合计只算一份。' : 'Each fall weighs the same: the samples of one fall share a single vote.');
+        if (DS.ann && months.some(m => m < 12)) notes.push(Z ? '* 不足一年的收益年化后会被放大很多倍，只适合相互比较。' : '* Annualizing horizons under a year magnifies them many times over; compare them with each other only.');
+        if (rows.some(x => x.thin)) notes.push(Z ? `† 独立${c.dd.on ? '下跌' : '时段'}不足 3 个或样本太少：只能当作个例，不是统计规律。` : `† Fewer than three separate ${epWord}, or too few samples: anecdotes, not statistics.`);
+        out.appendChild(h('p', { class: 'note' }, notes.join(' ')));
+        // ---- how to read the table ----
+        if (r1) {
+          const an = DS.ann && r1.H.m !== 12, st = r1.st, hz = hzLab(r1.H.m), n = st.n.toLocaleString('en-US'), nb = r1.bs.n.toLocaleString('en-US'), nr = r1.rs.n.toLocaleString('en-US'), up = st.mean > st.q(0.5), cond = U.esc(comboTxt(c));
+          out.appendChild(h('div', { class: 'callout', html: Z
+            ? `<b>怎么读这张表</b>：「中位数」只统计符合条件的日子——${DS.first ? `这里是每轮里第一次符合全部条件（${cond}）的那一天，共 ${n} 天` : `这里是符合全部条件（${cond}）的 ${n} 个交易日`}。每一天都买入 ${nmH}、持有 ${hz}，把这些${an ? '年化' : ''}收益从低到高排好，取正中间那个（一半比它高、一半比它低），得到 ${b(fmtR(st.q(0.5)))}${DS.wFall ? '（每轮等权：同一轮里的日子合计只算一份，避免天数多的那一轮主导结果）' : ''}。「任意一天·中位数」把同一段历史里的每个交易日（${nb} 天）都当作买入日、完全不挑时机，得到 ${b(fmtR(r1.bs.q(0.5)))}，它是对照组。两者之差，就是“等到这些条件出现再买”在历史上多赚（或少赚）的部分${DS.first ? '' : `；去掉符合条件的这 ${n} 天，其余 ${nr} 天的中位数是 ${fmtR(r1.rs.q(0.5))}`}。平均值会被少数${up ? '暴涨' : '暴跌'}的样本拉${up ? '高' : '低'}，所以同样这些天的平均是 ${fmtR(st.mean)}。`
+            : `<b>How to read the table.</b> “Median” counts only the qualifying days — ${DS.first ? `here the first day of each fall on which all the conditions held (${cond}), ${n} days in all` : `here the ${n} trading days on which all the conditions held (${cond})`}. Buy ${nmH} on each of them, hold ${hz}, sort the ${an ? 'annualized ' : ''}returns and take the middle one (half did better, half worse): ${b(fmtR(st.q(0.5)))}${DS.wFall ? ' (each fall weighs the same, so a long fall cannot dominate)' : ''}. “Any day: median” treats every trading day of the same history (${nb} days) as a purchase date, with no timing at all: ${b(fmtR(r1.bs.q(0.5)))}. That is the baseline. The gap between the two is what waiting for these conditions added (or cost) in the past${DS.first ? '' : `; leaving out the ${n} qualifying days, the other ${nr} days had a median of ${fmtR(r1.rs.q(0.5))}`}. The mean is pulled ${up ? 'up by a few huge gains' : 'down by a few deep losses'}, so the same days average ${fmtR(st.mean)}.` }));
+          // leave one fall out
+          if (r1.H.nEp >= 3) {
+            const arr = DS.ann ? r1.H.ann : r1.H.r;
+            const loo = [...r1.H.cnt.keys()].map(k => { const ix = []; r1.H.ep.forEach((x, j) => { if (x !== k) ix.push(j); }); return { k, med: Calc.summary(ix.map(j => arr[j]), r1.H.w ? ix.map(j => r1.H.w[j]) : null).q(0.5) }; });
+            const lo = loo.reduce((a, x) => x.med < a.med ? x : a), hi = loo.reduce((a, x) => x.med > a.med ? x : a);
+            out.appendChild(h('p', { class: 'note', html: Z ? `<b>稳健性</b>：去掉任意一${c.dd.on ? '轮下跌' : '个时段'}后，${hz}的中位数在 ${fmtR(lo.med)}（去掉 ${epDates[lo.k]} 那一${c.dd.on ? '轮' : '个'}）到 ${fmtR(hi.med)}（去掉 ${epDates[hi.k]}）之间。`
+              : `<b>Robustness</b>: leaving out any one of the ${epWord}, the ${r1.H.m % 12 === 0 ? r1.H.m / 12 + '-year' : r1.H.m + '-month'} median ranges from ${fmtR(lo.med)} (without ${epDates[lo.k]}) to ${fmtR(hi.med)} (without ${epDates[hi.k]}).` }));
+          }
+        }
+        // ---- how much further it fell while holding ----
+        out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '买入后最多还会再跌多少？' : 'How much further did it fall after buying?'));
+        out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, Z ? '持有期' : 'Holding'), h('th', null, Z ? '中位数' : 'Median'), h('th', null, Z ? '最差 10%' : 'Worst 10%'), h('th', null, Z ? '再跌 30% 以上' : 'Fell 30%+ more'), h('th', null, Z ? '再跌 50% 以上' : 'Fell 50%+ more'))),
+          h('tbody', null, rows.map(x => h('tr', { class: x.thin ? 'muted' : '' }, h('td', { class: 'nowrap' }, cats[x.h]), h('td', { class: 'neg' }, fmtR(x.ms.q(0.5))), h('td', { class: 'neg' }, fmtR(x.ms.q(0.1))),
+            h('td', null, U.pct(shareAtMost(x.H.mae, x.H.w, -0.3), 0)), h('td', null, U.pct(shareAtMost(x.H.mae, x.H.w, -0.5), 0))))))));
+        out.appendChild(h('p', { class: 'note' }, Z ? `持有期内从买入价算起出现过的最大跌幅（按收盘价）。例如“再跌 50% 以上”= 持有期间至少有一天收盘价比买入价低一半，之后要涨一倍才能回本。持有期越长，能算的买入日越早（最近的买入日还没有走完持有期），所以不同持有期的数字来自不完全相同的样本。` : 'The largest fall below the purchase price at any close during the holding period. “Fell 50%+ more” means at least one close at half the purchase price or less, after which it has to double just to get back. Longer horizons can only use earlier purchases (recent ones have not run their course), so each row rests on a somewhat different sample.'));
+        // ---- takeaway ----
+        const y0 = Core.iso(s).slice(0, 4), dates = epDates.length <= 10 ? epDates.join(Z ? '、' : ', ') : null, cond = U.esc(comboTxt(c));
+        let txt = DS.first
+          ? (Z ? `${y0} 年以来，符合全部条件（${cond}）的情况出现在 ${b(R.eps.length + ' ' + (c.dd.on ? '轮' : '个'))}${c.dd.on ? '下跌' : '时段'}中${dates ? `（每轮只取第一天：${dates}）` : ''}。`
+            : `Since ${y0}, all the conditions (${cond}) held in ${b(String(R.eps.length))} separate ${epWord}${dates ? `, each counted once, on its first qualifying day (${dates})` : ''}. `)
+          : (Z ? `${y0} 年以来，符合全部条件（${cond}）的交易日共 ${b(R.days.length.toLocaleString('en-US') + ' 天')}（占 ${U.pct(R.days.length / (e - s + 1), 0)}），分属 ${b(R.eps.length + ' ' + (c.dd.on ? '轮' : '个'))}独立的${c.dd.on ? '下跌' : '时段'}${dates ? `（首次符合条件：${dates}）` : ''}。`
+            : `Since ${y0}, all the conditions (${cond}) held on ${b(R.days.length.toLocaleString('en-US'))} trading days (${U.pct(R.days.length / (e - s + 1), 0)} of all days), spread over ${b(String(R.eps.length))} separate ${epWord}${dates ? ` (first qualifying days: ${dates})` : ''}. `);
+        if (r1) {
+          const st = r1.st, an = DS.ann && r1.H.m !== 12, hz = hzLab(r1.H.m);
+          txt += Z ? `之后 ${hz}的${an ? '年化' : ''}收益：平均 ${b(fmtR(st.mean))}，中位数 ${b(fmtR(st.q(0.5)))}（P25 ${fmtR(st.q(0.25))}，P75 ${fmtR(st.q(0.75))}），${U.pct(st.pos, 0)} 为正；同期任意一天买入的中位数为 ${fmtR(r1.bs.q(0.5))}。`
+            : `After ${hz} the ${an ? 'annualized ' : ''}return averaged ${b(fmtR(st.mean))} with a median of ${b(fmtR(st.q(0.5)))} (P25 ${fmtR(st.q(0.25))}, P75 ${fmtR(st.q(0.75))}), and was positive ${U.pct(st.pos, 0)} of the time; buying on any day of the same history gave a median of ${fmtR(r1.bs.q(0.5))}. `;
+          const r2 = rows.slice().reverse().find(x => x.H.m > r1.H.m && x.stA.n && !x.thin);
+          if (r2) txt += Z ? `${hzLab(r2.H.m)}后的中位数为 ${b(fmtR(r2.stA.q(0.5)))}（年化 ${fmtR(r2.stN.q(0.5))}），任意一天买入为 ${fmtR(r2.bsA.q(0.5))}（年化 ${fmtR(r2.bsN.q(0.5))}）。`
+            : `After ${hzLab(r2.H.m)} the median was ${b(fmtR(r2.stA.q(0.5)))} (${fmtR(r2.stN.q(0.5))} a year) against ${fmtR(r2.bsA.q(0.5))} (${fmtR(r2.bsN.q(0.5))} a year) from any day. `;
+          txt += Z ? `买入后的 ${hz}里，一半的情况中途还跌过 ${U.pct(-r1.ms.q(0.5), 0)} 以上，最差的 10% 跌过 ${U.pct(-r1.ms.q(0.1), 0)} 以上。` : `Within ${hz} of buying, half the cases fell at least another ${U.pct(-r1.ms.q(0.5), 0)} along the way, and the worst 10% fell ${U.pct(-r1.ms.q(0.1), 0)} or more. `;
+          if (cmpKey && r1.cs.n) txt += Z ? `同样这些日子买 ${cmpNm}（不加杠杆），${hz}后的中位数是 ${fmtR(r1.cs.q(0.5))}，${U.pct(r1.cs.pos, 0)} 为正。` : `Buying ${cmpNm} (no leverage) on the same days gave a ${hz} median of ${fmtR(r1.cs.q(0.5))}, positive ${U.pct(r1.cs.pos, 0)} of the time. `;
+          if (r1.st.n < 3) txt += Z ? `只有 ${r1.st.n} 个样本，这些数字只是个例。` : `With only ${r1.st.n} sample${r1.st.n > 1 ? 's' : ''}, these figures are anecdotes. `;
+          else if (DS.first) txt += Z ? `每轮只取一天时，样本就是这 ${r1.st.n} 轮本身，分位数只是在这几个数之间插值。` : `With one day per fall the sample is just these ${r1.st.n} ${epWord}; the percentiles merely interpolate between them. `;
+          else if (r1.big && r1.big.n / r1.st.n > 0.4 && !DS.wFall && !(key === 'SOXLX' && c.dd.on && c.ref === 'ath' && dipSig(c) === key)) txt += Z ? `注意样本高度重叠：仅 ${epDates[r1.big.ep]} 开始的那一${c.dd.on ? '轮' : '个时段'}就贡献了 ${b(U.pct(r1.big.n / r1.st.n, 0))} 的样本，而独立的${c.dd.on ? `下跌只有 ${r1.H.nEp} 轮` : `时段只有 ${r1.H.nEp} 个`}——这些数字更像少数几段历史的记录，不是可靠的概率；可以试试“每轮相同”的权重。`
+            : `The samples overlap heavily: the ${c.dd.on ? 'fall' : 'spell'} that began in ${epDates[r1.big.ep]} alone supplies ${b(U.pct(r1.big.n / r1.st.n, 0))} of them, and there ${r1.H.nEp === 1 ? `is only one separate ${c.dd.on ? 'fall' : 'spell'}` : `are only ${r1.H.nEp} separate ${epWord}`} — read these numbers as a record of a few episodes, not as reliable probabilities; try weighting each fall the same. `;
+        }
+        if (key === 'SOXLX' && c.dd.on && c.ref === 'ath' && dipSig(c) === key) { // the simulated 2000s: the early high stands for most of the history
+          let pk = s; for (let i = s; i < SIM_END(); i++) if (v[i] > v[pk]) pk = i;
+          let rec = -1; for (let i = pk + 1; i <= e; i++) if (v[i] >= v[pk]) { rec = i; break; }
+          const yP = Core.iso(pk).slice(0, 4), yR = rec >= 0 ? Core.iso(rec).slice(0, 4) : null;
+          txt += Z ? `另外，含模拟段时 SOXL* 在 ${yP} 年的高点${yR ? `直到 ${yR} 年才收复` : '至今仍未收复'}，按历史最高点计算，这期间每一天都在同一轮下跌之中，样本几乎全部来自这一轮；这种情况下改用滚动高点更有意义。`
+            : `With the simulated years included, SOXL*'s ${yP} high ${yR ? `was not regained until ${yR}` : 'has never been regained'}, so against the all-time high every day in between belongs to one fall and nearly all samples come from it; a rolling high is more informative here.`;
+        }
+        out.appendChild(take(txt));
       }
-      // ---- takeaway ----
-      const y0 = Core.iso(s).slice(0, 4); const epDates = R.eps.map(p => Core.iso(p.i).slice(0, 7));
-      const dates = epDates.length <= 10 ? epDates.join(zh() ? '、' : ', ') : null;
-      let txt = DS.first
-        ? (zh() ? `${y0} 年以来，${nmH} 收盘比${refTxt}跌了 ${condIn}的情况出现在 ${b(R.eps.length + ' 轮')}下跌中${dates ? `（每轮只取第一次符合条件的那天：${dates}）` : ''}。`
-          : `Since ${y0}, ${nmH} closed ${cond} below ${refTxt} in ${b(String(R.eps.length))} separate falls${dates ? `, each counted once, on its first qualifying day (${dates})` : ''}. `)
-        : (zh() ? `${y0} 年以来，${nmH} 收盘比${refTxt}跌了 ${condIn}的交易日共 ${b(R.days.length.toLocaleString('en-US') + ' 天')}（占 ${U.pct(R.days.length / (e - s + 1), 0)}），分属 ${b(R.eps.length + ' 轮')}独立的下跌${dates ? `（首次符合条件：${dates}）` : ''}。`
-          : `Since ${y0}, ${nmH} closed ${cond} below ${refTxt} on ${b(R.days.length.toLocaleString('en-US'))} trading days (${U.pct(R.days.length / (e - s + 1), 0)} of all days), spread over ${b(String(R.eps.length))} separate falls${dates ? ` (first qualifying days: ${dates})` : ''}. `);
-      if (r1) {
-        const st = r1.st, an = DS.ann && r1.H.m !== 12;
-        txt += zh() ? `之后 ${hzLab(r1.H.m)}的${an ? '年化' : ''}收益：平均 ${b(fmtR(st.mean))}，中位数 ${b(fmtR(st.q(0.5)))}（P25 ${fmtR(st.q(0.25))}，P75 ${fmtR(st.q(0.75))}），${U.pct(st.pos, 0)} 为正；同期任意一天买入的中位数为 ${fmtR(r1.bs.q(0.5))}。`
-          : `After ${hzLab(r1.H.m)} the ${an ? 'annualized ' : ''}return averaged ${b(fmtR(st.mean))} with a median of ${b(fmtR(st.q(0.5)))} (P25 ${fmtR(st.q(0.25))}, P75 ${fmtR(st.q(0.75))}), and was positive ${U.pct(st.pos, 0)} of the time; buying on any day of the same history gave a median of ${fmtR(r1.bs.q(0.5))}. `;
-        const r2 = rows.slice().reverse().find(x => x.H.m > r1.H.m && x.stA.n && !x.thin);
-        if (r2) txt += zh() ? `${hzLab(r2.H.m)}后的中位数为 ${b(fmtR(r2.stA.q(0.5)))}（年化 ${fmtR(r2.stN.q(0.5))}），任意一天买入为 ${fmtR(r2.bsA.q(0.5))}（年化 ${fmtR(r2.bsN.q(0.5))}）。`
-          : `After ${hzLab(r2.H.m)} the median was ${b(fmtR(r2.stA.q(0.5)))} (${fmtR(r2.stN.q(0.5))} a year) against ${fmtR(r2.bsA.q(0.5))} (${fmtR(r2.bsN.q(0.5))} a year) from any day. `;
-        if (r1.st.n < 3) txt += zh() ? `只有 ${r1.st.n} 个样本，这些数字只是个例。` : `With only ${r1.st.n} sample${r1.st.n > 1 ? 's' : ''}, these figures are anecdotes. `;
-        else if (DS.first) txt += zh() ? `每轮只取一天时，样本就是这 ${r1.st.n} 轮下跌本身，分位数只是在这几个数之间插值。` : `With one day per fall the sample is just these ${r1.st.n} falls; the percentiles merely interpolate between them. `;
-        else if (r1.big && r1.big.c / r1.st.n > 0.4 && !(key === 'SOXLX' && DS.ref === 'ath')) txt += zh() ? `注意样本高度重叠：仅 ${epDates[r1.big.ep]} 达到条件的那一轮下跌就贡献了 ${b(U.pct(r1.big.c / r1.st.n, 0))} 的样本，而独立下跌只有 ${r1.H.nEp} 轮——这些数字更像少数几段历史的记录，不是可靠的概率。`
-          : `The samples overlap heavily: the fall that reached the threshold in ${epDates[r1.big.ep]} alone supplies ${b(U.pct(r1.big.c / r1.st.n, 0))} of them, and there ${r1.H.nEp === 1 ? 'is only one separate fall' : `are only ${r1.H.nEp} separate falls`} — read these numbers as a record of a few episodes, not as reliable probabilities. `;
+      // ---- combinations side by side ----
+      const combos = [{ kind: 'base', name: Z ? '任意一天买入（不设条件）' : 'Bought on any day (no conditions)' }, { kind: 'cur', name: Z ? '当前条件' : 'Current conditions', c }];
+      const act = condsOn(c), tog = (k, on) => { const c2 = dipCopy(c); c2[k].on = on; return c2; };
+      if (act.length > 1) for (const k of act) combos.push({ kind: 'alt', name: (Z ? '去掉：' : 'Without: ') + condTxt(c, k, true), c: tog(k, false) });
+      for (const k of DIP_CONDS) if (!c[k].on) combos.push({ kind: 'alt', name: (Z ? '加上：' : 'Plus: ') + condTxt(c, k, true), c: tog(k, true) });
+      if (DIP_UNDER[DS.key] && (c.dd.on || c.reb.on)) { const c2 = dipSwapSig(c, DS.key); combos.push({ kind: 'alt', name: Z ? `跌幅和反弹改按 ${nmOf(dipSig(c2))} 计算（门槛按 ${DIP_LEV[DS.key]} 倍换算）` : `Fall and rebound measured on ${nmOf(dipSig(c2))} (thresholds converted for ${DIP_LEV[DS.key]}×)`, c: c2 }); }
+      if (c.dd.on) { const c2 = dipCopy(c); c2.dd.deep = !c.dd.deep; combos.push({ kind: 'alt', name: c2.dd.deep ? (Z ? '跌幅改看这一轮最深' : 'Fall measured at its deepest so far') : (Z ? '跌幅改看现在离高点' : 'Fall measured from the high to today'), c: c2 }); }
+      DSAVED.forEach((x, j) => combos.push({ kind: 'saved', name: x.name || comboTxt(x.c, true), c: x.c, j }));
+      for (const x of combos) {
+        if (x.kind === 'base') { x.cells = months.map((m, h) => baseSum(h, DS.ann)); x.n = ctx.base[h1] ? ctx.base[h1].length : 0; x.nEp = null; continue; }
+        const S2 = x.kind === 'cur' ? R : run(x.c);
+        x.cells = S2.H.map(H => Calc.summary(DS.ann ? H.ann : H.r, H.w)); x.n = S2.H[h1] ? S2.H[h1].r.length : 0; x.nEp = S2.H[h1] ? S2.H[h1].nEp : 0;
       }
-      if (key === 'SOXLX' && DS.ref === 'ath') { // the simulated 2000s: the early high stands for most of the history
-        let pk = s; for (let i = s; i < SIM_END(); i++) if (v[i] > v[pk]) pk = i;
-        let rec = -1; for (let i = pk + 1; i <= e; i++) if (v[i] >= v[pk]) { rec = i; break; }
-        const yP = Core.iso(pk).slice(0, 4), yR = rec >= 0 ? Core.iso(rec).slice(0, 4) : null;
-        txt += zh() ? `另外，含模拟段时 SOXL* 在 ${yP} 年的高点${yR ? `直到 ${yR} 年才收复` : '至今仍未收复'}，按历史最高点计算，这期间每一天都在同一轮下跌之中，样本几乎全部来自这一轮；这种情况下改用滚动高点更有意义。`
-          : `With the simulated years included, SOXL*'s ${yP} high ${yR ? `was not regained until ${yR}` : 'has never been regained'}, so against the all-time high every day in between belongs to one fall and nearly all samples come from it; a rolling high is more informative here.`;
-      }
-      out.appendChild(take(txt));
+      const adopt = (c2) => { DS.c = dipCopy(c2); redo(); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      const nameIn = h('input', { type: 'text', id: 'dipSaveName', maxlength: '60', placeholder: comboTxt(c, true) }); nameIn.style.minWidth = '220px';
+      out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '条件组合对比' : 'Comparing combinations of conditions'));
+      out.appendChild(h('div', { class: 'controls' },
+        U.ctl(Z ? '显示' : 'Show', U.seg('dipCmp', DIP_CMP.map(k => [k, statLab(k)]), DS.cmp, (vv) => { DS.cmp = vv; saveD(); draw(); })),
+        U.ctl(Z ? '把当前条件存为一个组合' : 'Save the current conditions', h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } }, nameIn,
+          h('button', { type: 'button', class: 'btn small', onclick: () => { DSAVED.push({ name: nameIn.value.trim().slice(0, 60) || null, c: dipCopy(c) }); saveD(); draw(); } }, Z ? '保存' : 'Save')))));
+      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data dip-cmp' },
+        h('thead', null, h('tr', null, h('th', null, Z ? '条件组合' : 'Conditions'), h('th', { title: Z ? `${hzLab(months[h1])}的样本数` : `Samples at ${hzLab(months[h1])}` }, Z ? '样本' : 'Samples'), h('th', null, Z ? '轮数' : 'Falls'),
+          months.map(m => h('th', null, hzLab(m) + (DS.ann && m < 12 ? '*' : ''))), h('th', null, ''))),
+        h('tbody', null, combos.map(x => h('tr', { class: x.kind === 'cur' ? 'hl' : x.nEp != null && x.nEp < 3 ? 'muted' : '' },
+          h('td', { class: 'lbl' }, h('b', null, x.name), x.kind !== 'base' && x.kind !== 'cur' && x.name !== comboTxt(x.c, true) ? h('div', { class: 'xs muted' }, comboTxt(x.c, true)) : x.kind === 'cur' ? h('div', { class: 'xs muted' }, comboTxt(c, true)) : null),
+          h('td', null, x.n.toLocaleString('en-US')), h('td', null, x.nEp == null ? '—' : String(x.nEp) + (x.nEp < 3 ? ' †' : '')),
+          x.cells.map(st => { const y = st.n ? statVal(st, DS.cmp) : NaN; return DS.cmp === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y) }, fmtR(y)); }),
+          h('td', { class: 'nowrap' }, x.kind === 'alt' || x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', onclick: () => adopt(x.c) }, Z ? '采用' : 'Use') : null,
+            x.kind === 'saved' ? h('button', { type: 'button', class: 'btn small ghost', title: Z ? '删除这个组合' : 'Delete this combination', 'aria-label': Z ? '删除' : 'Delete', style: { marginLeft: '4px' }, onclick: () => { DSAVED.splice(x.j, 1); saveD(); draw(); } }, '×') : null)))))));
+      out.appendChild(h('p', { class: 'note' }, Z ? `每一行是一组条件；买入的标的、数据、取样、权重、收益口径和时间跨度都与上面相同。「样本」和「轮数」是 ${hzLab(months[h1])} 的数字；轮数不足 3 的组合标 †，只能当作个例。点「采用」把这一行设为当前条件。条件越多、样本越少——同时开太多条件、或者反复换条件直到结果好看，很容易过度拟合。`
+        : `Each row is one set of conditions; the instrument, data, sampling, weights, returns and horizons are the same as above. Samples and falls are for ${hzLab(months[h1])}; rows with fewer than three falls are marked † and are anecdotes. “Use” makes a row the current conditions. More conditions mean fewer samples, and trying combinations until one looks good is a quick way to overfit.`));
+      if (!R.days.length) return;
       // ---- where the samples come from ----
       const el2 = h('div', { class: 'chart short' }); out.appendChild(el2);
+      const sigSelf = dipSig(c) === key, Rf = refOf(c);
       requestAnimationFrame(() => {
-        const c = U.chart(el2); if (!c) return;
-        const inSet = new Uint8Array(e - s + 1); for (const i of R.days) inSet[i - s] = 1;
-        const px = [], ref = [], q = []; for (let i = s; i <= e; i++) { const t = U.ts(i); px.push([t, v[i]]); ref.push([t, v[R.hiAt[i - s]]]); q.push([t, inSet[i - s] ? v[i] : null]); }
+        const ch = U.chart(el2); if (!ch) return;
+        const px = [], ref = [], q = []; for (let i = s; i <= e; i++) { const t = U.ts(i); px.push([t, v[i]]); if (sigSelf) ref.push([t, v[Rf.hiAt[i - s]]]); q.push([t, R.q[i - s] ? v[i] : null]); }
         const o = U.baseOpt(tk, { legend: legendOpt(tk), grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true }, xAxis: U.timeAxis(tk),
           yAxis: U.valAxis(tk, { type: 'log', logBase: 10, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (y) => '$' + (y >= 100 ? Math.round(y) : y >= 1 ? +y.toFixed(1) : +y.toPrecision(2)) } }),
           series: [
             U.lineSeries(nm, px, tk.ink2, { lineStyle: { width: 1.2, color: tk.ink2 } }),
-            U.lineSeries(DS.ref === 'ath' ? (zh() ? '历史最高点' : 'All-time high') : (zh() ? `${winLab(DS.win)}滚动高点` : `${winAdj(DS.win)} rolling high`), ref, tk.muted, { lineStyle: { width: 1, type: 'dashed', color: tk.muted } }),
-            U.lineSeries(zh() ? '符合条件的交易日' : 'Qualifying days', q, col, { sampling: null, connectNulls: false, lineStyle: { width: 2.4, color: col } }),
-            { name: zh() ? '每轮第一次符合条件' : 'First qualifying day of a fall', type: 'scatter', symbolSize: 8, itemStyle: { color: col, borderColor: tk.surface, borderWidth: 1.5 }, data: R.eps.map(p => [U.ts(p.i), v[p.i]]), z: 5 },
-          ] });
-        o.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); if (i < s) return ''; return U.ttHead(Core.iso(i)) + U.ttRow(tk.ink2, nm, '$' + v[i].toFixed(2)) + U.ttRow(col, zh() ? '距参照高点' : 'From the reference high', U.pct(R.dd[i - s], 1)); };
-        c.setOption(o, true);
+            sigSelf ? U.lineSeries(c.ref === 'ath' ? (Z ? '历史最高点' : 'All-time high') : (Z ? `${winLab(c.win)}滚动高点` : `${winAdj(c.win)} rolling high`), ref, tk.muted, { lineStyle: { width: 1, type: 'dashed', color: tk.muted } }) : null,
+            U.lineSeries(Z ? '符合条件的交易日' : 'Qualifying days', q, col, { sampling: null, connectNulls: false, lineStyle: { width: 2.4, color: col } }),
+            { name: Z ? '每轮第一次符合条件' : 'First qualifying day of a fall', type: 'scatter', symbolSize: 8, itemStyle: { color: col, borderColor: tk.surface, borderWidth: 1.5 }, data: R.eps.map(p => [U.ts(p.i), v[p.i]]), z: 5 },
+          ].filter(Boolean) });
+        o.tooltip.formatter = (ps) => { const i = Core.idxOnOrBefore(Math.round(ps[0].value[0] / U.dayMs)); if (i < s) return ''; return U.ttHead(Core.iso(i)) + U.ttRow(tk.ink2, nm, '$' + v[i].toFixed(2)) + U.ttRow(col, Z ? '符合全部条件' : 'All conditions hold', R.q[i - s] ? (Z ? '是' : 'yes') : (Z ? '否' : 'no')); };
+        ch.setOption(o, true);
       });
       // ---- the falls one by one ----
-      const fr = (i, m) => { const j = R.endOf(i, m); if (j < 0) return NaN; const x = v[j] / v[i] - 1; return DS.ann ? Math.pow(1 + x, 12 / m) - 1 : x; };
-      const epRows = R.eps.slice().reverse();
-      out.appendChild(h('details', null, h('summary', { class: 'linkbtn' }, zh() ? `逐轮明细（${R.eps.length} 轮，从第一次符合条件的那天算起）` : `The falls one by one (${R.eps.length}, measured from the first qualifying day)`),
+      const showPk = c.dd.on && sigSelf, sigNm = nmOf(dipSig(c));
+      const fr = (i, h) => { const j = ctx.ends[h][i - s]; if (j < 0) return NaN; const x = v[j] / v[i] - 1; return DS.ann ? Math.pow(1 + x, 12 / months[h]) - 1 : x; };
+      out.appendChild(h('details', null, h('summary', { class: 'linkbtn' }, Z ? `逐${c.dd.on ? '轮' : '个'}明细（${R.eps.length} ${c.dd.on ? '轮' : '个时段'}，从第一次符合条件的那天算起）` : `The ${epWord} one by one (${R.eps.length}, measured from the first qualifying day)`),
         h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-          h('thead', null, h('tr', null, h('th', null, zh() ? '高点' : 'High'), h('th', null, zh() ? '第一次符合条件' : 'First qualifying day'), h('th', null, zh() ? '当时跌幅' : 'Fall then'), h('th', null, zh() ? '之后最低（相对高点）' : 'Lowest after (from the high)'), h('th', null, zh() ? '买入后再跌' : 'Further fall'), h('th', null, zh() ? '回到高点' : 'Back at the high'),
-            DS.first ? null : h('th', null, zh() ? '符合条件天数' : 'Qualifying days'), months.map(m => h('th', null, hzLab(m) + (DS.ann ? (zh() ? '（年化）' : ' (ann.)') : ''))))),
-          h('tbody', null, epRows.map(p => h('tr', null, h('td', { class: 'nowrap' }, Core.iso(p.peakI)), h('td', { class: 'nowrap' }, Core.iso(p.i)), h('td', null, U.pct(p.depth, 1)),
-            h('td', null, U.pct(v[p.lowI] / v[p.peakI] - 1, 1), h('span', { class: 'hint' }, Core.iso(p.lowI))), h('td', { class: 'neg' }, U.pct(v[p.lowI] / v[p.i] - 1, 1)),
-            h('td', { class: 'nowrap' }, p.recI >= 0 ? Core.iso(p.recI) : (zh() ? '尚未' : 'not yet')), DS.first ? null : h('td', null, p.nDays.toLocaleString('en-US')),
-            months.map(m => { const y = fr(p.i, m); return h('td', { class: U.signCls(y) }, fmtR(y)); }))))))));
-      out.appendChild(h('p', { class: 'note' }, zh()
-        ? `参照高点：“历史最高”= 所选数据起点以来的最高收盘价；“滚动高点”= 最近 N 个交易日（含当天）的最高收盘价。一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次收盘回到参照高点为止。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日；年化 =（1 + 累计收益）^(12/m) − 1。${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${nm} 为价格口径（不含少量分红）。` : '全收益口径（股息再投资）。'}${key === 'SOXLX' ? '2010-03-12 以前为模拟值（见页首说明）。' : ''}不计交易成本与税。历史统计不是预测。`
-        : `Reference high: “all-time” = the highest close since the start of the selected data; “rolling” = the highest close of the last N sessions, today included. A fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it. Forward returns use calendar months, ending on the last session on or before the same date m months later; annualized = (1 + total return)^(12/m) − 1. ${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${nm} is price-only (its small distributions are left out).` : 'Total return, dividends reinvested.'}${key === 'SOXLX' ? ' Before 2010-03-12 the series is simulated (see the top of the page).' : ''} No costs or taxes. Past statistics are not a forecast.`));
+          h('thead', null, h('tr', null, showPk ? h('th', null, Z ? '高点' : 'High') : null, h('th', null, Z ? '第一次符合条件' : 'First qualifying day'), c.dd.on ? h('th', null, (Z ? '当时距高点' : 'Below the high then') + (sigSelf ? '' : ` (${sigNm})`)) : null,
+            showPk ? h('th', null, Z ? '之后最低（相对高点）' : 'Lowest after (from the high)') : null, h('th', { title: Z ? '从第一次符合条件到这一轮结束，最低收盘价相对当天的跌幅' : 'Lowest close from the first qualifying day to the end of the fall, against that day' }, Z ? '买入后再跌' : 'Further fall'), showPk ? h('th', null, Z ? '回到高点' : 'Back at the high') : null,
+            DS.first ? null : h('th', null, Z ? '符合条件天数' : 'Qualifying days'), months.map(m => h('th', null, hzLab(m) + (DS.ann ? (Z ? '（年化）' : ' (ann.)') : ''))))),
+          h('tbody', null, R.eps.slice().reverse().map(p => h('tr', null, showPk ? h('td', { class: 'nowrap' }, Core.iso(p.peakI)) : null, h('td', { class: 'nowrap' }, Core.iso(p.i)), c.dd.on ? h('td', null, U.pct(p.depth, 1)) : null,
+            showPk ? h('td', null, U.pct(v[p.lowI] / v[p.peakI] - 1, 1), h('span', { class: 'hint' }, Core.iso(p.lowI))) : null, h('td', { class: 'neg' }, U.pct(v[p.lowI] / v[p.i] - 1, 1)),
+            showPk ? h('td', { class: 'nowrap' }, p.recI >= 0 ? Core.iso(p.recI) : (Z ? '尚未' : 'not yet')) : null, DS.first ? null : h('td', null, p.nDays.toLocaleString('en-US')),
+            months.map((m, hh) => { const y = fr(p.i, hh); return h('td', { class: U.signCls(y) }, fmtR(y)); }))))))));
+      out.appendChild(h('p', { class: 'note' }, Z
+        ? `条件的定义——距高点的跌幅：收盘价相对参照高点（所选数据起点以来的最高收盘价，或最近 N 个交易日的最高收盘价）的跌幅；“这一轮最深”= 从这一轮的高点到目前为止最低收盘价的跌幅；“这一轮”从收盘价回到参照高点的那天算起。距阶段低点的反弹：收盘价相对这一轮最低收盘价（或最近 N 个交易日的最低收盘价）的涨幅。${DIP_UNDER[DS.key] ? `跌幅和反弹可以按 ${U.assetName(DS.key, true)} 本身或 ${nmOf(DIP_UNDER[DS.key])} 计算；切换时门槛按 ${DIP_LEV[DS.key]} 倍杠杆近似换算（1 + 杠杆收益 ≈（1 + 指数收益）^${DIP_LEV[DS.key]}，例如跌 50% ≈ 指数跌 ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}）。` : ''}恐慌程度用 VIX（1990 年起）或 ${nmOf(dipUnl())} 最近 20 个交易日的年化波动率；趋势看 ${nmOf(dipUnl())} 与它的均线；大盘看标普500 全收益与它的均线。所有条件都只用当天收盘及以前的数据，勾选的条件同时满足的交易日才算符合条件。有跌幅条件时，一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次回到参照高点为止；没有跌幅条件时，相隔不超过 21 个交易日的符合条件日子算作同一个时段。“每轮相同”的权重下，同一轮里的样本合计权重为 1，分位数按加权的经验分布插值。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日；年化 =（1 + 累计收益）^(12/m) − 1。${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${U.assetName(DS.key, true)} 为价格口径（不含少量分红）。` : '全收益口径（股息再投资）。'}${key === 'SOXLX' ? '2010-03-12 以前为模拟值（见页首说明）。' : ''}不计交易成本与税。历史统计不是预测。`
+        : `Definitions — fall from the high: the close against the reference high (the highest close since the start of the selected data, or of the last N sessions); “deepest so far” is the fall from this fall's high to its lowest close to date; “this fall” starts at the last close at the reference high. Rise from the low: the close against the lowest close of this fall (or of the last N sessions). ${DIP_UNDER[DS.key] ? `The fall and the rebound can be measured on ${U.assetName(DS.key, true)} itself or on ${nmOf(DIP_UNDER[DS.key])}; switching converts the thresholds as if the fund compounded ${DIP_LEV[DS.key]}× the index (1 + fund return ≈ (1 + index return)^${DIP_LEV[DS.key]}, so a 50% fall ≈ an index fall of ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}). ` : ''}Fear is the VIX (from 1990) or ${nmOf(dipUnl())}'s annualized volatility over the last 20 sessions; trend is ${nmOf(dipUnl())} against its moving average; the market is the S&P 500 total return against its moving average. Every condition uses only closes up to that day, and a day qualifies when all ticked conditions hold. With the fall condition, a fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it; without it, qualifying days at most 21 sessions apart form one spell. With each fall weighing the same, the samples of a fall add up to a weight of 1 and percentiles interpolate the weighted distribution. Forward returns use calendar months, ending on the last session on or before the same date m months later; annualized = (1 + total return)^(12/m) − 1. ${DS.key === 'SOXL' || DS.key === 'TQQQ' ? `${U.assetName(DS.key, true)} is price-only (its small distributions are left out).` : 'Total return, dividends reinvested.'}${key === 'SOXLX' ? ' Before 2010-03-12 the series is simulated (see the top of the page).' : ''} No costs or taxes. Past statistics are not a forecast.`));
     }
     buildCtl(); requestAnimationFrame(draw);
-    return section('sx-dip', 'S6', { zh: 'SOXL 从高点下跌之后发生了什么？', en: 'What happened after SOXL fell from its high?' }, { zh: '自选跌幅、参照高点和时间跨度：之后收益的平均、中位数与分位数', en: 'Pick the fall, the reference high and the horizons: mean, median and percentiles of what came next' }, ctl, ctl2, out);
+    return sec;
   }
 
   // ---------- S7: ways to use SOXL (strategy panel) ----------

@@ -210,58 +210,136 @@
     return { levels: out, base };
   };
 
-  // What happened after a fall from a high (SOXL Deep Dive, S6).
-  // v: a value series on the master calendar, used over [s, e].
-  // o: { lo, hi }      condition: lo <= fall below the reference high <= hi (fractions; hi may be omitted)
-  //    ref, win       reference high: 'ath' = highest close since s; 'roll' = highest close of the last `win` sessions
-  //    first          false: every qualifying day is a sample; true: only the first qualifying day of each fall
-  //    months         forward horizons in calendar months
-  // A fall starts on the first qualifying day after a close at the reference high and lasts until the next such
-  // close; every qualifying day belongs to the fall it occurs in. Forward returns end on the last session on or
-  // before the same calendar date m months later; a horizon that runs past e has no sample.
-  C.dipForward = function (v, s, e, o) {
-    const lo = o.lo, hi = o.hi == null ? Infinity : o.hi, win = o.ref === 'roll' ? Math.max(1, Math.round(o.win || 252)) : 0;
-    const n = e - s + 1; const dd = new Float64Array(n); const hiAt = new Int32Array(n);
-    if (!win) { let pk = -Infinity, pkI = s; for (let i = s; i <= e; i++) { if (v[i] >= pk) { pk = v[i]; pkI = i; } dd[i - s] = v[i] / pk - 1; hiAt[i - s] = pkI; } }
-    else { // sliding-window maximum (monotonic deque; ties keep the latest day so that a new high reads 0)
-      const dq = new Int32Array(n); let h0 = 0, h1 = 0;
-      for (let i = s; i <= e; i++) {
-        while (h1 > h0 && v[dq[h1 - 1]] <= v[i]) h1--;
-        dq[h1++] = i;
-        while (dq[h0] <= i - win) h0++;
-        dd[i - s] = v[i] / v[dq[h0]] - 1; hiAt[i - s] = dq[h0];
-      }
-    }
-    const eps = [], days = [], epOf = []; let armed = true, cur = null;
-    for (let i = s; i <= e; i++) {
-      const d = dd[i - s];
-      if (d >= 0) { if (cur) cur.endI = i; cur = null; armed = true; }
-      if (-d >= lo && -d <= hi) {
-        if (armed) { cur = { i, peakI: hiAt[i - s], depth: d, lowI: i, endI: -1, nDays: 0 }; eps.push(cur); armed = false; }
-        cur.nDays++; days.push(i); epOf.push(eps.length - 1);
-      }
-      if (cur && v[i] < v[cur.lowI]) cur.lowI = i; // lowest close from the first qualifying day until the fall ends
-    }
-    for (const p of eps) { p.recI = -1; const pk = v[p.peakI]; for (let i = p.i + 1; i <= e; i++) if (v[i] >= pk) { p.recI = i; break; } }
-    const D = Core.days;
-    const endOf = (i, m) => { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) return -1; const j = Core.idxOnOrBefore(t); return j > i && D[j] >= t - 7 ? j : -2; };
-    const samples = o.first ? eps.map((p, k) => [p.i, k]) : days.map((i, k) => [i, epOf[k]]);
-    const isSample = new Uint8Array(n); for (const [i] of samples) isSample[i - s] = 1;
-    const H = (o.months || []).map(m => {
-      const r = [], ann = [], ep = [], at = [], base = [], rest = [];
-      for (const [i, k] of samples) { const j = endOf(i, m); if (j < 0) continue; const x = v[j] / v[i] - 1; r.push(x); ann.push(Math.pow(1 + x, 12 / m) - 1); ep.push(k); at.push(i); }
-      // baseline: every day of [s, e] with a full horizon; rest: the same without the sample days
-      for (let i = s; i <= e; i++) { const j = endOf(i, m); if (j === -1) break; if (j >= 0) { const x = v[j] / v[i] - 1; base.push(x); if (!isSample[i - s]) rest.push(x); } }
-      return { m, r, ann, ep, at, base, baseAnn: base.map(x => Math.pow(1 + x, 12 / m) - 1), rest, restAnn: rest.map(x => Math.pow(1 + x, 12 / m) - 1), nEp: new Set(ep).size };
+  // ---------- After a fall from the high (SOXL Deep Dive, S6) ----------
+  // Shared context for one instrument v over [s, e] and forward horizons in calendar months: the session that ends
+  // each horizon (-1 once a horizon runs past e, -2 for a gap in the calendar), the any-day baseline and the
+  // lowest close between two sessions (for the worst fall while holding).
+  C.dipContext = function (v, s, e, months) {
+    const D = Core.days, n = e - s + 1;
+    const ends = months.map(m => {
+      const a = new Int32Array(n).fill(-1);
+      for (let i = s; i <= e; i++) { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) break; const j = Core.idxOnOrBefore(t); a[i - s] = j > i && D[j] >= t - 7 ? j : -2; }
+      return a;
     });
-    return { s, e, dd, hiAt, eps, days, epOf, H, endOf };
+    const base = ends.map(a => { const r = []; for (let i = s; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0) r.push(v[j] / v[i] - 1); } return r; });
+    const st = [Float64Array.from({ length: n }, (_, k) => v[s + k])]; // sparse table of minima
+    for (let k = 1; (1 << k) <= n; k++) { const p = st[k - 1], h = 1 << (k - 1), c = new Float64Array(n - (1 << k) + 1); for (let i = 0; i < c.length; i++) c[i] = Math.min(p[i], p[i + h]); st.push(c); }
+    const minOf = (i, j) => { const a = i - s, b = j - s, k = 31 - Math.clz32(b - a + 1); return Math.min(st[k][a], st[k][b - (1 << k) + 1]); };
+    return { v, s, e, n, months, ends, base, minOf, cache: new Map() };
   };
-  // Mean, share above zero, extremes and any quantile of a sample (linear interpolation, as Core.quantile)
-  C.summary = function (arr) {
-    const a = Float64Array.from(arr).sort(); const n = a.length;
-    let sum = 0, pos = 0; for (const x of a) { sum += x; if (x > 0) pos++; }
-    return { n, mean: n ? sum / n : NaN, pos: n ? pos / n : NaN, min: n ? a[0] : NaN, max: n ? a[n - 1] : NaN,
-      q: (p) => { if (!n) return NaN; const t = (n - 1) * p, lo = Math.floor(t), hi = Math.ceil(t); return a[lo] + (a[hi] - a[lo]) * (t - lo); } };
+  // A signal series sv over [s, e]: its fall below the reference high (the highest close since s, or of the last `win`
+  // sessions), where that high was, where the current fall began (the last close at the reference high) and the
+  // lowest close since then.
+  C.dipRef = function (sv, s, e, ref, win) {
+    const n = e - s + 1, dd = new Float64Array(n), hiAt = new Int32Array(n), pk = new Int32Array(n), low = new Float64Array(n), lowAt = new Int32Array(n);
+    const W = ref === 'roll' ? Math.max(1, Math.round(win || 252)) : 0;
+    const dq = new Int32Array(n); let h0 = 0, h1 = 0, top = -Infinity, topI = s, p = s, lo = Infinity, loI = s;
+    for (let i = s; i <= e; i++) {
+      let hi;
+      if (!W) { if (sv[i] >= top) { top = sv[i]; topI = i; } hi = topI; }
+      else { while (h1 > h0 && sv[dq[h1 - 1]] <= sv[i]) h1--; dq[h1++] = i; while (dq[h0] <= i - W) h0++; hi = dq[h0]; } // ties keep the latest day, so a new high reads 0
+      const d = sv[i] / sv[hi] - 1; dd[i - s] = d; hiAt[i - s] = hi;
+      if (d >= 0) { p = i; lo = sv[i]; loI = i; } else if (sv[i] < lo) { lo = sv[i]; loI = i; }
+      pk[i - s] = p; low[i - s] = lo; lowAt[i - s] = loI;
+    }
+    return { dd, hiAt, pk, low, lowAt };
+  };
+  // Lowest close of the last `win` sessions (today included) and its index, over [s, e]
+  C.rollMin = function (v, s, e, win) {
+    const n = e - s + 1, val = new Float64Array(n), at = new Int32Array(n), dq = new Int32Array(n); let h0 = 0, h1 = 0;
+    for (let i = s; i <= e; i++) { while (h1 > h0 && v[dq[h1 - 1]] >= v[i]) h1--; dq[h1++] = i; while (dq[h0] <= i - win) h0++; val[i - s] = v[dq[h0]]; at[i - s] = dq[h0]; }
+    return { val, at };
+  };
+  // n-session simple moving average, and annualized volatility (sample st. dev. of daily log returns × √252), of v
+  // using all history from s0; indexed like v, NaN until there is enough history
+  C.sma = function (v, s0, e, n) {
+    const out = new Float64Array(e + 1).fill(NaN); let sum = 0;
+    for (let i = s0; i <= e; i++) { sum += v[i]; if (i - n >= s0) sum -= v[i - n]; if (i - s0 + 1 >= n) out[i] = sum / n; }
+    return out;
+  };
+  C.rvol = function (v, s0, e, n) {
+    const out = new Float64Array(e + 1).fill(NaN); let a = 0, b = 0; const r = (i) => Math.log(v[i] / v[i - 1]);
+    for (let i = s0 + 1; i <= e; i++) {
+      const x = r(i); a += x; b += x * x;
+      if (i - n > s0) { const y = r(i - n); a -= y; b -= y * y; }
+      if (i - s0 >= n) { const m = a / n; out[i] = Math.sqrt(Math.max(0, (b - n * m * m) / (n - 1)) * 252); }
+    }
+    return out;
+  };
+  // One combination of conditions, evaluated on a signal series and applied to buying ctx.v.
+  // o: { sv, ref (C.dipRef of sv), roll (C.rollMin of sv, when the rebound is measured from a rolling low),
+  //      dd:  { on, lo, hi, deep }        fall below the reference high (fractions; deep = the deepest point of this fall)
+  //      reb: { on, lo, hi, low, days }   rise from the low ('fall' = lowest close of this fall, 'roll' = rolling low),
+  //                                       the low at least `days` sessions old
+  //      mask: Uint8Array over [s, e] or null (other conditions, already combined)
+  //      first (only the first qualifying day of each fall), wFall (each fall weighs the same),
+  //      cmp (another series bought on the same days), mae (worst close while holding), rest (the non-qualifying days) }
+  // With the fall condition on, a fall starts on the first qualifying day after the signal closes at its reference
+  // high and lasts until the next such close; without it, qualifying days fewer than 21 sessions apart form one spell.
+  C.dipStudy = function (ctx, o) {
+    const { v, s, e, n, months, ends } = ctx; const sv = o.sv || v, R = o.ref, dd = o.dd || {}, rb = o.reb || {}, mask = o.mask || null;
+    const ddHi = dd.hi == null ? Infinity : dd.hi, rbHi = rb.hi == null ? Infinity : rb.hi, G = 21;
+    const ok = (i) => {
+      const k = i - s;
+      if (mask && !mask[k]) return false;
+      if (dd.on) { const x = dd.deep ? 1 - R.low[k] / sv[R.pk[k]] : -R.dd[k]; if (!(x >= dd.lo && x <= ddHi)) return false; }
+      if (rb.on) {
+        const lv = rb.low === 'roll' ? o.roll.val[k] : R.low[k], la = rb.low === 'roll' ? o.roll.at[k] : R.lowAt[k];
+        const x = sv[i] / lv - 1; if (!(x >= rb.lo && x <= rbHi)) return false;
+        if (rb.days > 0 && i - la < rb.days) return false;
+      }
+      return true;
+    };
+    const q = new Uint8Array(n), eps = [], days = [], epOf = []; let armed = true, cur = null, last = -Infinity;
+    for (let i = s; i <= e; i++) {
+      const k = i - s;
+      if (dd.on && R.dd[k] >= 0) { if (cur) cur.endI = i; cur = null; armed = true; }
+      if (!dd.on && cur && i - last > G) { cur.endI = i; cur = null; }
+      if (ok(i)) {
+        q[k] = 1;
+        if (dd.on ? armed : !cur) { cur = { i, peakI: dd.on ? R.hiAt[k] : -1, depth: R.dd[k], lowI: i, endI: -1, nDays: 0 }; eps.push(cur); armed = false; }
+        cur.nDays++; days.push(i); epOf.push(eps.length - 1); last = i;
+      }
+      if (cur && v[i] < v[cur.lowI]) cur.lowI = i; // the lowest close from the first qualifying day until the fall ends
+    }
+    for (const p of eps) { p.recI = -1; if (p.peakI < 0) continue; const pk = v[p.peakI]; for (let i = p.i + 1; i <= e; i++) if (v[i] >= pk) { p.recI = i; break; } }
+    const samples = o.first ? eps.map((p, k) => [p.i, k]) : days.map((i, k) => [i, epOf[k]]);
+    let isS = null; if (o.rest) { isS = new Uint8Array(n); for (const [i] of samples) isS[i - s] = 1; }
+    const H = months.map((m, h) => {
+      const r = [], ep = [], at = [], cmp = [], mae = [], a = ends[h];
+      for (const [i, k] of samples) {
+        const j = a[i - s]; if (j < 0) continue;
+        r.push(v[j] / v[i] - 1); ep.push(k); at.push(i);
+        if (o.cmp) cmp.push(o.cmp[j] / o.cmp[i] - 1);
+        if (o.mae) mae.push(ctx.minOf(i, j) / v[i] - 1);
+      }
+      const cnt = new Map(); for (const k of ep) cnt.set(k, (cnt.get(k) || 0) + 1);
+      let rest = null;
+      if (isS) { rest = []; for (let i = s; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0 && !isS[i - s]) rest.push(v[j] / v[i] - 1); } }
+      return { m, r, ann: r.map(x => Math.pow(1 + x, 12 / m) - 1), w: o.wFall ? ep.map(k => 1 / cnt.get(k)) : null, ep, at, cmp, mae, rest, cnt, nEp: cnt.size };
+    });
+    return { q, eps, days, epOf, H };
+  };
+  // Mean, share above zero, extremes and any quantile of a sample. Unweighted: linear interpolation as Core.quantile.
+  // Weighted: linear interpolation between the midpoints of each value's share of the total weight (identical medians
+  // for equal weights).
+  C.summary = function (arr, w) {
+    const n = arr.length;
+    if (!n) return { n: 0, mean: NaN, pos: NaN, min: NaN, max: NaN, q: () => NaN };
+    if (!w) {
+      const a = Float64Array.from(arr).sort();
+      let sum = 0, pos = 0; for (const x of a) { sum += x; if (x > 0) pos++; }
+      return { n, mean: sum / n, pos: pos / n, min: a[0], max: a[n - 1], q: (p) => { const t = (n - 1) * p, lo = Math.floor(t), hi = Math.ceil(t); return a[lo] + (a[hi] - a[lo]) * (t - lo); } };
+    }
+    const idx = Array.from({ length: n }, (_, k) => k).sort((x, y) => arr[x] - arr[y]);
+    let W = 0, sum = 0, pos = 0; for (let k = 0; k < n; k++) { W += w[k]; sum += w[k] * arr[k]; if (arr[k] > 0) pos += w[k]; }
+    const xs = new Float64Array(n), cs = new Float64Array(n); let c = 0;
+    idx.forEach((k, r) => { xs[r] = arr[k]; cs[r] = (c + w[k] / 2) / W; c += w[k]; });
+    return { n, mean: sum / W, pos: pos / W, min: xs[0], max: xs[n - 1], q: (p) => {
+      if (p <= cs[0]) return xs[0]; if (p >= cs[n - 1]) return xs[n - 1];
+      let lo = 0, hi = n - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cs[mid] <= p) lo = mid; else hi = mid; }
+      return xs[lo] + (xs[hi] - xs[lo]) * (p - cs[lo]) / (cs[hi] - cs[lo]);
+    } };
   };
 
   // Leverage curve (daily reset)
