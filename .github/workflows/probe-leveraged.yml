@@ -1,0 +1,16 @@
+name: Probe leveraged history (temporary)
+on:
+  push:
+    branches: [claude/great-johnson-rp3hbj]
+    paths: [scripts/probe-leveraged.js, .github/workflows/probe-leveraged.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/probe-leveraged.js
