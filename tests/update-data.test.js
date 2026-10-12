@@ -44,7 +44,7 @@ function fixtures(a, b) {
     spy.push({ date: iso, close: P, div });
   }
   src.etf.SPY = { bars: spy };
-  src.dtb3 = new Map(); for (let i = b - 300; i <= b; i++) src.dtb3.set(Core.iso(i), Math.round(Core.rfAnn[i] * 1e4) / 100);
+  src.tbill = new Map(); for (let i = b - 300; i <= b; i++) src.tbill.set(Core.iso(i), Math.round(Core.rfAnn[i] * 1e4) / 100);
   src.cny = new Map(); for (let i = b - 60; i <= b; i++) if (Core.iso(i) <= DATA.fx.cny.last) src.cny.set(Core.iso(i), Math.round(Core.fxCNY[i] * 1e4) / 1e4);
   const cm0 = codec.monthKey(DATA.cpi.m0); src.cpi = new Map();
   DATA.cpi.v.forEach((v, q) => { if (q >= DATA.cpi.v.length - 12) src.cpi.set(codec.monthIso(cm0 + q), (DATA.cpi.filled || []).includes(codec.monthIso(cm0 + q)) ? null : v); });
@@ -151,21 +151,25 @@ test('SOXLX (simulated before 2010) follows SOXL; price-only series ignore distr
 
 test('T-bill rate and USD/CNY: provisional values are rebuilt from the latest observation', () => {
   const k = 5; const src = fixtures(N - 1 - k - 30, N - 1);
-  const keys = [...src.dtb3.keys()].sort(); src.dtb3.delete(keys[keys.length - 1]); src.dtb3.set(keys[keys.length - 2], null);
-  src.dtb3.set(keys[keys.length - 3], 4.12);
+  const keys = [...src.tbill.keys()].sort(); src.tbill.delete(keys[keys.length - 1]); src.tbill.set(keys[keys.length - 2], null);
+  src.tbill.set(keys[keys.length - 3], 4.12);
   const { data } = applyUpdate(truncate(DATA, k), src, { now: NOW });
   assert.equal(data.rfThrough, keys[keys.length - 3]);
   const rf = codec.cumsum(data.rf); assert.deepEqual(rf.slice(-3), [412, 412, 412]);
-  // no DTB3 at all: carried forward with a warning, and revised next time
-  const src2 = fixtures(N - 1 - k - 30, N - 1); src2.dtb3 = null;
+  // no T-bill data at all: carried forward with a warning, and revised next time
+  const src2 = fixtures(N - 1 - k - 30, N - 1); src2.tbill = null;
   const r2 = applyUpdate(truncate(DATA, k), src2, { now: NOW });
-  assert.ok(r2.report.warnings.some(w => /^DTB3 unavailable/.test(w)));
+  assert.ok(r2.report.warnings.some(w => /^T-bill rates unavailable/.test(w)));
   const rf2 = codec.cumsum(r2.data.rf); assert.deepEqual(new Set(rf2.slice(-k)), new Set([rf2[N - 1 - k]]));
   const thru = truncate(DATA, k).rfThrough || '2025-12-19';
   assert.equal(r2.data.rfThrough, thru);
-  // a stored rate that disagrees with DTB3 before its last confirmed date stops the update
-  const src3 = fixtures(N - 1 - k - 30, N - 1); for (const d of [...src3.dtb3.keys()].filter(d => d <= thru).slice(-5)) src3.dtb3.set(d, 9.99);
-  assert.throws(() => applyUpdate(truncate(DATA, k), src3, { now: NOW }), /DTB3 disagrees/);
+  // a download that disagrees with the stored rate before its last confirmed date stops the update
+  const src3 = fixtures(N - 1 - k - 30, N - 1); for (const d of [...src3.tbill.keys()].filter(d => d <= thru).slice(-5)) src3.tbill.set(d, 9.99);
+  assert.throws(() => applyUpdate(truncate(DATA, k), src3, { now: NOW }), /T-bill rates differ/);
+  // USD/CNY from a source that fixes the rate at another time of day: compared within the stated tolerance
+  const src4 = fixtures(N - 1 - k - 30, N - 1); for (const [d, v] of src4.cny) src4.cny.set(d, Math.round(v * 1.002 * 1e4) / 1e4);
+  assert.throws(() => applyUpdate(truncate(DATA, k), src4, { now: NOW }), /USD\/CNY rates disagree/);
+  src4.cnyTol = 0.005; assert.doesNotThrow(() => applyUpdate(truncate(DATA, k), src4, { now: NOW }));
 });
 
 test('CPI: new months are appended, an unpublished one is interpolated, a published one replaces the estimate', () => {
@@ -197,7 +201,7 @@ test('the data file round-trips through the writer, and validate() catches a bro
   assert.throws(() => validate(bad), /GLD: bad value/);
 });
 
-test('the downloaders read Yahoo chart JSON and FRED CSV, and the whole pipeline reproduces the data', async () => {
+test('the downloaders read Yahoo chart JSON, Treasury CSV and BLS JSON, and the whole pipeline reproduces the data', async () => {
   const { fetchAll } = require('../scripts/data/sources.js');
   const k = 6; const src = fixtures(N - 1 - k - 30, N - 1);
   const toYahoo = (bars) => {
@@ -205,16 +209,21 @@ test('the downloaders read Yahoo chart JSON and FRED CSV, and the whole pipeline
     const dividends = {}; bars.forEach((b, q) => { if (b.div) dividends[ts[q]] = { amount: b.div, date: ts[q] }; });
     return JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, exchangeTimezoneName: 'America/New_York' }, timestamp: ts, events: { dividends }, indicators: { quote: [{ close: bars.map(b => b.close) }] } }], error: null } });
   };
-  const toCsv = (id, m, monthly) => 'observation_date,' + id + '\n' + [...m].map(([d, v]) => (monthly ? d + '-01' : d) + ',' + (v == null ? '.' : v)).join('\n') + '\n';
-  const fredData = { DTB3: [src.dtb3], DEXCHUS: [src.cny], CPIAUCNS: [src.cpi, true], GS10: [src.gs10, true] };
+  const usDate = (iso) => iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4);
+  const billCsv = 'Date,"4 WEEKS BANK DISCOUNT","13 WEEKS BANK DISCOUNT"\n' + [...src.tbill].reverse().map(([d, v]) => `${usDate(d)},4.00,${v == null ? '' : v.toFixed(2)}`).join('\n') + '\n';
+  const curveRows = []; for (const [m, v] of src.gs10) for (let d = codec.dayNum(m + '-01'); codec.isoOf(d).slice(0, 7) === m; d++) { const wd = new Date(d * 864e5).getUTCDay(); if (wd > 0 && wd < 6) curveRows.push(`${usDate(codec.isoOf(d))},4.10,${v.toFixed(2)}`); }
+  const curveCsv = 'Date,"1 Mo","10 Yr"\n' + curveRows.reverse().join('\n') + '\n';
+  const blsJson = JSON.stringify({ status: 'REQUEST_SUCCEEDED', message: [], Results: { series: [{ seriesID: 'CUUR0000SA0', data: [...src.cpi].reverse().map(([m, v]) => ({ year: m.slice(0, 4), period: 'M' + m.slice(5, 7), value: v == null ? '-' : String(v) })) }] } });
+  const cnyBars = [...src.cny].map(([d, v]) => ({ date: d, close: v, div: 0 }));
   const calls = [];
   const realFetch = global.fetch;
   global.fetch = async (url) => {
     calls.push(url); let body = null;
     const y = url.match(/finance\.yahoo\.com\/v8\/finance\/chart\/([^?]+)\?/);
-    if (y) { const sym = decodeURIComponent(y[1]); const s2 = sym === '^GSPC' ? src.gspc : sym === '^VIX' ? src.vix : src.etf[sym]; if (s2) body = toYahoo(s2.bars); }
-    const f = url.match(/fredgraph\.csv\?id=(\w+)/);
-    if (f && fredData[f[1]]) body = toCsv(f[1], ...fredData[f[1]]);
+    if (y) { const sym = decodeURIComponent(y[1]); const s2 = sym === '^GSPC' ? src.gspc : sym === '^VIX' ? src.vix : sym === 'CNY=X' ? { bars: cnyBars } : src.etf[sym]; if (s2) body = toYahoo(s2.bars); }
+    if (/home\.treasury\.gov\/.*type=daily_treasury_bill_rates/.test(url)) body = billCsv;
+    if (/home\.treasury\.gov\/.*type=daily_treasury_yield_curve/.test(url)) body = curveCsv;
+    if (/api\.bls\.gov\/publicAPI\/v1\/timeseries\/data\/CUUR0000SA0/.test(url)) body = blsJson;
     return body == null ? { ok: false, status: 404, text: async () => '' } : { ok: true, status: 200, text: async () => body };
   };
   let got;
@@ -224,7 +233,9 @@ test('the downloaders read Yahoo chart JSON and FRED CSV, and the whole pipeline
   assert.ok(got.issues.some(x => /^\^NDX/.test(x)));
   assert.deepEqual(got.etf.SPY.bars.slice(-3), src.etf.SPY.bars.slice(-3));
   assert.deepEqual([...got.cpi], [...src.cpi]);
+  for (const [m, v] of src.gs10) assert.equal(got.gs10.get(m), v, 'monthly mean ' + m);
   const { data } = applyUpdate(truncate(DATA, k), got, { now: NOW });
   for (const key in DATA.etf) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);
   sameExceptNew(data, DATA, ['cal', 'asOf', 'rf', 'vix', 'fx', 'cpi']);
+  assert.deepEqual(data.lr.y10, DATA.lr.y10);
 });

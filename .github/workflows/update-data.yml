@@ -1,6 +1,7 @@
 name: Update market data
 
-# Every Saturday: download the week's sessions from Yahoo Finance and FRED, append them to data/market-data.js,
+# Every Saturday: download the week's sessions (Yahoo Finance; T-bill rate and 10-year yield from the U.S. Treasury;
+# CPI from the BLS), append them to data/market-data.js,
 # run all tests on the result, commit to main and redeploy the site. Nothing is committed if a download or a
 # check fails; the site then keeps last week's data.
 # "Run workflow" does the same on demand (tick "check only" to download and verify without committing).

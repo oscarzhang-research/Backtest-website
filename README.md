@@ -45,8 +45,8 @@ Full details are on the Methodology tab.
 | SMH, VGT | from 2006-09-29 | yfinance adjusted closes (public cache) |
 | SOXL, TQQQ | from 2010 | split-adjusted closes; SOXL simulated from SOXX before 2010 |
 | Ten chip stocks | mostly from 1995 | Yahoo closes + dividends + splits |
-| T-bills · CPI-U · VIX | 1928+ · 1913+ · 1990+ | Ken French and FRED DTB3 · BLS · CBOE |
-| 10-year yield · gold · USD/CNY (long-run and currency views) | 1953+ · 1960+ · 1981+ | FRED GS10 · World Bank · FRED H.10 |
+| T-bills · CPI-U · VIX | 1928+ · 1913+ · 1990+ | Ken French, FRED DTB3, then the U.S. Treasury · BLS · CBOE, then Yahoo |
+| 10-year yield · gold · USD/CNY (long-run and currency views) | 1953+ · 1960+ · 1981+ | FRED GS10, then the U.S. Treasury · World Bank · FRED H.10, then Yahoo |
 
 All data is embedded in [`data/market-data.js`](data/market-data.js) in a compact delta encoding and decoded by [`assets/js/core.js`](assets/js/core.js).
 
@@ -54,7 +54,7 @@ All data is embedded in [`data/market-data.js`](data/market-data.js) in a compac
 
 Every Saturday the [Update market data](.github/workflows/update-data.yml) workflow:
 
-1. downloads the week's sessions from Yahoo Finance (the S&P 500, VIX and every ETF and stock: closes, dividends, splits) and FRED (T-bill rate, CPI, 10-year yield, USD/CNY);
+1. downloads the week's sessions from Yahoo Finance (the S&P 500, VIX, USD/CNY and every ETF and stock: closes, dividends, splits), the U.S. Treasury (T-bill rate, 10-year yield) and the BLS (CPI). FRED refuses connections from GitHub's servers;
 2. recomputes the last 20 stored sessions of every series from the new download and stops if they disagree;
 3. appends the new sessions to `data/market-data.js` and rebuilds values that were provisional (the latest T-bill rate and exchange rate, the S&P 500 dividend of the current month);
 4. runs the unit tests and the browser smoke test on the result, commits it to `main` and redeploys the site.

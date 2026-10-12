@@ -11,7 +11,7 @@ What was added in this round, and what could come next. The next steps are order
   - The Permanent Portfolio reaches 0.75 without any rules.
   - On monthly proxies for 1973–2026, only the trend filter helped both before and after 2000. Inverse-volatility weighting lowered the Sharpe ratio in 1973–99.
 - **High-Sharpe A: diversification monitor.** SPY's correlation with TLT is +0.27 over the last year and +0.45 over the last three months. The one-year figure was positive on only 22% of days since 2002.
-- **Weekly data updates.** A GitHub Actions workflow appends each week's sessions from Yahoo Finance and FRED every Saturday. It first checks the last 20 stored sessions against the new download, runs all tests on the result, then commits and redeploys. See the README.
+- **Weekly data updates.** A GitHub Actions workflow appends each week's sessions from Yahoo Finance, the U.S. Treasury and the BLS every Saturday. It first checks the last 20 stored sessions against the new download, runs all tests on the result, then commits and redeploys. See the README.
 - **Research R11: inflation regimes.** Since 1973, in months that began with inflation above 3% and rising, the annual returns after inflation were: stocks −1.7%, long Treasuries +1.9%, gold +5.5%, and 2.0's long-run proxy +0.8%. CPI inflation was 3.4% in July 2026, up from 2.7% a year earlier, so today falls in that regime.
 
 ## Next steps
