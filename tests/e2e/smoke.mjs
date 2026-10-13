@@ -5,18 +5,20 @@
 import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 
-const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, levcmp: 7, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
     sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
+    levcmp: ['Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Under different ways of holding', 'SOXL ahead'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
   },
   zh: {
     sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
+    levcmp: ['核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '不同持有方式下', 'SOXL 跑赢'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
   },
 };
@@ -233,6 +235,30 @@ for (const [lang, live, must] of [
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('tqqq dates', problems);
+  await ctx.close();
+}
+// SOXL vs TQQQ, C5: another way of holding, annualized, a later start — the table and the summary follow
+{
+  const { ctx, page, errors } = await open('zh', 'levcmp');
+  const take = () => page.evaluate(() => { const el = document.querySelector('#lc-rule .takeaway'); return el ? el.innerText : ''; });
+  const settle = async (pred) => { for (let k = 0; k < 160; k++) { await page.waitForTimeout(250); const t = await take(); if (pred(t)) return t; } return null; };
+  const problems = [];
+  if (!(await settle((t) => t.startsWith('买入持有，')))) problems.push('C5 did not render');
+  else {
+    await page.selectOption('#lc-c5Rule', 'dca');
+    if (!(await settle((t) => t.startsWith('每月定投，')))) problems.push('switching to DCA did nothing');
+    await page.click('#lc-c5Ann button[data-v="ann"]');
+    if (!(await settle((t) => t.startsWith('每月定投，') && t.includes('年化中位数')))) problems.push('annualized DCA (IRR) did not show');
+    await page.selectOption('#lc-c5Rule', 'trend');
+    await page.fill('#lc-c5Start', '2015-01-01'); await page.$eval('#lc-c5Start', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+    const t = await settle((x) => x.startsWith('均线择时') && x.includes('2015-01-02 至今'));
+    if (!t) problems.push('the trend rule from 2015 did not show');
+    else if (/\bNaN\b|undefined/.test(t)) problems.push('NaN/undefined in C5');
+    const cells = await page.evaluate(() => [...document.querySelectorAll('#lc-rule table tbody tr')].length);
+    if (cells < 3) problems.push('C5 table has ' + cells + ' rows');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('levcmp rules', problems);
   await ctx.close();
 }
 await browser.close();

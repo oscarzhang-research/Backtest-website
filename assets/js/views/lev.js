@@ -901,5 +901,6 @@
   }
 
   for (const k of Object.keys(FUNDS)) App.register(FUNDS[k].view, makeView(FUNDS[k]));
-  root.LEV = { FUNDS, SIMK }; // shared with the SOXL vs TQQQ comparison
+  // shared with the SOXL vs TQQQ comparison
+  root.LEV = { FUNDS, SIMK, legendOpt, take, section, simYear, pctDeep, hzLab, hzShort, statLab, statRank, statVal, dipStatOk, dipStatList, fmtR, pctN, fade, logTicks, multLab, winLab, winAdj, DIP_HZ, DIP_STATS, DIP_WIN, DIP_LEV };
 })(window);

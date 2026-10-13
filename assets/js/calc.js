@@ -345,6 +345,65 @@
     } };
   };
 
+  // ---------- A rule held from many start dates (SOXL vs TQQQ, C5) ----------
+  // Target weights w over [s, e] (w[k] for session s + k: the weight held from that close to the next, decided with data
+  // up to the session before), the rest in T-bills, rebalanced to target at every close at a cost c per unit traded.
+  // Returns the rule's value index S (S[0] = 1, after that day's rebalancing) and the lowest value between two sessions.
+  // A purchase at the close of session a (buying w[a] costs c·w[a]) held to the close of b is worth (1 − c·w[a])·S[b]/S[a]:
+  // from the day after the purchase the position and the index trade identically.
+  C.ruleIndex = function (v, s, e, w, c) {
+    const rf = Core.rfDaily, n = e - s + 1, S = new Float64Array(n); S[0] = 1;
+    for (let k = 1; k < n; k++) {
+      const i = s + k, wp = w[k - 1], r = v[i] / v[i - 1] - 1, g = wp * r + (1 - wp) * rf[i];
+      const drift = 1 + g > 0 ? wp * (1 + r) / (1 + g) : 0; // the weight after the day's move, before rebalancing
+      S[k] = Math.max(0, S[k - 1] * (1 + g) * (1 - c * Math.abs(w[k] - drift)));
+    }
+    const st = [S];
+    for (let j = 1; (1 << j) <= n; j++) { const p = st[j - 1], hh = 1 << (j - 1), m = new Float64Array(n - (1 << j) + 1); for (let i = 0; i < m.length; i++) m[i] = Math.min(p[i], p[i + hh]); st.push(m); }
+    const minOf = (a, b) => { const k = 31 - Math.clz32(b - a + 1); return Math.min(st[k][a], st[k][b - (1 << k) + 1]); };
+    return { s, e, S, minOf };
+  };
+  // Buying the rule R (from C.ruleIndex, same s) at the close of each session in `starts` and holding until ends[i − s]
+  // (C.dipContext's ends for one horizon): total return, and the worst value while holding against the amount invested.
+  C.ruleWindows = function (R, w, c, ends, starts) {
+    const s = R.s, r = [], mae = [], at = [];
+    for (const i of starts) {
+      const j = ends[i - s]; if (j < 0) continue;
+      const a = i - s, b = j - s, k0 = (1 - c * w[a]) / R.S[a];
+      r.push(k0 * R.S[b] - 1); mae.push(Math.min(0, k0 * R.minOf(a, b) - 1)); at.push(i);
+    }
+    return { r, mae, at };
+  };
+  // Monthly purchases of v: equal amounts at the close of each start session and on the same day of the following
+  // months (the session on or before it), the last one before the horizon ends (ends[i − s], as above), each costing c.
+  // Returns the money multiple less one (value at the end ÷ amount put in − 1), the worst value while investing against
+  // the amount put in so far (minOf: the lowest v between two sessions, inclusive), and with o.irr the money-weighted
+  // annual return.
+  C.dcaWindows = function (v, s, ends, m, starts, c, minOf, o) {
+    const D = Core.days, r = [], irr = [], mae = [], at = [], wantIrr = !!(o && o.irr);
+    for (const i of starts) {
+      const j = ends[i - s]; if (j < 0) continue;
+      const buys = [i]; for (let q = 1; q < m; q++) { const k = Core.idxOnOrBefore(Core.addYearsDay(D[i], q / 12)); if (k >= j) break; if (k > buys[buys.length - 1]) buys.push(k); }
+      let units = 0, worst = 0;
+      for (let q = 0; q < buys.length; q++) { // units are constant between purchases, so the lowest close of each stretch decides
+        units += (1 - c) / v[buys[q]];
+        const x = units * minOf(buys[q], q + 1 < buys.length ? buys[q + 1] - 1 : j) / (q + 1) - 1; if (x < worst) worst = x;
+      }
+      const val = units * v[j], n = buys.length;
+      r.push(val / n - 1); mae.push(worst); at.push(i);
+      if (wantIrr) { // Newton's method on Σ (1 + y)^t_k = val, t_k the years from each purchase to the end
+        const T = buys.map(k => (D[j] - D[k]) / 365.25), tm = T.reduce((a, x) => a + x, 0) / n;
+        let y = Math.max(-0.95, Math.pow(Math.max(val / n, 1e-9), 1 / Math.max(tm, 1e-6)) - 1);
+        for (let it = 0; it < 30; it++) {
+          let f = -val, df = 0; for (const t of T) { const p = Math.pow(1 + y, t); f += p; df += t * p / (1 + y); }
+          const y2 = Math.min(100, Math.max(-0.999, y - f / df)); if (Math.abs(y2 - y) < 1e-10) { y = y2; break; } y = y2;
+        }
+        irr.push(y);
+      }
+    }
+    return { r, irr, mae, at };
+  };
+
   // Leverage curve (daily reset)
   C.leverageStats = function (base, i0, i1, L, fee, spread) {
     const rf = Core.rfDaily; let x = 1, peak = 1, mdd = 0; let dead = false;

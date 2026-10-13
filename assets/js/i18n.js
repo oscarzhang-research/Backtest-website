@@ -437,6 +437,7 @@
   add('nav.sharpe', '高夏普策略', 'High-Sharpe Plan');
   add('nav.soxl', 'SOXL 专题', 'SOXL Deep Dive');
   add('nav.tqqq', 'TQQQ 专题', 'TQQQ Deep Dive');
+  add('nav.levcmp', 'SOXL vs TQQQ', 'SOXL vs TQQQ');
   add('nav.goal', '目标规划', 'Goal Planner');
   add('nav.chips', '芯片个股', 'Chip Stocks');
   add('a.MU', '美光科技 MU', 'Micron (MU)');
