@@ -363,45 +363,93 @@
     const minOf = (a, b) => { const k = 31 - Math.clz32(b - a + 1); return Math.min(st[k][a], st[k][b - (1 << k) + 1]); };
     return { s, e, S, minOf };
   };
-  // Buying the rule R (from C.ruleIndex, same s) at the close of each session in `starts` and holding until ends[i − s]
-  // (C.dipContext's ends for one horizon): total return, and the worst value while holding against the amount invested.
-  C.ruleWindows = function (R, w, c, ends, starts) {
-    const s = R.s, r = [], mae = [], at = [];
-    for (const i of starts) {
-      const j = ends[i - s]; if (j < 0) continue;
-      const a = i - s, b = j - s, k0 = (1 - c * w[a]) / R.S[a];
-      r.push(k0 * R.S[b] - 1); mae.push(Math.min(0, k0 * R.minOf(a, b) - 1)); at.push(i);
-    }
-    return { r, mae, at };
+  // The purchase sessions of a regular plan started at the close of session i: every 7 or 14 calendar days ('W', '2W'),
+  // or on the same day of every 1, 3 or 12 months ('M', 'Q', 'Y'; the last day of a shorter month), each on the session
+  // on or before that date, strictly after i and before session j.
+  const PLAN_STEP = { W: [7, 0], '2W': [14, 0], M: [0, 1], Q: [0, 3], Y: [0, 12] };
+  const dim = (y, m) => (m === 1 ? (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28) : [31, 0, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m]);
+  let dayTab = null; // the session on or before each calendar day of the data (Core.idxOnOrBefore without the search)
+  const onOrBefore = (t) => {
+    const D = Core.days;
+    if (!dayTab || dayTab.d0 !== D[0] || dayTab.n !== Core.N) { const T = new Int32Array(D[Core.N - 1] - D[0] + 1); for (let k = 0, i = 0; k < T.length; k++) { while (i + 1 < Core.N && D[i + 1] <= D[0] + k) i++; T[k] = i; } dayTab = { T, d0: D[0], n: Core.N }; }
+    return t < dayTab.d0 ? 0 : t - dayTab.d0 >= dayTab.T.length ? Core.N - 1 : dayTab.T[t - dayTab.d0];
   };
-  // Monthly purchases of v: equal amounts at the close of each start session and on the same day of the following
-  // months (the session on or before it), the last one before the horizon ends (ends[i − s], as above), each costing c.
-  // Returns the money multiple less one (value at the end ÷ amount put in − 1), the worst value while investing against
-  // the amount put in so far (minOf: the lowest v between two sessions, inclusive), and with o.irr the money-weighted
-  // annual return.
-  C.dcaWindows = function (v, s, ends, m, starts, c, minOf, o) {
-    const D = Core.days, r = [], irr = [], mae = [], at = [], wantIrr = !!(o && o.irr);
+  C.planDays = function (i, j, freq) {
+    const D = Core.days, out = [], st = PLAN_STEP[freq], last = D[Core.N - 1]; if (!st) return out;
+    const dt = new Date(D[i] * 864e5), y = dt.getUTCFullYear(), m = dt.getUTCMonth(), d = dt.getUTCDate();
+    for (let q = 1, prev = i; ; q++) {
+      let t = D[i] + st[0] * q;
+      if (!st[0]) { const mm = m + st[1] * q, y2 = y + Math.floor(mm / 12), m2 = mm % 12; t = Math.round(Date.UTC(y2, m2, Math.min(d, dim(y2, m2))) / 864e5); }
+      if (t > last) break;
+      const k = onOrBefore(t); if (k >= j) break;
+      if (k > prev) { out.push(k); prev = k; }
+    }
+    return out;
+  };
+  // The annual rate y at which amounts A, each compounding for T years, grow to val: Σ A·(1 + y)^T = val. The left side
+  // rises with y, so Newton's steps are kept inside a bracket around the single root.
+  function irrOf(T, A, val) {
+    if (!(val > 0)) return -1;
+    const f = (y) => { const l = Math.log1p(y); let a = -val, d = 0; for (let k = 0; k < T.length; k++) { const p = A[k] * Math.exp(l * T[k]); a += p; d += T[k] * p; } return [a, d / (1 + y)]; };
+    let P = 0, tm = 0; for (let k = 0; k < T.length; k++) { P += A[k]; tm += A[k] * T[k]; } tm /= P;
+    if (!(tm > 0)) return NaN;
+    let lo = -1 + 1e-9, hi = 1; while (f(hi)[0] < 0 && hi < 1e9) { lo = hi; hi = hi * 4 + 1; }
+    let y = Math.min(hi, Math.max(lo, Math.pow(val / P, 1 / tm) - 1));
+    for (let it = 0; it < 100; it++) {
+      const [fy, dy] = f(y); if (fy > 0) hi = y; else lo = y;
+      let y2 = y - fy / dy; if (!(y2 > lo && y2 < hi)) y2 = (lo + hi) / 2;
+      if (Math.abs(y2 - y) <= 1e-12 * Math.max(1, Math.abs(y)) || hi - lo <= 1e-13) return y2;
+      y = y2;
+    }
+    return y;
+  }
+  C.irrOf = irrOf;
+  // A plan bought under the rule R (C.ruleIndex over [s, e] with the weights w): plan.a0 at the close of the start, then
+  // plan.a1 on each of its purchase days (C.planDays with plan.freq; none when freq is 'none' or a1 is 0) before the end.
+  // Each purchase pays c·w on the part bought and from then on moves with the rule's index, so the money is worth U·S
+  // with U = Σ amount·(1 − c·w[a])/S[a] over the purchases so far.
+  const planOn = (plan) => !!(plan.freq && plan.freq !== 'none' && plan.a1 > 0);
+  const planBuys = (i, j, plan) => (planOn(plan) ? [i].concat(C.planDays(i, j, plan.freq)) : [i]);
+  // The plan started at the close of each session in `starts` and held until ends[i − s] (C.dipContext's ends for one
+  // horizon): the money multiple less one (the end value ÷ the money put in − 1), the worst value along the way against
+  // the money put in so far, and with o.irr the money-weighted annual return. o.cache (an object shared by the calls for
+  // several horizons of the same plan, longest first) keeps each start's purchase days.
+  C.planWindows = function (R, w, c, ends, starts, plan, o) {
+    const s = R.s, S = R.S, D = Core.days, r = [], irr = [], mae = [], at = [], wantIrr = !!(o && o.irr), cache = o && o.cache;
     for (const i of starts) {
       const j = ends[i - s]; if (j < 0) continue;
-      const buys = [i]; for (let q = 1; q < m; q++) { const k = Core.idxOnOrBefore(Core.addYearsDay(D[i], q / 12)); if (k >= j) break; if (k > buys[buys.length - 1]) buys.push(k); }
-      let units = 0, worst = 0;
-      for (let q = 0; q < buys.length; q++) { // units are constant between purchases, so the lowest close of each stretch decides
-        units += (1 - c) / v[buys[q]];
-        const x = units * minOf(buys[q], q + 1 < buys.length ? buys[q + 1] - 1 : j) / (q + 1) - 1; if (x < worst) worst = x;
+      let buys;
+      if (cache && planOn(plan)) { // longest horizon first: the shorter ones take the first purchases of its list
+        let x = cache[i]; if (!x || x.j < j) x = cache[i] = { j, days: [i].concat(C.planDays(i, j, plan.freq)) };
+        const all = x.days; let m = all.length; while (m > 1 && all[m - 1] >= j) m--; buys = m === all.length ? all : all.slice(0, m);
       }
-      const val = units * v[j], n = buys.length;
-      r.push(val / n - 1); mae.push(worst); at.push(i);
-      if (wantIrr) { // Newton's method on Σ (1 + y)^t_k = val, t_k the years from each purchase to the end
-        const T = buys.map(k => (D[j] - D[k]) / 365.25), tm = T.reduce((a, x) => a + x, 0) / n;
-        let y = Math.max(-0.95, Math.pow(Math.max(val / n, 1e-9), 1 / Math.max(tm, 1e-6)) - 1);
-        for (let it = 0; it < 30; it++) {
-          let f = -val, df = 0; for (const t of T) { const p = Math.pow(1 + y, t); f += p; df += t * p / (1 + y); }
-          const y2 = Math.min(100, Math.max(-0.999, y - f / df)); if (Math.abs(y2 - y) < 1e-10) { y = y2; break; } y = y2;
-        }
-        irr.push(y);
+      else buys = planBuys(i, j, plan);
+      let U = 0, P = 0, worst = 0;
+      for (let q = 0; q < buys.length; q++) { // U is constant between purchases, so the lowest S of each stretch decides
+        const a = buys[q] - s, amt = q ? plan.a1 : plan.a0; U += amt * (1 - c * w[a]) / S[a]; P += amt;
+        const x = U * R.minOf(a, q + 1 < buys.length ? buys[q + 1] - 1 - s : j - s) / P - 1; if (x < worst) worst = x;
       }
+      const val = U * S[j - s];
+      r.push(val / P - 1); mae.push(worst); at.push(i);
+      if (wantIrr) irr.push(irrOf(buys.map(k => (D[j] - D[k]) / 365.25), buys.map((k, q) => (q ? plan.a1 : plan.a0)), val));
     }
     return { r, irr, mae, at };
+  };
+  // The plan from the close of i0 to the close of i1: its value and the money put in at every close, the purchase days,
+  // and the end figures — money multiple, money-weighted annual return, the worst value against the money put in so far
+  // (and when), and the worst drawdown of the rule itself over the period (what a dollar held throughout went through).
+  C.planRun = function (R, w, c, i0, i1, plan) {
+    const s = R.s, S = R.S, D = Core.days, n = i1 - i0 + 1, V = new Float64Array(n), P = new Float64Array(n), buys = planBuys(i0, i1, plan);
+    let U = 0, inv = 0, q = 0, worst = 0, worstI = i0, peak = -Infinity, pkI = i0, mdd = 0, mddPk = i0, mddTr = i0;
+    for (let i = i0; i <= i1; i++) {
+      const k = i - s;
+      if (q < buys.length && buys[q] === i) { const amt = q ? plan.a1 : plan.a0; U += amt * (1 - c * w[k]) / S[k]; inv += amt; q++; }
+      const val = U * S[k]; V[i - i0] = val; P[i - i0] = inv;
+      if (val / inv - 1 < worst) { worst = val / inv - 1; worstI = i; }
+      if (S[k] > peak) { peak = S[k]; pkI = i; } else if (S[k] / peak - 1 < mdd) { mdd = S[k] / peak - 1; mddPk = pkI; mddTr = i; }
+    }
+    const val = V[n - 1], irr = irrOf(buys.map(k => (D[i1] - D[k]) / 365.25), buys.map((k, q2) => (q2 ? plan.a1 : plan.a0)), val);
+    return { i0, i1, V, P, buys, final: val, invested: inv, moic: val / inv, irr, worst, worstI, mdd, mddPk, mddTr };
   };
 
   // Leverage curve (daily reset)

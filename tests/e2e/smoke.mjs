@@ -11,14 +11,14 @@ const MUST = { // text that must appear once a tab has finished rendering
     sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
-    levcmp: ['Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Under different ways of holding', 'SOXL ahead'],
+    levcmp: ['Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', 'SOXL ahead'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
   },
   zh: {
     sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
-    levcmp: ['核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '不同持有方式下', 'SOXL 跑赢'],
+    levcmp: ['核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', 'SOXL 跑赢'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
   },
 };
@@ -237,28 +237,68 @@ for (const [lang, live, must] of [
   report('tqqq dates', problems);
   await ctx.close();
 }
-// SOXL vs TQQQ, C5: another way of holding, annualized, a later start — the table and the summary follow
+// SOXL vs TQQQ, C5: a first amount and regular purchases under another way of holding, then a later start — the backtest,
+// its table and the spread over start dates follow; the ways of holding explain themselves on hover
 {
   const { ctx, page, errors } = await open('zh', 'levcmp');
-  const take = () => page.evaluate(() => { const el = document.querySelector('#lc-rule .takeaway'); return el ? el.innerText : ''; });
-  const settle = async (pred) => { for (let k = 0; k < 160; k++) { await page.waitForTimeout(250); const t = await take(); if (pred(t)) return t; } return null; };
+  const take = (k) => page.evaluate((n) => { const el = document.querySelectorAll('#lc-rule .takeaway')[n]; return el ? el.innerText : ''; }, k || 0);
+  const settle = async (pred, k) => { for (let q = 0; q < 160; q++) { await page.waitForTimeout(250); const t = await take(k); if (pred(t)) return t; } return null; };
+  const change = async (sel, v) => { await page.fill(sel, v); await page.$eval(sel, (el) => el.dispatchEvent(new Event('change', { bubbles: true }))); };
   const problems = [];
-  if (!(await settle((t) => t.startsWith('买入持有，')))) problems.push('C5 did not render');
+  if (!(await settle((t) => t.startsWith('2010-03-11 至今，买入持有，首笔 $10,000、之后每月 $1,000')))) problems.push('C5 backtest did not render');
   else {
-    await page.selectOption('#lc-c5Rule', 'dca');
-    if (!(await settle((t) => t.startsWith('每月定投，')))) problems.push('switching to DCA did nothing');
+    await page.click('#lc-c5Rule button[data-v="trend"]');
+    if (!(await settle((t) => t.includes('均线择时（200 日）')))) problems.push('switching to moving-average timing did nothing');
+    await page.click('#lc-c5Freq button[data-v="none"]');
+    if (!(await settle((t) => t.includes('一次性投入 $10,000')))) problems.push('a single amount did not show');
+    await change('#lc-c5A0', '5000'); await page.waitForTimeout(500);
+    await page.click('#lc-c5Freq button[data-v="W"]'); await page.waitForTimeout(500);
+    await change('#lc-c5A1', '200');
+    if (!(await settle((t) => t.includes('首笔 $5,000、之后每周 $200')))) problems.push('the weekly plan did not show');
+    await change('#lc-c5Start', '2015-01-01');
+    const t = await settle((x) => x.startsWith('2015-01-02 至今') && x.includes('首笔 $5,000'));
+    if (!t) problems.push('the later start did not apply');
+    else if (/\bNaN\b|undefined/.test(t)) problems.push('NaN/undefined in the C5 backtest');
+    const rows = await page.evaluate(() => document.querySelectorAll('#lc-c5Run tbody tr').length);
+    if (rows !== 4) problems.push('C5 backtest table has ' + rows + ' rows');
     await page.click('#lc-c5Ann button[data-v="ann"]');
-    if (!(await settle((t) => t.startsWith('每月定投，') && t.includes('年化中位数')))) problems.push('annualized DCA (IRR) did not show');
-    await page.selectOption('#lc-c5Rule', 'trend');
-    await page.fill('#lc-c5Start', '2015-01-01'); await page.$eval('#lc-c5Start', (el) => el.dispatchEvent(new Event('change', { bubbles: true })));
-    const t = await settle((x) => x.startsWith('均线择时') && x.includes('2015-01-02 至今'));
-    if (!t) problems.push('the trend rule from 2015 did not show');
-    else if (/\bNaN\b|undefined/.test(t)) problems.push('NaN/undefined in C5');
-    const cells = await page.evaluate(() => [...document.querySelectorAll('#lc-rule table tbody tr')].length);
-    if (cells < 3) problems.push('C5 table has ' + cells + ' rows');
+    const d = await settle((x) => x.includes('年化中位数'), 1);
+    if (!d) problems.push('the annualized spread (IRR) did not show');
+    else if (/\bNaN\b|undefined/.test(d)) problems.push('NaN/undefined in the C5 spread');
+    const cells = await page.evaluate(() => [...document.querySelectorAll('#lc-rule table.lc-tbl tbody tr')].length);
+    if (cells < 3) problems.push('C5 spread table has ' + cells + ' rows');
+    await page.hover('#lc-c5Rule button[data-v="vt"]');
+    const tip = await page.evaluate(() => { const el = document.getElementById('hover-tip'); return el && !el.hidden ? el.innerText : ''; });
+    if (!tip.includes('波动目标')) problems.push('no hover explanation on a way of holding');
+    await page.click('#lc-c5Doc summary');
+    const doc = await page.evaluate(() => { const el = document.querySelector('#lc-c5Doc'); return el && el.open ? el.innerText : ''; });
+    if (!doc.includes('信号') || !doc.includes('为什么晚一天')) problems.push('the full explanation did not open');
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
-  report('levcmp rules', problems);
+  report('levcmp plans', problems);
+  await ctx.close();
+}
+// SOXL vs TQQQ, C4: several conditions at once, then both bought on one fund's days; the comparison of combinations follows
+{
+  const { ctx, page, errors } = await open('en', 'levcmp');
+  const take = () => page.evaluate(() => { const el = document.querySelector('#lc-fall .takeaway'); return el ? el.innerText : ''; });
+  const settle = async (pred) => { for (let q = 0; q < 160; q++) { await page.waitForTimeout(250); const t = await take(); if (pred(t)) return t; } return null; };
+  const problems = [];
+  if (!(await settle((t) => t.includes('buying when each fund is at least 50% below its all-time high:')))) problems.push('C4 did not render');
+  else {
+    await page.click('#lc-c4On-mkt');
+    if (!(await settle((t) => t.includes('; the S&P 500 is above its 200-day average')))) problems.push('a second condition did nothing');
+    await page.click('#lc-c4Same button[data-v="SOXL"]');
+    const t = await settle((x) => x.includes('on which SOXL met') && x.includes('SOXL did better'));
+    if (!t) problems.push('buying both on SOXL’s days did nothing');
+    else if (/\bNaN\b|undefined/.test(t)) problems.push('NaN/undefined in C4');
+    const rows = await page.evaluate(() => document.querySelectorAll('#lc-c4Cmp tbody tr').length);
+    if (rows < 6) problems.push('the comparison of combinations has ' + rows + ' rows');
+    await page.click('#lc-c4Cmp tbody tr:has(td.lbl b:text-is("Without: fall ≥50%")) button');
+    if (!(await settle((x) => x.includes('met “the S&P 500 is above its 200-day average”')))) problems.push('“Use” did not adopt a row');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('levcmp falls', problems);
   await ctx.close();
 }
 await browser.close();
