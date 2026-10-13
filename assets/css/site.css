@@ -28,7 +28,7 @@ img { max-width: 100%; }
   --green: #0f7d45; --green-fill: 22, 163, 90;
   --red: #c2352b;   --red-fill: 222, 70, 60;
   --shadow: 0 1px 2px rgba(15, 24, 38, 0.06), 0 8px 24px -12px rgba(15, 24, 38, 0.12);
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --s0: #8b93a1;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --s9: #0f8fa3; --s0: #8b93a1;
   --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-display: "Source Serif 4", Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", "STSong", serif;
   --font-mono: "Source Code Pro", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -45,7 +45,7 @@ img { max-width: 100%; }
     --terminal: #070c14; --terminal-2: #0d1624; --terminal-rule: #1d2a40;
     --green: #3cc98a; --green-fill: 60, 201, 138; --red: #ff7a6e; --red-fill: 255, 110, 98;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s0: #7d8797;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s9: #35b6c9; --s0: #7d8797;
     color-scheme: dark;
   }
 }
@@ -56,7 +56,7 @@ img { max-width: 100%; }
   --terminal: #070c14; --terminal-2: #0d1624; --terminal-rule: #1d2a40;
   --green: #3cc98a; --green-fill: 60, 201, 138; --red: #ff7a6e; --red-fill: 255, 110, 98;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s0: #7d8797;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s9: #35b6c9; --s0: #7d8797;
   color-scheme: dark;
 }
 

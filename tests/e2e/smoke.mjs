@@ -5,16 +5,18 @@
 import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 
-const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
     sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
+    tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
   },
   zh: {
     sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
+    tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
   },
 };
@@ -166,16 +168,16 @@ for (const [lang, live, must] of [
       const n1 = await page.evaluate(() => document.querySelector('table.dip-cmp tbody tr td:nth-child(2)').textContent);
       if (!(parseInt(n1.replace(/,/g, '')) < parseInt(n0.replace(/,/g, '')))) problems.push(`the any-day baseline did not shrink (${n0} → ${n1})`);
       if (/\bNaN\b|undefined/.test(t1)) problems.push('NaN/undefined with a start date');
-      if (!(await page.$('button:text-is("从头开始")'))) problems.push('no button back to the start of the data');
+      if (!(await page.$('#sx-dip button:text-is("从头开始")'))) problems.push('no button back to the start of the data');
     }
     await page.reload({ waitUntil: 'load' });
     const t2 = await settle((t) => /以来，符合全部条件/.test(t));
     if (!t2 || !t2.includes('2016-01-04 以来')) problems.push('the start date was not remembered');
     else {
-      await page.click('button:text-is("从头开始")');
+      await page.click('#sx-dip button:text-is("从头开始")');
       const t3 = await settle((t) => /年以来，符合全部条件/.test(t));
       if (!t3) problems.push('"从头开始" did not go back to the start of the data');
-      if (await page.$('button:text-is("从头开始")')) problems.push('the reset button is still there');
+      if (await page.$('#sx-dip button:text-is("从头开始")')) problems.push('the reset button is still there');
     }
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
@@ -200,11 +202,37 @@ for (const [lang, live, must] of [
       if (max !== '2019-12-31') problems.push('the start date can go past the end: max ' + max);
       if (!min) problems.push('no earliest end date');
     }
-    await page.click('button:text-is("到最新")');
+    await page.click('#sx-dip button:text-is("到最新")');
     if (!(await settle((t) => /年以来，符合全部条件/.test(t)))) problems.push('"到最新" did not go back to the latest session');
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('soxl end', problems);
+  await ctx.close();
+}
+// TQQQ: each section's own dates — the simulated start, an end date, remembered after a reload
+{
+  const { ctx, page, errors } = await open('zh', 'tqqq');
+  const take = (id) => page.evaluate((x) => { const el = document.querySelector('#' + x + ' .takeaway'); return el ? el.innerText : ''; }, id);
+  const settle = async (id, pred) => { for (let k = 0; k < 120; k++) { await page.waitForTimeout(250); const t = await take(id); if (pred(t)) return t; } return null; };
+  const setDate = async (sel, v) => { await page.fill(sel, v); await page.$eval(sel, (el) => el.dispatchEvent(new Event('change', { bubbles: true }))); };
+  const problems = [];
+  if (!(await settle('tq-hist', (t) => /至今，\$1 万放在 TQQQ/.test(t)))) problems.push('S1 did not render');
+  else {
+    await page.click('#tq-s1Pre button[data-v="sim"]');
+    if (!(await settle('tq-hist', (t) => t.startsWith('1999-03-10 至今') && t.includes('以前为模拟')))) problems.push('the simulated start did not take');
+    await setDate('#tq-s1End', '2009-12-31');
+    const t1 = await settle('tq-hist', (t) => t.startsWith('1999-03-10 至 2009-12-31'));
+    if (!t1) problems.push('S1 does not end on 2009-12-31');
+    else if (/\bNaN\b|undefined/.test(t1)) problems.push('NaN/undefined in S1');
+    await setDate('#tq-s3Start', '2015-01-01'); await setDate('#tq-s3End', '2019-12-31');
+    if (!(await settle('tq-odds', (t) => t.startsWith('2015-01-02 至 2019-12-31')))) problems.push('S3 range not applied');
+    await page.reload({ waitUntil: 'load' });
+    if (!(await settle('tq-hist', (t) => t.startsWith('1999-03-10 至 2009-12-31')))) problems.push('S1 dates not remembered');
+    await page.click('#tq-hist button:text-is("到最新")');
+    if (!(await settle('tq-hist', (t) => t.startsWith('1999-03-10 至今')))) problems.push('"到最新" did not restore the latest session');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('tqqq dates', problems);
   await ctx.close();
 }
 await browser.close();

@@ -11,7 +11,7 @@
     assets: ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT'], preset: 'common', start: null, end: null, align: 'common',
     mode: 'growth', scale: 'log', real: false, rollWin: 3, heatAsset: 'SMH', ddAsset: 'SMH', ddThr: 0.1, corrFreq: 'M', distYears: 5,
   }, U.store.get('compare', {}));
-  const ETFS = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX', 'IEF', 'CASH'];
+  const ETFS = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX', 'TQQQ', 'TQQQX', 'IEF', 'CASH'];
   const STOCKS = ['NVDA', 'AMD', 'AVGO', 'INTC', 'MU', 'WDC', 'STX', 'AMAT', 'LRCX', 'KLAC'];
   const ALL = ETFS.concat(STOCKS);
   CS.assets = (CS.assets || []).filter(k => ALL.indexOf(k) >= 0); if (!CS.assets.length) CS.assets = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT'];
@@ -84,10 +84,11 @@
       }
       const wide = V.parts.mainChart && V.parts.mainChart.clientWidth > 560;
       const extra = { connectNulls: false, endLabel: { show: wide && keys.length <= 6, formatter: () => U.assetName(k, true), color: tk.ink2, fontSize: 11, distance: 6 }, labelLayout: { moveOverlap: 'shiftY' } };
-      if (k === 'SOXLX') {
+      const real = { SOXLX: 'SOXL', TQQQX: 'TQQQ' }[k]; // simulated before the fund's launch
+      if (real) {
         extra.lineStyle = { width: 2, type: [6, 3], color };
-        const simEnd = Core.S.SOXL.s;
-        if (simEnd > Math.max(a, i0)) extra.markArea = { silent: true, itemStyle: { color: U.isDark(tk) ? 'rgba(144,133,233,0.10)' : 'rgba(74,58,167,0.06)' }, label: { show: true, position: 'insideTopLeft', color: tk.muted, fontSize: 11, formatter: I18N.lang === 'zh' ? 'SOXL 模拟段' : 'SOXL simulated' }, data: [[{ xAxis: U.ts(Math.max(a, i0)) }, { xAxis: U.ts(simEnd) }]] };
+        const simEnd = Core.S[real].s;
+        if (simEnd > Math.max(a, i0)) extra.markArea = { silent: true, itemStyle: { color: U.isDark(tk) ? 'rgba(144,133,233,0.10)' : 'rgba(74,58,167,0.06)' }, label: { show: true, position: 'insideTopLeft', color: tk.muted, fontSize: 11, formatter: I18N.lang === 'zh' ? `${real} 模拟段` : `${real} simulated` }, data: [[{ xAxis: U.ts(Math.max(a, i0)) }, { xAxis: U.ts(simEnd) }]] };
       }
       series.push(U.lineSeries(U.assetName(k, true), data, color, extra));
     }

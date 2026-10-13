@@ -46,6 +46,9 @@
     direxionFS: 'https://www.direxion.com/uploads/SOXL-SOXS-Fact-Sheet.pdf',
     direxionIdx2021: 'https://www.direxion.com/uploads/Direxion-Changes-Index-for-Semiconductor-ETFs.pdf',
     nyseArcaRB21075: 'https://www.nyse.com/publicdocs/nyse/markets/nyse-arca/rule-interpretations/2021/NYSE%20Arca%20Equities%20RB-21-075.pdf',
+    proshares: 'https://www.proshares.com/our-etfs/leveraged-and-inverse/tqqq',
+    tqqqAum: 'https://etf.pionline.com/fund/TQQQ',
+    tqqqDiv: 'https://www.dividendvision.com/dividends/tqqq-dividend-history',
     secLev: 'https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-alerts/sec',
     moreiraMuir: 'https://doi.org/10.1111/jofi.12513',
     harvey2018: 'https://doi.org/10.3905/jpm.2018.45.1.014',
@@ -207,6 +210,26 @@
         { zh: 'SOXL 上市至 2021-08-24 跟踪费城半导体指数，2021-08-25 起改为 ICE 半导体指数（2023 年更名为纽约证交所半导体指数）。2010 年以前的“SOXL*”为模拟值，以费城半导体指数为底，构造方法见“方法论”第二部分。', en: 'SOXL tracked the PHLX Semiconductor index from its launch until 2021-08-24 and the ICE Semiconductor Index (renamed NYSE Semiconductor Index in 2023) from 2021-08-25. “SOXL*” before 2010 is a simulation on the PHLX index; see Methodology, section 2.' },
       ],
       links: [['Direxion SOXL', F.sources.direxion], ['Fact sheet', F.sources.direxionFS], ['2021 index change (Direxion)', F.sources.direxionIdx2021], ['NYSE Arca RB-21-075', F.sources.nyseArcaRB21075], ['Investor.gov bulletin: leveraged & inverse ETFs', F.sources.secLev]],
+    },
+    {
+      key: 'TQQQ', ticker: 'TQQQ', kind: 'etf',
+      name: { zh: 'ProShares 三倍做多纳斯达克100 ETF', en: 'ProShares UltraPro QQQ' },
+      facts: [
+        [{ zh: '成立日', en: 'Inception' }, '2010-02-09', { zh: '2010-02-11 开始交易；本站数据从当天收盘起（全收益）', en: 'First traded 2010-02-11; the site\'s data start at that close (total return)' }],
+        [{ zh: '投资目标', en: 'Objective' }, { zh: '纳斯达克100 单日涨跌幅的 300%（每日重置）', en: '300% of the Nasdaq-100\'s daily return (resets daily)' }, { zh: '持有超过一天的收益不等于指数收益 × 3', en: 'Returns over more than a day are not 3× the index return' }],
+        [{ zh: '费率', en: 'Expense ratio' }, '0.82%', { zh: '净费率（第三方数据，2026）', en: 'Net (third-party data, 2026)' }],
+        [{ zh: '指数', en: 'Index' }, { zh: '纳斯达克100：纳斯达克上市的约 100 家最大非金融公司，修正市值加权', en: 'Nasdaq-100: about 100 of the largest non-financial Nasdaq-listed companies, modified cap-weighted' }, { zh: '与 QQQ 相同，上市以来未换过', en: 'The same as QQQ; unchanged since launch' }],
+        [{ zh: '规模', en: 'Assets' }, '$34.7B', { zh: '2026-09-01（Pensions & Investments）', en: '2026-09-01 (Pensions & Investments)' }],
+        [{ zh: '分红', en: 'Distributions' }, { zh: '少量季度收入分红', en: 'Small quarterly income distributions' }, { zh: '2026 年：$0.072（除息 03-25）、$0.171（06-24）、$0.156（09-23）', en: '2026: $0.072 (ex 03-25), $0.171 (06-24), $0.156 (09-23)' }],
+      ],
+      top10: [['NVDA', 8.17], ['AAPL', 7.49], ['MSFT', 5.77], ['MU', 5.08], ['AMD', 4.28], ['AMZN', 4.05], ['META', 3.37], ['GOOGL', 3.04], ['TSLA', 2.94], ['GOOG', 2.84]],
+      topAsOf: { zh: '指数成分（同 QQQ），2026-09-25', en: 'Index constituents (as QQQ), 2026-09-25' },
+      official: { asOf: '2026-06-30', basis: { zh: '市价总回报', en: 'market-price total return' }, r: [['1Y', 96.44], ['3Y', 59.91], ['5Y', 22.68], ['10Y', 45.49]] },
+      notes: [
+        { zh: '本站 TQQQ 序列为全收益：Yahoo Finance 全精度拆股调整收盘价，分红在除息日再投资；与 ProShares 公布的 1/3/5/10 年业绩相差约 0.01 个百分点（下方核对）。', en: 'The site\'s TQQQ series is total return: Yahoo Finance full-precision split-adjusted closes, with distributions reinvested on their ex-dates; it matches ProShares\' published 1/3/5/10-year returns within about 0.01 point (check below).' },
+        { zh: '2010 年以前的“TQQQ*”为模拟值：QQQ 日总回报 × 3，减去 2 倍国库券利率和校准后的综合成本；构造方法见“方法论”第二部分。', en: '“TQQQ*” before 2010 is a simulation: 3 × QQQ\'s daily total return less 2× the T-bill rate and a calibrated cost; see Methodology, section 2.' },
+      ],
+      links: [['ProShares TQQQ', F.sources.proshares], ['Assets (P&I)', F.sources.tqqqAum], ['Distributions', F.sources.tqqqDiv], ['Nasdaq-100 methodology', F.sources.ndxMeth], ['Investor.gov bulletin: leveraged & inverse ETFs', F.sources.secLev]],
     },
   ];
 
