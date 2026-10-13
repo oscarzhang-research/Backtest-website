@@ -137,6 +137,34 @@
     return i;
   };
   U.info = (text) => U.h('span', { class: 'info', title: text, 'aria-label': text, tabindex: '0' }, 'i');
+  // A tooltip shown while the pointer is over an element or it has keyboard focus: `content` is HTML (or a function
+  // returning it), placed below the element, or above when there is no room. It follows the element when the page scrolls
+  // and goes away on leaving, clicking, or once the element is no longer under the pointer. Touch screens get no hover, so
+  // anything said only here should also be available to open on the page.
+  let tipEl = null, tipFor = null;
+  const tipHide = () => { if (tipEl) tipEl.hidden = true; tipFor = null; };
+  const tipPlace = () => {
+    const el = tipFor; if (!el || !tipEl) return;
+    if (!el.isConnected) { tipHide(); return; }
+    const r = el.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    tipEl.style.maxWidth = Math.min(380, vw - 16) + 'px'; tipEl.style.left = '0px'; tipEl.style.top = '0px';
+    const w = tipEl.offsetWidth, hh = tipEl.offsetHeight, x = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2));
+    tipEl.style.left = Math.round(x) + 'px'; tipEl.style.top = Math.round(r.bottom + 8 + hh <= vh - 8 ? r.bottom + 8 : Math.max(8, r.top - hh - 8)) + 'px';
+  };
+  U.tip = function (el, content) {
+    const show = () => {
+      if (!tipEl) {
+        tipEl = U.h('div', { class: 'hover-tip', role: 'tooltip', id: 'hover-tip', hidden: true }); document.body.appendChild(tipEl);
+        document.addEventListener('click', tipHide, true); root.addEventListener('blur', tipHide);
+        root.addEventListener('scroll', () => { if (tipFor && tipFor.isConnected && tipFor.matches(':hover, :focus')) tipPlace(); else tipHide(); }, { passive: true, capture: true });
+      }
+      tipFor = el; tipEl.innerHTML = typeof content === 'function' ? content() : content; tipEl.hidden = false; tipPlace();
+    };
+    const hide = () => { if (tipFor === el) tipHide(); };
+    el.addEventListener('mouseenter', show); el.addEventListener('focus', show); el.addEventListener('mouseleave', hide); el.addEventListener('blur', hide);
+    el.setAttribute('aria-describedby', 'hover-tip');
+    return el;
+  };
 
   U.copyText = async function (text, btn) {
     try { await navigator.clipboard.writeText(text); U.toast(t('copied')); }

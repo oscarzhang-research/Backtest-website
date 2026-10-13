@@ -482,3 +482,16 @@ table.data.wi-table td:first-child { white-space: normal; min-width: 190px; }
   .goal-hero .stat { padding: 10px 10px; }
   .goal-hero .stat em { font-size: 11px; }
 }
+
+/* ---------- Hover tips and explanations (SOXL vs TQQQ, deep dives' S7) ---------- */
+.hover-tip { position: fixed; z-index: 300; background: var(--surface); color: var(--ink-2); border: 1px solid var(--rule-strong); border-radius: 8px; box-shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.45); padding: 9px 11px; font-size: 12.5px; line-height: 1.6; pointer-events: none; }
+.hover-tip[hidden] { display: none; }
+.hover-tip b { color: var(--ink); }
+.th-tip { text-decoration: underline dotted var(--muted); text-underline-offset: 4px; cursor: help; }
+.lc-doc > summary.linkbtn { margin: 3px 0; }
+.lc-doc-body { border-left: 3px solid var(--accent-line); background: var(--surface-2); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 8px 14px; font-size: 13.5px; line-height: 1.65; color: var(--ink-2); max-width: 980px; display: grid; gap: 4px; }
+.lc-doc-body p { margin: 0; }
+.lc-doc-body b { color: var(--ink); }
+.lc-doc-item { display: grid; gap: 3px; padding: 6px 0; border-top: 1px dashed var(--rule-strong); }
+.lc-doc-item:first-child { border-top: 0; padding-top: 0; }
+.lc-doc-item h5 { margin: 0; font-family: var(--font-body); font-size: 14px; color: var(--ink); }
