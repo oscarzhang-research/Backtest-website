@@ -80,7 +80,7 @@
     const s = Core.S[key]; const v = s.v;
     const m = Core.metrics(v, s.s, s.e);
     const color = U.assetColor(key, tk);
-    const kind = key === 'SPX' ? t('kind.index') : key === 'SOXL' ? (I18N.lang === 'zh' ? '杠杆ETF' : 'Lev. ETF') : t('kind.etf');
+    const kind = key === 'SPX' ? t('kind.index') : key === 'SOXL' || key === 'TQQQ' ? (I18N.lang === 'zh' ? '杠杆ETF' : 'Lev. ETF') : t('kind.etf');
     const trails = ['YTD', 1, 3, 5, 10, 20].map(sp => [sp, trailing(v, s.s, s.e, sp)]);
     let athPeak = -Infinity; for (let i = s.s; i <= s.e; i++) if (v[i] > athPeak) athPeak = v[i];
     const cur = v[s.e] / athPeak - 1;
@@ -94,6 +94,7 @@
       VGT: { zh: '日频数据自 2006-09-29；基金 2004-01-26 成立', en: 'Daily data from 2006-09-29; fund launched 2004-01-26' },
       SPY: { zh: '数据自 1995-01-03（基金 1993-01-22 成立）', en: 'Data from 1995-01-03 (fund launched 1993-01-22)' },
       SOXL: { zh: '每日 3 倍杠杆；全收益（分红再投资）；2010-03-11 上市起真实数据', en: 'Daily 3× leverage; total return (distributions reinvested); real data from the 2010-03-11 launch' },
+      TQQQ: { zh: '每日 3 倍纳指100；全收益（分红再投资）；2010-02-11 上市起真实数据', en: 'Daily 3× the Nasdaq-100; total return (distributions reinvested); real data from the 2010-02-11 launch' },
     };
     const card = h('article', { class: 'asset-card', style: { '--c': color } },
       h('div', { class: 'top' }, h('span', { class: 'tk' }, U.assetName(key, true)), h('span', { class: 'nm' }, t('a.' + key)), h('span', { class: 'kind' }, kind)),
@@ -279,7 +280,7 @@
     // ---------- Asset cards ----------
     el.appendChild(h('div', { class: 'section-head' }, h('h2', null, t('ov.cardsTitle')), h('p', { class: 'lede' }, t('ov.cardsLede'))));
     const grid = h('div', { class: 'asset-grid' });
-    for (const k of ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL']) grid.appendChild(assetCard(k, tk));
+    for (const k of ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'TQQQ']) grid.appendChild(assetCard(k, tk));
     el.appendChild(grid);
 
     // ---------- Findings ----------

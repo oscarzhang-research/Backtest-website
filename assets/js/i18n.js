@@ -436,6 +436,7 @@
   add('brandSub', '标普500 · 纳指100 · SMH · SOXX · VGT · SOXL', 'S&P 500 · Nasdaq-100 · SMH · SOXX · VGT · SOXL');
   add('nav.sharpe', '高夏普策略', 'High-Sharpe Plan');
   add('nav.soxl', 'SOXL 专题', 'SOXL Deep Dive');
+  add('nav.tqqq', 'TQQQ 专题', 'TQQQ Deep Dive');
   add('nav.goal', '目标规划', 'Goal Planner');
   add('nav.chips', '芯片个股', 'Chip Stocks');
   add('a.MU', '美光科技 MU', 'Micron (MU)');
@@ -558,6 +559,7 @@
     ['quant', '更多择时策略：波动目标/金叉/RSI/通道/季节/网格/止盈', 'More timing rules: vol target, golden cross, RSI, breakout, seasonal, grid, take-profit'],
     ['multi', '多资产：轮动 / 风险平价 / 最小方差 / 最大夏普 / 高夏普核心', 'Multi-asset: rotation, risk parity, min-variance, max-Sharpe, High-Sharpe core'],
     ['soxl', 'SOXL：持有、定投、择时与仓位控制', 'SOXL: hold, DCA, timing and position sizing'],
+    ['tqqq', 'TQQQ：持有、定投、择时与仓位控制', 'TQQQ: hold, DCA, timing and position sizing'],
     ['sharpe50', '50 万美元：高夏普 1.0 / 2.0 vs 买入持有', '$500k: High-Sharpe 1.0 / 2.0 vs buy-and-hold'],
   ];
   for (const [k, zn, en] of SC2) add('sc.' + k, zn, en);

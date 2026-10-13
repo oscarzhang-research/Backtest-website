@@ -8,8 +8,8 @@
   const t = (k, v) => I18N.t(k, v); const L = (o) => I18N.L(o);
   const h = U.h;
   const STOCKS = ['NVDA', 'AMD', 'AVGO', 'INTC', 'MU', 'WDC', 'STX', 'AMAT', 'LRCX', 'KLAC'];
-  const ASSETS = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX', 'TLT', 'IEF', 'GLD'].concat(STOCKS, ['CASH']);
-  const MASSETS = ['SPY', 'SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SOXL', 'SOXLX', 'TLT', 'IEF', 'GLD'].concat(STOCKS);
+  const ASSETS = ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX', 'TQQQ', 'TQQQX', 'TLT', 'IEF', 'GLD'].concat(STOCKS, ['CASH']);
+  const MASSETS = ['SPY', 'SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SOXL', 'SOXLX', 'TQQQ', 'TQQQX', 'TLT', 'IEF', 'GLD'].concat(STOCKS);
   const TYPES1 = ['immediate', 'dca', 'tranche', 'timing_low', 'timing_high', 'cycle_low', 'cycle_high', 'dip', 'ddladder', 'smart', 'va', 'trend', 'stop', 'constmix', 'voltarget', 'dualma', 'rsi_mr', 'donchian', 'seasonal', 'grid', 'dca_tp', 'absmom', 'custom', 'hold_cash'];
   const TYPESC = ['combo'];
   const TYPESM = ['smc', 'riskparity', 'rotation', 'minvar', 'meanvar', 'fixed'];
@@ -56,6 +56,8 @@
         strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 34, QQQ: 33, SOXX: 33 }, sched: 'M' }), S('rotation', { n: 6, top: 1, abs: true }), S('rotation', { n: 6, top: 2, abs: true }), S('riskparity', { L: 60, n: 200, T: 0, sched: 'M' }), S('minvar', { L: 120 }), S('smc', { T: 20, n: 200, soft: 50, L: 20, band: 10, sched: 'D', cap: 100 })] };
       case 'soxl': return { asset: 'SOXL', start: '2010-03-12', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate', {}, { asset: { key: 'SOXX' } }), S('immediate'), S('constmix', { w: 33, freq: 'Q', t: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { sig: 'SOXX' }), S('voltarget', { target: 40, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }, { sig: 'SOXX' }), S('dca', { freq: 'M' }), S('dca_tp', { tp: 100, sell: 30, redeploy: 12 })] };
+      case 'tqqq': return { asset: 'TQQQ', start: '2010-02-12', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
+        strategies: [S('immediate', {}, { asset: { key: 'QQQ' } }), S('immediate'), S('constmix', { w: 33, freq: 'Q', t: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { sig: 'QQQ' }), S('voltarget', { target: 40, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }, { sig: 'QQQ' }), S('dca', { freq: 'M' }), S('dca_tp', { tp: 100, sell: 30, redeploy: 12 })] };
       case 'sharpe50': { const zh = I18N.lang === 'zh'; const X5 = ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD']; const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
         return { asset: 'SPY', start: '2002-08-01', end: null, fund: { initial: 500000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
           strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 60, IEF: 40 }, sched: 'Q' }, { universe: ['SPY', 'IEF'], name: zh ? '股债 60/40（SPY/IEF）' : '60/40 (SPY/IEF)' }),
@@ -1062,7 +1064,7 @@
       });
     };
     const ctl = h('div', { class: 'controls' },
-      U.ctl(t('asset'), U.select('mcA', ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX'].map(k => [k, U.assetName(k, true)]), P.key, (v) => { P.key = v; save(); run(); })),
+      U.ctl(t('asset'), U.select('mcA', ['SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SPY', 'SOXL', 'SOXLX', 'TQQQ', 'TQQQX'].map(k => [k, U.assetName(k, true)]), P.key, (v) => { P.key = v; save(); run(); })),
       U.ctl(t('lab.mcSample'), U.select('mcS', [['full', I18N.lang === 'zh' ? '全部历史' : 'Full history'], ['1950', '1950+'], ['2000', '2000+'], ['2010', '2010+']], P.sample, (v) => { P.sample = v; save(); run(); })),
       U.ctl(t('lab.mcYears'), U.numInput('mcY', P.years, (v) => { P.years = Math.max(1, Math.min(50, Math.round(v))); save(); run(); }, { min: 1, max: 50, style: 'width:80px' })),
       U.ctl(t('lab.initial'), U.numInput('mcI', P.initial, (v) => { P.initial = Math.max(0, v); save(); run(); }, { min: 0, step: 1000 })),
@@ -1079,7 +1081,7 @@
   V.render = function (el) {
     const tk = U.tokens();
     el.appendChild(h('div', { class: 'section-head' }, h('div', { class: 'eyebrow' }, t('asOf', { d: Core.asOf })), h('h2', null, t('lab.title')), h('p', { class: 'lede' }, t('lab.lede'))));
-    const scSel = U.select('labScenario', ['salary', 'lump', 'five', 'schwab', 'smartdca', 'leverage', 'blend', 'cycles', 'quant', 'ladder', 'combo', 'multi', 'soxl', 'sharpe50', 'memory'].map(k => [k, t('sc.' + k)]), LS.scenario, (v) => { const keep = { chart: LS.chart, logScale: LS.logScale, robust: LS.robust, mc: LS.mc, cashYield: LS.cashYield, costBps: LS.costBps, align: LS.align, oos: LS.oos }; const fs2 = freshState(v); if (['multi', 'soxl', 'sharpe50', 'combo', 'ladder', 'memory'].indexOf(v) >= 0) keep.costBps = fs2.costBps; LS = Object.assign(fs2, keep); save(); App.renderView('lab'); });
+    const scSel = U.select('labScenario', ['salary', 'lump', 'five', 'schwab', 'smartdca', 'leverage', 'blend', 'cycles', 'quant', 'ladder', 'combo', 'multi', 'soxl', 'tqqq', 'sharpe50', 'memory'].map(k => [k, t('sc.' + k)]), LS.scenario, (v) => { const keep = { chart: LS.chart, logScale: LS.logScale, robust: LS.robust, mc: LS.mc, cashYield: LS.cashYield, costBps: LS.costBps, align: LS.align, oos: LS.oos }; const fs2 = freshState(v); if (['multi', 'soxl', 'tqqq', 'sharpe50', 'combo', 'ladder', 'memory'].indexOf(v) >= 0) keep.costBps = fs2.costBps; LS = Object.assign(fs2, keep); save(); App.renderView('lab'); });
     const assetSel = U.select('labAsset', ASSETS.filter(k => k !== 'CASH').map(k => [k, U.assetName(k, true) + ' · ' + Core.iso(Core.S[k].s).slice(0, 4) + '+']), LS.asset, (v) => { LS.asset = v; save(); V.renderStrategies(); V.schedule(); });
     const startIn = U.dateInput('labStart', LS.start, Core.iso(0), Core.asOf, (v) => { LS.start = v; save(); V.schedule(); });
     const endIn = U.dateInput('labEnd', LS.end || Core.asOf, Core.iso(0), Core.asOf, (v) => { LS.end = v === Core.asOf ? null : v; save(); V.schedule(); });
