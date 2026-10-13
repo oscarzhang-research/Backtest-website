@@ -495,3 +495,20 @@ table.data.wi-table td:first-child { white-space: normal; min-width: 190px; }
 .lc-doc-item { display: grid; gap: 3px; padding: 6px 0; border-top: 1px dashed var(--rule-strong); }
 .lc-doc-item:first-child { border-top: 0; padding-top: 0; }
 .lc-doc-item h5 { margin: 0; font-family: var(--font-body); font-size: 14px; color: var(--ink); }
+/* SOXL vs TQQQ: the selling rules (C6) and the six ways of holding (C5 ③) */
+table.data.lc-exit td.lbl { white-space: normal; min-width: 170px; max-width: 260px; }
+table.data.lc-ways td.lbl { white-space: normal; min-width: 150px; }
+table.data.lc-heat td { text-align: center; min-width: 58px; }
+table.data.lc-heat th { white-space: nowrap; }
+table.data.lc-today td { vertical-align: top; white-space: normal; text-align: left; }
+table.data.lc-today th { text-align: left; }
+table.data.lc-today td.lbl { min-width: 170px; max-width: 240px; }
+table.data.lc-today td .hint { white-space: nowrap; }
+@media (max-width: 640px) {
+  table.data.lc-today td, table.data.lc-today th { padding: 6px 6px; font-size: 12.5px; }
+  table.data.lc-today td.lbl { min-width: 84px; max-width: 96px; font-size: 12px; }
+  table.data.lc-today td .hint { white-space: normal; display: block; margin-left: 0; }
+  table.data.lc-exit td.lbl { min-width: 112px; max-width: 128px; font-size: 12px; }
+  table.data.lc-ways td.lbl { min-width: 100px; font-size: 12px; }
+}
+

@@ -406,50 +406,127 @@
   C.irrOf = irrOf;
   // A plan bought under the rule R (C.ruleIndex over [s, e] with the weights w): plan.a0 at the close of the start, then
   // plan.a1 on each of its purchase days (C.planDays with plan.freq; none when freq is 'none' or a1 is 0) before the end.
-  // Each purchase pays c·w on the part bought and from then on moves with the rule's index, so the money is worth U·S
-  // with U = Σ amount·(1 − c·w[a])/S[a] over the purchases so far.
+  // Each purchase pays c·w on the part bought and from then on moves with the rule's index S, so the money invested is
+  // worth U·S with U = Σ amount·(1 − c·w[a])/S[a]. A boost uses a mask over [s, e] of the days on which some conditions
+  // hold: {mode: 'mult', m} buys m times the regular amount on such purchase days; {mode: 'cash', p} keeps the share p of
+  // every amount in T-bills and invests the whole reserve at the close of the next day the conditions hold (the same day
+  // when they already do). The account is under water while it is worth less than the money put in, net of the buying cost.
   const planOn = (plan) => !!(plan.freq && plan.freq !== 'none' && plan.a1 > 0);
   const planBuys = (i, j, plan) => (planOn(plan) ? [i].concat(C.planDays(i, j, plan.freq)) : [i]);
+  // the plan from the close of i to the close of j, one session at a time; path (optional) receives each close's value,
+  // the money put in so far and the part held in the fund
+  function planWalk(R, w, c, i, j, plan, boost, buys, path) {
+    const s = R.s, S = R.S, D = Core.days, cash = Core.S.CASH.v, mask = boost ? boost.mask : null;
+    const mult = boost && boost.mode === 'mult' ? boost.m : 1, p = boost && boost.mode === 'cash' ? boost.p : 0, amts = [];
+    let U = 0, K = 0, P = 0, q = 0, val = 0, worst = 0, worstI = i, rec = -1, below = -1, uw0 = -1, uwMax = 0, uwI = -1;
+    for (let t = i; t <= j; t++) {
+      const k = t - s;
+      if (q < buys.length && buys[q] === t) {
+        const a = q ? plan.a1 * (mask && mask[k] ? mult : 1) : plan.a0; amts.push(a); P += a; q++;
+        U += a * (1 - p) * (1 - c * w[k]) / S[k]; if (p) K += a * p / cash[t];
+      }
+      if (K > 0 && mask[k]) { U += K * cash[t] * (1 - c * w[k]) / S[k]; K = 0; } // the reserve goes in
+      val = U * S[k] + K * cash[t];
+      const x = val / P - 1, under = val < P * (1 - c) * (1 - 1e-12);
+      if (x < worst) { worst = x; worstI = t; rec = -1; }
+      if (under) { if (uw0 < 0) uw0 = t; if (below < 0) below = t; if (D[t] - D[uw0] > uwMax) { uwMax = D[t] - D[uw0]; uwI = uw0; } }
+      else { uw0 = -1; if (rec < 0 && worst < 0 && t > worstI) rec = t; }
+      if (path) path(t, val, P, U * S[k] * w[k]);
+    }
+    const irr = irrOf(buys.map(k => (D[j] - D[k]) / 365.25), amts, val);
+    // under water: the first close below the money put in, the longest stretch (calendar days, from uwI) and whether it
+    // lasted to the end; recovered: the first close back at the money put in after the worst point (−1: not by j)
+    return { val, P, amts, irr, worst, worstI, rec, below, uwMax, uwI, uwEnd: uw0 >= 0 };
+  }
   // The plan started at the close of each session in `starts` and held until ends[i − s] (C.dipContext's ends for one
   // horizon): the money multiple less one (the end value ÷ the money put in − 1), the worst value along the way against
-  // the money put in so far, and with o.irr the money-weighted annual return. o.cache (an object shared by the calls for
-  // several horizons of the same plan, longest first) keeps each start's purchase days.
+  // the money put in so far, the longest time under water (calendar days), whether it ended under water and, with o.irr,
+  // the money-weighted annual return. o.boost as above; o.cache (an object shared by the calls for several horizons of the
+  // same plan, longest first) keeps each start's purchase days.
   C.planWindows = function (R, w, c, ends, starts, plan, o) {
-    const s = R.s, S = R.S, D = Core.days, r = [], irr = [], mae = [], at = [], wantIrr = !!(o && o.irr), cache = o && o.cache;
+    const s = R.s, r = [], irr = [], mae = [], uw = [], uwEnd = [], at = [], wantIrr = !!(o && o.irr), cache = o && o.cache, boost = (o && o.boost) || null;
     for (const i of starts) {
       const j = ends[i - s]; if (j < 0) continue;
       let buys;
       if (cache && planOn(plan)) { // longest horizon first: the shorter ones take the first purchases of its list
         let x = cache[i]; if (!x || x.j < j) x = cache[i] = { j, days: [i].concat(C.planDays(i, j, plan.freq)) };
         const all = x.days; let m = all.length; while (m > 1 && all[m - 1] >= j) m--; buys = m === all.length ? all : all.slice(0, m);
-      }
-      else buys = planBuys(i, j, plan);
-      let U = 0, P = 0, worst = 0;
-      for (let q = 0; q < buys.length; q++) { // U is constant between purchases, so the lowest S of each stretch decides
-        const a = buys[q] - s, amt = q ? plan.a1 : plan.a0; U += amt * (1 - c * w[a]) / S[a]; P += amt;
-        const x = U * R.minOf(a, q + 1 < buys.length ? buys[q + 1] - 1 - s : j - s) / P - 1; if (x < worst) worst = x;
-      }
-      const val = U * S[j - s];
-      r.push(val / P - 1); mae.push(worst); at.push(i);
-      if (wantIrr) irr.push(irrOf(buys.map(k => (D[j] - D[k]) / 365.25), buys.map((k, q) => (q ? plan.a1 : plan.a0)), val));
+      } else buys = planBuys(i, j, plan);
+      const z = planWalk(R, w, c, i, j, plan, boost, buys, null);
+      r.push(z.val / z.P - 1); mae.push(z.worst); uw.push(z.uwMax); uwEnd.push(z.uwEnd); at.push(i);
+      if (wantIrr) irr.push(z.irr);
     }
-    return { r, irr, mae, at };
+    return { r, irr, mae, uw, uwEnd, at };
   };
-  // The plan from the close of i0 to the close of i1: its value and the money put in at every close, the purchase days,
-  // and the end figures — money multiple, money-weighted annual return, the worst value against the money put in so far
-  // (and when), and the worst drawdown of the rule itself over the period (what a dollar held throughout went through).
-  C.planRun = function (R, w, c, i0, i1, plan) {
-    const s = R.s, S = R.S, D = Core.days, n = i1 - i0 + 1, V = new Float64Array(n), P = new Float64Array(n), buys = planBuys(i0, i1, plan);
-    let U = 0, inv = 0, q = 0, worst = 0, worstI = i0, peak = -Infinity, pkI = i0, mdd = 0, mddPk = i0, mddTr = i0;
-    for (let i = i0; i <= i1; i++) {
-      const k = i - s;
-      if (q < buys.length && buys[q] === i) { const amt = q ? plan.a1 : plan.a0; U += amt * (1 - c * w[k]) / S[k]; inv += amt; q++; }
-      const val = U * S[k]; V[i - i0] = val; P[i - i0] = inv;
-      if (val / inv - 1 < worst) { worst = val / inv - 1; worstI = i; }
-      if (S[k] > peak) { peak = S[k]; pkI = i; } else if (S[k] / peak - 1 < mdd) { mdd = S[k] / peak - 1; mddPk = pkI; mddTr = i; }
+  // The plan from the close of i0 to the close of i1: its value and the money put in at every close, the purchase days and
+  // amounts, and the end figures — money multiple, money-weighted annual return, the worst value against the money put in
+  // so far (and when), the time under water, the average share held in the fund, and the worst drawdown of the rule
+  // itself (what a dollar held throughout went through). o.boost as above.
+  C.planRun = function (R, w, c, i0, i1, plan, o) {
+    const s = R.s, S = R.S, n = i1 - i0 + 1, V = new Float64Array(n), P = new Float64Array(n), buys = planBuys(i0, i1, plan);
+    let ex = 0; const z = planWalk(R, w, c, i0, i1, plan, (o && o.boost) || null, buys, (t, val, inv, risky) => { V[t - i0] = val; P[t - i0] = inv; ex += val > 0 ? risky / val : 0; });
+    let peak = -Infinity, pkI = i0, mdd = 0, mddPk = i0, mddTr = i0;
+    for (let i = i0; i <= i1; i++) { const k = i - s; if (S[k] > peak) { peak = S[k]; pkI = i; } else if (S[k] / peak - 1 < mdd) { mdd = S[k] / peak - 1; mddPk = pkI; mddTr = i; } }
+    return { i0, i1, V, P, buys, amts: z.amts, final: z.val, invested: z.P, moic: z.val / z.P, irr: z.irr, worst: z.worst, worstI: z.worstI, rec: z.rec, below: z.below, uwMax: z.uwMax, uwI: z.uwI, uwEnd: z.uwEnd, expo: ex / n, mdd, mddPk, mddTr };
+  };
+
+  // ---------- When to sell (SOXL vs TQQQ, C6) ----------
+  // Sparse tables over v[s..e]: where the highest and the lowest close between two sessions was, and the first session
+  // in [a, b] whose close reaches a level (−1 when none does).
+  C.rangeTab = function (v, s, e) {
+    const n = e - s + 1, MX = [Int32Array.from({ length: n }, (_, k) => s + k)], MN = [MX[0]];
+    for (let k = 1; (1 << k) <= n; k++) {
+      const pa = MX[k - 1], pb = MN[k - 1], hh = 1 << (k - 1), len = n - (1 << k) + 1, A = new Int32Array(len), B = new Int32Array(len);
+      for (let q = 0; q < len; q++) { const x = pa[q], y = pa[q + hh], u = pb[q], z = pb[q + hh]; A[q] = v[y] > v[x] ? y : x; B[q] = v[z] < v[u] ? z : u; } // ties: the earlier session
+      MX.push(A); MN.push(B);
     }
-    const val = V[n - 1], irr = irrOf(buys.map(k => (D[i1] - D[k]) / 365.25), buys.map((k, q2) => (q2 ? plan.a1 : plan.a0)), val);
-    return { i0, i1, V, P, buys, final: val, invested: inv, moic: val / inv, irr, worst, worstI, mdd, mddPk, mddTr };
+    const argMax = (a, b) => { const k = 31 - Math.clz32(b - a + 1), x = MX[k][a - s], y = MX[k][b - s - (1 << k) + 1]; return v[y] > v[x] ? y : x; };
+    const argMin = (a, b) => { const k = 31 - Math.clz32(b - a + 1), x = MN[k][a - s], y = MN[k][b - s - (1 << k) + 1]; return v[y] < v[x] ? y : x; };
+    const firstAtLeast = (a, b, x) => { if (a > b || v[argMax(a, b)] < x) return -1; let lo = a, hi = b; while (lo < hi) { const mid = (lo + hi) >> 1; if (v[argMax(a, mid)] >= x) hi = mid; else lo = mid + 1; } return lo; };
+    const firstAtMost = (a, b, x) => { if (a > b || v[argMin(a, b)] > x) return -1; let lo = a, hi = b; while (lo < hi) { const mid = (lo + hi) >> 1; if (v[argMin(a, mid)] <= x) hi = mid; else lo = mid + 1; } return lo; };
+    return { argMax, argMin, firstAtLeast, firstAtMost };
+  };
+  // A selling rule for purchases of v at the close of each session in `at`, each held at most until ends[i − s] (one
+  // horizon) and in T-bills after a sale. o: { v, s, ends, tab (C.rangeTab of v over [s, e]), c (paid on the purchase and
+  // on the sale) }. Price rules sell at the close that reaches the level (a resting order, priced at the close); signal
+  // rules see the signal at a close and sell at the next one. Rule types:
+  //   hold — to the horizon end;   best — at the highest close after the purchase (hindsight: a ceiling, not a rule);
+  //   tp {x} — the first close x or more above the purchase price;   sl {y} — the first close y or more below it;
+  //   br {x, y} — whichever comes first (x or y may be null);   lvl {hi(i)} — the first close at the level hi(i) (none when
+  //   the purchase is already at or above it);   trail {z, a} — the first close z below the highest close since the purchase,
+  //   once that high is a above the purchase price (a = 0: from the start);   scale {x} — half sold as tp x, half held;
+  //   sig {next(i, j)} — the session whose close shows the signal (−1: none), sold at the following close.
+  // Per purchase: the session sold (j when nothing fires), whether the rule fired, the return when sold, the return at the
+  // horizon end, the worst close until the sale, and the fund's move from the sale to the horizon end.
+  C.exitStudy = function (o, at, rule) {
+    const { v, s, ends, tab } = o, c = o.c || 0, cash = Core.S.CASH.v, n = at.length;
+    const xs = new Int32Array(n), hit = new Uint8Array(n), rX = new Float64Array(n), rH = new Float64Array(n), mae = new Float64Array(n), after = new Float64Array(n);
+    const end = (i, x, j) => (1 - c) * (v[x] / v[i]) * (1 - c) * (cash[j] / cash[x]) - 1;
+    const sellAt = (i, j) => {
+      const t = rule.type, p0 = v[i];
+      if (t === 'hold' || i >= j) return j;
+      if (t === 'best') return tab.argMax(i + 1, j);
+      if (t === 'tp' || t === 'br' || t === 'sl' || t === 'scale') {
+        const up = t === 'sl' || rule.x == null ? -1 : tab.firstAtLeast(i + 1, j, p0 * (1 + rule.x)), dn = t === 'tp' || t === 'scale' || rule.y == null ? -1 : tab.firstAtMost(i + 1, j, p0 * (1 - rule.y));
+        return up < 0 ? (dn < 0 ? -1 : dn) : dn < 0 ? up : Math.min(up, dn);
+      }
+      if (t === 'lvl') { const L = rule.hi(i); return isFinite(L) && L > p0 ? tab.firstAtLeast(i + 1, j, L) : -1; }
+      if (t === 'trail') {
+        let pk = p0, on = !(rule.a > 0);
+        for (let k = i + 1; k <= j; k++) { if (v[k] > pk) { pk = v[k]; if (!on && pk >= p0 * (1 + rule.a)) on = true; } else if (on && v[k] <= pk * (1 - rule.z)) return k; }
+        return -1;
+      }
+      if (t === 'sig') { const g = rule.next(i, j); return g >= 0 && g < j ? g + 1 : -1; }
+      return -1;
+    };
+    for (let q = 0; q < n; q++) {
+      const i = at[q], j = ends[i - s]; let x = j < 0 ? -1 : sellAt(i, j);
+      const fired = x >= 0 && x < j && rule.type !== 'hold'; if (x < 0) x = j;
+      xs[q] = x; hit[q] = fired ? 1 : 0; rX[q] = (1 - c) * (v[x] / v[i]) * (1 - c) - 1;
+      rH[q] = rule.type === 'scale' ? 0.5 * end(i, x, j) + 0.5 * end(i, j, j) : end(i, x, j);
+      mae[q] = Math.min(0, v[tab.argMin(i, rule.type === 'scale' ? j : x)] / v[i] - 1); after[q] = v[j] / v[x] - 1; // half of a scaled sale is held to the end
+    }
+    return { x: xs, hit, rX, rH, mae, after };
   };
 
   // Leverage curve (daily reset)

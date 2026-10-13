@@ -83,3 +83,57 @@ test('one plan from a start to an end: the value every day and the end figures',
   // nothing left: −100%
   assert.equal(Calc.irrOf([1, 2], [1, 1], 0), -1);
 });
+
+// the plan day by day with a boost: on the days in `mask` either m times the regular amount, or the reserve (the share
+// p of every amount, kept in T-bills) invested at that close; and the time below the money put in, net of the buying cost
+function bruteBoost(a, b, plan, days, boost) {
+  const buys = new Set(days), mk = (i) => boost.mask[i - s] === 1, p = boost.mode === 'cash' ? boost.p : 0, m = boost.mode === 'mult' ? boost.m : 1;
+  const cash = Core.S.CASH.v, D = Core.days;
+  let X = 0, wt = w[a - s], Rv = 0, P = 0, worst = 0, worstI = a, uw0 = -1, uwMax = 0, rec = -1; const flows = [];
+  const buy = (i, amt) => { const t = w[i - s]; X += amt * (1 - p) * (1 - c * t); Rv += amt * p; P += amt; flows.push([i, amt]); };
+  const deploy = (i) => { if (Rv > 0 && mk(i)) { X += Rv * (1 - c * w[i - s]); Rv = 0; } };
+  const look = (i) => { const val = X + Rv, x = val / P - 1, under = val < P * (1 - c) * (1 - 1e-12);
+    if (x < worst) { worst = x; worstI = i; rec = -1; }
+    if (under) { if (uw0 < 0) uw0 = i; uwMax = Math.max(uwMax, D[i] - D[uw0]); } else { uw0 = -1; if (rec < 0 && worst < 0 && i > worstI) rec = i; } };
+  buy(a, plan.a0); deploy(a); look(a);
+  for (let i = a + 1; i <= b; i++) {
+    const r = v[i] / v[i - 1] - 1, g = wt * r + (1 - wt) * rf[i], risky = X * wt * (1 + r); X *= 1 + g; Rv *= cash[i] / cash[i - 1];
+    const t = w[i - s]; X -= c * Math.abs(t * X - risky); wt = t;
+    if (buys.has(i)) buy(i, plan.a1 * (mk(i) ? m : 1));
+    deploy(i); look(i);
+  }
+  return { val: X + Rv, P, worst, worstI, uwMax, uwEnd: uw0 >= 0, rec, flows };
+}
+
+test('a plan with a boost on the days some conditions hold: more money, or a reserve that waits for them', () => {
+  const qs = Core.S.QQQ.s, s200 = Calc.sma(q, qs, e, 200);
+  const mask = Uint8Array.from({ length: n }, (_, k) => (q[s + k] < s200[s + k] ? 1 : 0)); // QQQ below its 200-day average
+  const ctx = Calc.dipContext(v, s, e, [24, 60]);
+  const starts = []; for (let i = s; i <= e; i += 113) starts.push(i);
+  for (const boost of [{ mask, mode: 'mult', m: 3 }, { mask, mode: 'cash', p: 0.5 }, { mask, mode: 'cash', p: 1 }]) {
+    for (const plan of [{ a0: 4, a1: 1, freq: 'M' }, { a0: 1, a1: 0, freq: 'none' }]) {
+      for (const h of [0, 1]) {
+        const out = Calc.planWindows(R, w, c, ctx.ends[h], starts, plan, { irr: true, boost });
+        out.at.forEach((i, k) => {
+          const j = ctx.ends[h][i - s], days = plan.freq === 'none' ? [] : Calc.planDays(i, j, plan.freq), x = bruteBoost(i, j, plan, days, boost), tag = `${boost.mode} ${plan.freq} from ${Core.iso(i)}`;
+          close(out.r[k], x.val / x.P - 1, 1e-10, tag + ' multiple');
+          close(out.mae[k], x.worst, 1e-10, tag + ' worst');
+          assert.equal(out.uw[k], x.uwMax, tag + ' longest under water');
+          assert.equal(out.uwEnd[k], x.uwEnd, tag + ' under water at the end');
+          const fv = x.flows.reduce((acc, [t, amt]) => acc + amt * Math.pow(1 + out.irr[k], (Core.days[j] - Core.days[t]) / 365.25), 0);
+          close(fv, x.val, 1e-8 * x.val, tag + ' IRR');
+        });
+      }
+    }
+  }
+  // the single backtest: the same walk, with its dates
+  const a = idx('2007-06-01'), b = idx('2013-05-31'), plan = { a0: 10000, a1: 1000, freq: 'Q' }, boost = { mask, mode: 'mult', m: 2 };
+  const run = Calc.planRun(R, w, c, a, b, plan, { boost }), x = bruteBoost(a, b, plan, Calc.planDays(a, b, 'Q'), boost);
+  close(run.final, x.val, 1e-8 * x.val, 'boosted end value'); assert.equal(run.invested, x.P);
+  assert.ok(run.amts.some(y => y === 2000) && run.amts.some(y => y === 1000), 'both kinds of purchase');
+  assert.equal(run.worstI, x.worstI); assert.equal(run.rec, x.rec); assert.equal(run.uwMax, x.uwMax);
+  // without a boost the walk is the plain plan
+  const p0 = Calc.planRun(R, w, c, a, b, plan), p1 = Calc.planRun(R, w, c, a, b, plan, { boost: { mask: new Uint8Array(n), mode: 'mult', m: 3 } });
+  close(p0.final, p1.final, 1e-9 * p0.final, 'a boost that never fires changes nothing');
+});
+
