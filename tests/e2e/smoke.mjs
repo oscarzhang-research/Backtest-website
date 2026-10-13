@@ -5,20 +5,20 @@
 import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 
-const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, levcmp: 7, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
     sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
-    levcmp: ['Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', 'SOXL ahead'],
+    levcmp: ['Today’s signals', 'Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', '③ Every way of holding side by side', 'When to sell', 'Take profit × stop loss', 'SOXL ahead'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
   },
   zh: {
     sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
-    levcmp: ['核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', 'SOXL 跑赢'],
+    levcmp: ['今日信号', '核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', '③ 全部持有方式一起比', '什么时候卖', '止盈 × 止损', 'SOXL 跑赢'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
   },
 };
@@ -273,6 +273,20 @@ for (const [lang, live, must] of [
     await page.click('#lc-c5Doc summary');
     const doc = await page.evaluate(() => { const el = document.querySelector('#lc-c5Doc'); return el && el.open ? el.innerText : ''; });
     if (!doc.includes('信号') || !doc.includes('为什么晚一天')) problems.push('the full explanation did not open');
+    // the time under water, every way of holding, a boost on C4's conditions, and one start loaded from the spread
+    if (!(await take()).includes('低于本金')) problems.push('no time under water in the backtest');
+    const ways = await page.evaluate(() => document.querySelectorAll('#lc-c5Ways tbody tr').length);
+    if (ways !== 12) problems.push('the table of every way of holding has ' + ways + ' rows');
+    await page.click('#lc-c5Boost button[data-v="mult"]');
+    if (!(await settle((x) => x.includes('条件满足时那一期投入 3 倍') && x.includes('加码（')))) problems.push('the boost did not show');
+    const runRows = await page.evaluate(() => document.querySelectorAll('#lc-c5Run tbody tr').length);
+    if (runRows !== 6) problems.push('the boosted backtest table has ' + runRows + ' rows');
+    await page.click('#lc-rule button[data-load="SOXL-lo"]');
+    const ld = await settle((x) => /^\d{4}-\d{2}-\d{2} 至 \d{4}-\d{2}-\d{2}，/.test(x));
+    if (!ld || !(await page.$('#lc-c5OneReset'))) problems.push('loading the worst start did nothing');
+    else { await page.click('#lc-c5OneReset'); if (!(await settle((x) => x.startsWith('2015-01-02 至今')))) problems.push('the loaded start did not reset'); }
+    await page.click('#lc-c5Boost button[data-v="cash"]');
+    if (!(await settle((x) => x.includes('先存为现金')))) problems.push('the cash reserve did not show');
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('levcmp plans', problems);
@@ -296,9 +310,51 @@ for (const [lang, live, must] of [
     if (rows < 6) problems.push('the comparison of combinations has ' + rows + ' rows');
     await page.click('#lc-c4Cmp tbody tr:has(td.lbl b:text-is("Without: fall ≥50%")) button');
     if (!(await settle((x) => x.includes('met “the S&P 500 is above its 200-day average”')))) problems.push('“Use” did not adopt a row');
+    await page.click('#lc-c4Oos button[data-v="on"]');
+    let oos = ''; for (let q = 0; q < 80 && !oos; q++) { await page.waitForTimeout(250); oos = await page.evaluate(() => { const t = document.querySelector('#lc-c4OosT'); const x = [...document.querySelectorAll('#lc-fall .takeaway')].map(y => y.innerText).find(y => y.startsWith('Comparing medians')); return t && x ? x : ''; }); }
+    if (!oos) problems.push('the out-of-sample check did not show');
+    else if (/\bNaN\b|undefined/.test(oos)) problems.push('NaN/undefined in the out-of-sample check');
   }
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('levcmp falls', problems);
+  await ctx.close();
+}
+// SOXL vs TQQQ, C6: the selling rules — the tables, the levels, the heat maps; another purchase rule, a rule switched off;
+// and today's signals at the top of the page
+{
+  const { ctx, page, errors } = await open('zh', 'levcmp');
+  const take = () => page.evaluate(() => { const el = document.querySelector('#lc-exit .takeaway'); return el ? el.innerText : ''; });
+  const settle = async (pred) => { for (let q = 0; q < 200; q++) { await page.waitForTimeout(250); const t = await take(); if (pred(t)) return t; } return null; };
+  const rowsOf = (id) => page.evaluate((x) => document.querySelectorAll('#' + x + ' tbody tr').length, id);
+  const problems = [];
+  const t0 = await settle((t) => t.includes('任意一天买入') && t.includes('持有到期的中位数'));
+  if (!t0) problems.push('C6 did not render');
+  else {
+    if (/\bNaN\b|undefined/.test(t0)) problems.push('NaN/undefined in C6');
+    const n0 = await rowsOf('lc-c6Ret');
+    if (n0 !== 10) problems.push('the returns table has ' + n0 + ' rows');
+    if ((await rowsOf('lc-c6Beh')) !== n0) problems.push('the two tables differ in rows');
+    const sw = await page.evaluate(() => ['tp', 'sl', 'trail'].map(k => document.querySelectorAll('#lc-c6Sw-' + k + ' canvas').length));
+    if (sw.some(n => !n)) problems.push('a level chart is missing');
+    if ((await rowsOf('lc-c6Heat-SOXL')) !== 6 || (await rowsOf('lc-c6Heat-TQQQ')) !== 6) problems.push('the heat maps are incomplete');
+    await page.click('#lc-c6On-sl');
+    for (let q = 0; q < 80 && (await rowsOf('lc-c6Ret')) !== n0 - 1; q++) await page.waitForTimeout(250);
+    if ((await rowsOf('lc-c6Ret')) !== n0 - 1) problems.push('switching a rule off did not remove its row');
+    await page.click('#lc-c6Heat button[data-v="p10"]');
+    let ht = ''; for (let q = 0; q < 80 && !ht; q++) { await page.waitForTimeout(250); ht = await page.evaluate(() => [...document.querySelectorAll('#lc-exit .takeaway')].map(y => y.innerText).find(y => y.startsWith('按P10看')) || ''); }
+    if (!ht) problems.push('the heat map statistic did not switch');
+    await page.click('#lc-c6Entry button[data-v="c4"]');
+    if (!(await settle((t) => t.includes('在 C4 的条件')))) problems.push('purchases on C4’s conditions did not show');
+    await page.click('#lc-c6List summary');
+    const list = await page.evaluate(() => document.querySelectorAll('#lc-c6List tbody tr').length);
+    if (list < 5) problems.push('the purchase-by-purchase list has ' + list + ' rows');
+  }
+  const today = await page.evaluate(() => { const el = document.querySelector('#lc-today'); return el ? el.innerText : ''; });
+  if (!today.includes('VIX') || !today.includes('金叉')) problems.push('today’s signals did not render');
+  if (/<b>|NaN|undefined/.test(today)) problems.push('stray markup or NaN in today’s signals');
+  if ((await rowsOf('lc-todayT')) !== 9) problems.push('today’s table has ' + (await rowsOf('lc-todayT')) + ' rows');
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('levcmp exits', problems);
   await ctx.close();
 }
 await browser.close();
