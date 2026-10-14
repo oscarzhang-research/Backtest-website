@@ -50,6 +50,7 @@
   // ---------- S6 (shared): conditions, statistics and labels ----------
   const DIP_UNDER = { SOXL: 'SOXX', TQQQ: 'QQQ' }; // the unlevered index behind a leveraged ETF
   const DIP_HZ = [1, 3, 6, 12, 24, 36, 60, 120]; // months
+  const DIP_HZD = [-1, -3, -5, -10]; // trading days (a negative horizon counts sessions; S6 only)
   const DIP_WIN = [63, 126, 252, 504, 756, 1260]; // sessions
   const DIP_LWIN = [21, 63, 126, 252];
   const DIP_MA = [20, 50, 100, 200];
@@ -81,9 +82,12 @@
     c2.dd.lo = Math.min(99, Math.max(1, fall(c.dd.lo))); c2.dd.hi = fall(c.dd.hi); c2.reb.lo = rise(c.reb.lo); c2.reb.hi = rise(c.reb.hi);
     return dipClean(c2);
   };
-  const hzLab = (m) => m % 12 === 0 ? (zh() ? `${m / 12} 年` : `${m / 12} year${m === 12 ? '' : 's'}`) : (zh() ? `${m} 个月` : `${m} month${m === 1 ? '' : 's'}`);
+  const hzLab = (m) => m < 0 ? (zh() ? `${-m} 天` : `${-m} day${m === -1 ? '' : 's'}`) : m % 12 === 0 ? (zh() ? `${m / 12} 年` : `${m / 12} year${m === 12 ? '' : 's'}`) : (zh() ? `${m} 个月` : `${m} month${m === 1 ? '' : 's'}`);
   const winLab = (w) => zh() ? { 63: '3 个月', 126: '6 个月', 252: '1 年', 504: '2 年', 756: '3 年', 1260: '5 年' }[w] : { 63: '3 months', 126: '6 months', 252: '1 year', 504: '2 years', 756: '3 years', 1260: '5 years' }[w];
-  const hzShort = (m) => m % 12 === 0 ? m / 12 + (zh() ? '年' : 'Y') : m + (zh() ? '个月' : 'M');
+  const hzShort = (m) => m < 0 ? -m + (zh() ? '天' : 'D') : m % 12 === 0 ? m / 12 + (zh() ? '年' : 'Y') : m + (zh() ? '个月' : 'M');
+  // horizons in order of length (21 sessions ≈ a month, days first on a tie), and as an adjective in English
+  const hzKey = (m) => (m < 0 ? -m / 21 - 1e-6 : m), hzCmp = (a, c) => hzKey(a) - hzKey(c);
+  const hzAdj = (m) => (m < 0 ? `${-m}-day` : m % 12 === 0 ? `${m / 12}-year` : `${m}-month`);
   const winAdj = (w) => ({ 63: '3-month', 126: '6-month', 252: '1-year', 504: '2-year', 756: '3-year', 1260: '5-year' }[w]);
   const lwinLab = (w) => zh() ? { 21: '1 个月', 63: '3 个月', 126: '6 个月', 252: '1 年' }[w] : { 21: '1 month', 63: '3 months', 126: '6 months', 252: '1 year' }[w];
   const lwinAdj = (w) => ({ 21: '1-month', 63: '3-month', 126: '6-month', 252: '1-year' }[w]);
@@ -95,7 +99,11 @@
   const pctN = (x) => +x.toFixed(1) + '%'; // a percentage the visitor typed
   const fade = (c, a) => /^#[0-9a-f]{6}$/i.test(c) ? `rgba(${parseInt(c.slice(1, 3), 16)}, ${parseInt(c.slice(3, 5), 16)}, ${parseInt(c.slice(5, 7), 16)}, ${a})` : c;
   // log-axis ticks at 1-2-5 multiples of the growth factor (1 + return) covering [lo, hi]
-  const logTicks = (lo, hi) => { const out = []; for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k++) for (const m of [1, 2, 5]) { const t = m * Math.pow(10, k); if (t >= lo && t <= hi) out.push(+t.toPrecision(3)); } return out.length > 9 ? out.filter(t => Math.abs(Math.log10(t) - Math.round(Math.log10(t))) < 1e-9) : out; };
+  const logTicks = (lo, hi) => { const out = []; for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k++) for (const m of [1, 2, 5]) { const t = m * Math.pow(10, k); if (t >= lo && t <= hi) out.push(+t.toPrecision(3)); }
+    if (out.length < 3) { // a narrow range (short horizons): growth multiples at round returns, 1 ± k·step
+      for (const step of [0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5]) { const t = []; for (let k = Math.ceil((lo - 1) / step - 1e-9); 1 + k * step <= hi + 1e-12; k++) if (1 + k * step > 0) t.push(+(1 + k * step).toFixed(6)); if (t.length <= 7) return t.length >= 2 ? t : out; }
+    }
+    return out.length > 9 ? out.filter(t => Math.abs(Math.log10(t) - Math.round(Math.log10(t))) < 1e-9) : out; };
   const multLab = (y) => { const x = y - 1; return Math.abs(x) < 1e-9 ? '0%' : (x > 0 ? '+' : '') + Math.round(x * 100).toLocaleString('en-US') + '%'; };
 
   // ============================================================ one view per fund ============================================================
@@ -382,14 +390,15 @@
       // ---------- S6: after a fall from the high — forward returns under combinations of conditions ----------
     const DS = (() => {
       const st = U.store.get(F.dipStore, {}) || {};
-      const d = Object.assign({ key: K, sim: false, first: false, wFall: false, ann: false, hz: [1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'] }, st);
+      const d = Object.assign({ key: K, sim: false, first: false, wFall: false, ann: false, hz: [-1, -5, -10, 1, 3, 6, 12, 24, 60, 120], stats: ['mean', 'p50', 'p25', 'p75'] }, st);
       d.c = dipClean(st.c || (st.lo != null ? { ref: st.ref, win: st.win, dd: { lo: st.lo, hi: st.hi } } : null)); // earlier versions kept the fall at the top level
       for (const k of ['lo', 'hi', 'ref', 'win']) delete d[k];
       if (!F.dipKeys.includes(d.key)) d.key = K;
       const isoOk = (x) => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
       d.start = isoOk(d.start) ? d.start : null; // first purchase day (null: from the start of the data)
       d.end = isoOk(d.end) ? d.end : null;       // the data stop here (null: up to the latest session)
-      d.hz = Array.isArray(d.hz) ? d.hz.filter(m => Number.isInteger(m) && m >= 1 && m <= 360) : []; if (!d.hz.length) d.hz = [12];
+      d.hz = Array.isArray(d.hz) ? d.hz.filter(m => Number.isInteger(m) && ((m >= 1 && m <= 360) || (m <= -1 && m >= -500))) : []; if (!d.hz.length) d.hz = [12];
+      if (!d.hzDays) { for (const m of [-1, -5, -10]) if (!d.hz.includes(m)) d.hz.push(m); d.hzDays = true; } // horizons in trading days arrived later
       d.stats = dipStatList(d.stats); if (!d.stats.length) d.stats = ['p50'];
       // the comparison table's statistics (earlier versions kept a single one in d.cmp)
       d.cmpStats = Array.isArray(d.cmpStats) ? dipStatList(d.cmpStats) : dipStatOk(d.cmp) ? [d.cmp] : []; if (!d.cmpStats.length) d.cmpStats = ['p50'];
@@ -515,11 +524,11 @@
             fld(Z ? '标普500 在' : 'S&P 500 is', U.seg(F.pre + 'dipMkAbove', [['1', Z ? '均线上方' : 'Above'], ['0', Z ? '均线下方' : 'Below']], c.mkt.above ? '1' : '0', (v) => { c.mkt.above = v === '1'; redo(); })),
             fld(Z ? '均线' : 'Average', U.select(F.pre + 'dipMkN', DIP_MA.map(n => [n, Z ? `${n} 日` : `${n}-day`]), c.mkt.n, (v) => { c.mkt.n = +v; redo(); })))));
         // horizons and statistics: presets plus the visitor's own (a custom one disappears when switched off)
-        const hzN = U.numInput(F.pre + 'dipHzN', 18, () => {}, { min: 1, max: 360, step: 1 }); hzN.style.width = '72px';
-        const hzU = U.select(F.pre + 'dipHzU', [['m', Z ? '个月' : 'months'], ['y', Z ? '年' : 'years']], 'm', () => {});
-        const addHz = () => { const x = parseFloat(hzN.value); const m = Math.round(hzU.value === 'y' ? x * 12 : x); if (!(m >= 1 && m <= 360)) return; if (!DS.hz.includes(m)) DS.hz.push(m); redo(); };
-        hzRow.appendChild(U.ctl(Z ? '时间跨度（点击开关，也可自定义）' : 'Horizons (click to switch, or add your own)', h('div', { class: 'chips', style: { alignItems: 'center' } },
-          Array.from(new Set(DIP_HZ.concat(DS.hz))).sort((a, c2) => a - c2).map(m => chip(hzLab(m), DS.hz.includes(m), () => { flip(DS.hz, m); redo(); })),
+        const hzN = U.numInput(F.pre + 'dipHzN', 18, () => {}, { min: 1, max: 500, step: 1 }); hzN.style.width = '72px';
+        const hzU = U.select(F.pre + 'dipHzU', [['d', Z ? '天（交易日）' : 'trading days'], ['m', Z ? '个月' : 'months'], ['y', Z ? '年' : 'years']], 'm', () => {});
+        const addHz = () => { const x = parseFloat(hzN.value), dd = hzU.value === 'd', m = dd ? -Math.round(x) : Math.round(hzU.value === 'y' ? x * 12 : x); if (dd ? !(m <= -1 && m >= -500) : !(m >= 1 && m <= 360)) return; if (!DS.hz.includes(m)) DS.hz.push(m); redo(); };
+        hzRow.appendChild(U.ctl(Z ? '时间跨度（点击开关，也可自定义；“天”按交易日计算）' : 'Horizons (click to switch, or add your own; days are trading days)', h('div', { class: 'chips', style: { alignItems: 'center' } },
+          Array.from(new Set(DIP_HZD.concat(DIP_HZ, DS.hz))).sort(hzCmp).map(m => chip(hzLab(m), DS.hz.includes(m), () => { flip(DS.hz, m); redo(); })),
           h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, hzN, hzU, h('button', { type: 'button', class: 'btn small ghost', onclick: addHz }, Z ? '+ 添加' : '+ Add')))));
         const pN = U.numInput(F.pre + 'dipPN', 33, () => {}, { min: 1, max: 99, step: 1 }); pN.style.width = '72px';
         const addP = () => { const x = Math.round(parseFloat(pN.value) * 10) / 10; if (!(x >= 1 && x <= 99)) return; const k = 'p' + x; if (!DS.stats.includes(k)) DS.stats.push(k); redo(); };
@@ -551,8 +560,8 @@
           dd: { on: c.dd.on, lo: c.dd.lo / 100, hi: c.dd.hi == null ? null : c.dd.hi / 100, deep: c.dd.deep },
           reb: { on: c.reb.on, lo: c.reb.lo / 100, hi: c.reb.hi == null ? null : c.reb.hi / 100, low: c.reb.low, days: c.reb.days } }, opts || {}));
       }
-      const baseSum = (h, ann) => getC(`base|${h}|${ann}`, () => Calc.summary(ann ? ctx.base[h].map(x => Math.pow(1 + x, 12 / ctx.months[h]) - 1) : ctx.base[h]));
-      const annOf = (arr, m) => arr.map(x => Math.pow(1 + x, 12 / m) - 1);
+      const baseSum = (h, ann) => getC(`base|${h}|${ann}`, () => Calc.summary(ann ? ctx.base[h].map(x => Math.pow(1 + x, Calc.annK(ctx.months[h])) - 1) : ctx.base[h]));
+      const annOf = (arr, m) => arr.map(x => Math.pow(1 + x, Calc.annK(m)) - 1);
       const shareAtMost = (arr, w, x) => { let a = 0, t = 0; arr.forEach((y, j) => { const ww = w ? w[j] : 1; t += ww; if (y <= x) a += ww; }); return t ? a / t : NaN; };
       // each ticked condition on the latest session
       function statusOf(c) {
@@ -568,7 +577,7 @@
       }
       function draw() {
         U.disposeIn(out); U.clear(out);
-        const key = dipKey(), S0 = Core.S[key], months = DS.hz.slice().sort((a, c2) => a - c2), to = dipTo(S0), from = dipFrom(S0), id = [key, months.join(','), from, to].join('|');
+        const key = dipKey(), S0 = Core.S[key], months = DS.hz.slice().sort(hzCmp), to = dipTo(S0), from = dipFrom(S0), id = [key, months.join(','), from, to].join('|');
         if (!DIP_CTX || DIP_CTX.id !== id) DIP_CTX = Object.assign(Calc.dipContext(S0.v, S0.s, to, months, from), { id });
         // the status line is about the latest session even when the study ends earlier
         if (to < S0.e && (!DIP_NOW || DIP_NOW.id !== key)) DIP_NOW = { id: key, v: S0.v, s: S0.s, e: S0.e, n: S0.e - S0.s + 1, cache: new Map() };
@@ -585,7 +594,8 @@
           ? stt.map(x => `${x.ok ? '✓' : '✗'} ${U.esc(x.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(x.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? `。${allOk ? b('今天符合全部条件') : '今天不符合全部条件'}。` : `. ${allOk ? b('All conditions hold today') : 'Not all conditions hold today'}.`)
           : (Z ? '没有勾选任何条件，下面的结果就是任意一天买入。' : 'No condition is ticked, so the results below are simply buying on any day.')) }));
         const R = run(c, { cmp: cmpKey ? Core.S[cmpKey].v : null, mae: true, rest: true });
-        const h1 = Math.max(0, months.indexOf(12)); // the reference horizon for counts and sentences
+        // the reference horizon for counts and sentences: a year, else the shortest in months, else the longest in days
+        const h1 = months.includes(12) ? months.indexOf(12) : months.some(m => m > 0) ? months.findIndex(m => m > 0) : months.length - 1;
         const rows = R.H.map((H, h) => {
           const stA = Calc.summary(H.r, H.w), stN = Calc.summary(H.ann, H.w);
           let big = null; for (const [k, n] of H.cnt) if (!big || n > big.n) big = { ep: k, n };
@@ -605,15 +615,18 @@
           requestAnimationFrame(() => {
             const ch = U.chart(el1); if (!ch) return; const narrow = el1.clientWidth < 640;
             const row = (k) => U.ttRow(k[1], k[0], fmtR(k[2]));
+            const labs = narrow ? rows.map(x => hzShort(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '')) : cats, fs = narrow ? 10.5 : 11.5;
+            const wide = (t) => [...t].reduce((a, ch) => a + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 1 : 0.62), 0) * fs; // rough label width
+            const rot = Math.max(...labs.map(wide)) > (el1.clientWidth - 70) / Math.max(1, rows.length) - 6 ? 40 : 0;
             const vals = []; for (const x of rows) if (x.st.n) vals.push(g(x.st.q(0.1)), g(x.st.q(0.9)), g(x.st.mean), g(x.bs.q(0.5)));
-            const lo0 = Math.min(1, ...vals.filter(U.isNum)), hi0 = Math.max(1, ...vals.filter(U.isNum)); const yLo = lo0 / 1.15, yHi = hi0 * 1.15; const ticks = logTicks(yLo, yHi);
+            const lo0 = Math.min(1, ...vals.filter(U.isNum)), hi0 = Math.max(1, ...vals.filter(U.isNum)), pad = Math.min(1.15, Math.max(1.02, Math.pow(hi0 / lo0, 0.08))); const yLo = lo0 / pad, yHi = hi0 * pad; const ticks = logTicks(yLo, yHi);
             ch.setOption(U.baseOpt(tk, {
               legend: legendOpt(tk), grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
               tooltip: { trigger: 'axis', confine: true, axisPointer: { type: 'shadow' }, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 },
                 formatter: (ps) => { const x = rows[ps[0].dataIndex]; if (!x.st.n) return U.ttHead(hzLab(x.H.m)) + (Z ? '没有样本' : 'No samples');
                   return U.ttHead(hzLab(x.H.m) + (DS.ann ? (Z ? ' · 年化' : ' · annualized') : '') + ' · n = ' + x.st.n.toLocaleString('en-US') + (Z ? `，${x.H.nEp} ${epWord}` : `, ${x.H.nEp} ${epWord}`)) +
                     [['P90', col, x.st.q(0.9)], ['P75', col, x.st.q(0.75)], [Z ? '中位数' : 'Median', col, x.st.q(0.5)], ['P25', col, x.st.q(0.25)], ['P10', col, x.st.q(0.1)], [Z ? '平均' : 'Mean', tk.ink, x.st.mean], [Z ? '任意一天·中位数' : 'Any day: median', tk.ink2, x.bs.q(0.5)]].map(row).join(''); } },
-              xAxis: U.catAxis(tk, narrow ? rows.map(x => hzShort(x.H.m) + (DS.ann && x.H.m < 12 ? '*' : '')) : cats, { axisLabel: { color: tk.ink2, fontSize: narrow ? 10.5 : 11.5, interval: 0 } }),
+              xAxis: U.catAxis(tk, labs, { axisLabel: { color: tk.ink2, fontSize: fs, interval: 0, rotate: rot } }),
               yAxis: U.valAxis(tk, { type: 'log', logBase: 10, min: yLo, max: yHi, axisLabel: { color: tk.muted, fontSize: 11.5, customValues: ticks, formatter: multLab }, axisTick: { show: false, customValues: ticks } }),
               series: [
                 { name: Z ? 'P25–P75（须线 P10–P90）' : 'P25–P75 (whiskers P10–P90)', type: 'boxplot', boxWidth: [10, 34], itemStyle: { color: fade(col, 0.2), borderColor: col, borderWidth: 1.6 },
@@ -651,7 +664,7 @@
               const loo = [...r1.H.cnt.keys()].map(k => { const ix = []; r1.H.ep.forEach((x, j) => { if (x !== k) ix.push(j); }); return { k, med: Calc.summary(ix.map(j => arr[j]), r1.H.w ? ix.map(j => r1.H.w[j]) : null).q(0.5) }; });
               const lo = loo.reduce((a, x) => x.med < a.med ? x : a), hi = loo.reduce((a, x) => x.med > a.med ? x : a);
               out.appendChild(h('p', { class: 'note', html: Z ? `<b>稳健性</b>：去掉任意一${c.dd.on ? '轮下跌' : '个时段'}后，${hz}的中位数在 ${fmtR(lo.med)}（去掉 ${epDates[lo.k]} 那一${c.dd.on ? '轮' : '个'}）到 ${fmtR(hi.med)}（去掉 ${epDates[hi.k]}）之间。`
-                : `<b>Robustness</b>: leaving out any one of the ${epWord}, the ${r1.H.m % 12 === 0 ? r1.H.m / 12 + '-year' : r1.H.m + '-month'} median ranges from ${fmtR(lo.med)} (without ${epDates[lo.k]}) to ${fmtR(hi.med)} (without ${epDates[hi.k]}).` }));
+                : `<b>Robustness</b>: leaving out any one of the ${epWord}, the ${hzAdj(r1.H.m)} median ranges from ${fmtR(lo.med)} (without ${epDates[lo.k]}) to ${fmtR(hi.med)} (without ${epDates[hi.k]}).` }));
             }
           }
           // ---- how much further it fell while holding ----
@@ -681,11 +694,15 @@
             const st = r1.st, an = DS.ann && r1.H.m !== 12, hz = hzLab(r1.H.m);
             txt += Z ? `之后 ${hz}的${an ? '年化' : ''}收益：平均 ${b(fmtR(st.mean))}，中位数 ${b(fmtR(st.q(0.5)))}（P25 ${fmtR(st.q(0.25))}，P75 ${fmtR(st.q(0.75))}），${U.pct(st.pos, 0)} 为正；同期任意一天买入的中位数为 ${fmtR(r1.bs.q(0.5))}。`
               : `After ${hz} the ${an ? 'annualized ' : ''}return averaged ${b(fmtR(st.mean))} with a median of ${b(fmtR(st.q(0.5)))} (P25 ${fmtR(st.q(0.25))}, P75 ${fmtR(st.q(0.75))}), and was positive ${U.pct(st.pos, 0)} of the time; buying on any day of the same history gave a median of ${fmtR(r1.bs.q(0.5))}. `;
-            const r2 = rows.slice().reverse().find(x => x.H.m > r1.H.m && x.stA.n && !x.thin);
+            const r2 = rows.slice().reverse().find(x => hzKey(x.H.m) > hzKey(r1.H.m) && x.stA.n && !x.thin);
             if (r2) txt += Z ? `${hzLab(r2.H.m)}后的中位数为 ${b(fmtR(r2.stA.q(0.5)))}（年化 ${fmtR(r2.stN.q(0.5))}），任意一天买入为 ${fmtR(r2.bsA.q(0.5))}（年化 ${fmtR(r2.bsN.q(0.5))}）。`
               : `After ${hzLab(r2.H.m)} the median was ${b(fmtR(r2.stA.q(0.5)))} (${fmtR(r2.stN.q(0.5))} a year) against ${fmtR(r2.bsA.q(0.5))} (${fmtR(r2.bsN.q(0.5))} a year) from any day. `;
-            txt += Z ? `买入后的 ${hz}里，一半的情况中途还跌过 ${U.pct(-r1.ms.q(0.5), 0)} 以上，最差的 10% 跌过 ${U.pct(-r1.ms.q(0.1), 0)} 以上。` : `Within ${hz} of buying, half the cases fell at least another ${U.pct(-r1.ms.q(0.5), 0)} along the way, and the worst 10% fell ${U.pct(-r1.ms.q(0.1), 0)} or more. `;
-            if (cmpKey && r1.cs.n) txt += Z ? `同样这些日子买 ${cmpNm}（不加杠杆），${hz}后的中位数是 ${fmtR(r1.cs.q(0.5))}，${U.pct(r1.cs.pos, 0)} 为正。` : `Buying ${cmpNm} (no leverage) on the same days gave a ${hz} median of ${fmtR(r1.cs.q(0.5))}, positive ${U.pct(r1.cs.pos, 0)} of the time. `;
+            // the fall below the purchase price while holding (small falls with a decimal or two; none at all for half the cases or more)
+            const m50 = -r1.ms.q(0.5), m10 = -r1.ms.q(0.1), fp = (x) => U.pct(x, x < 0.0095 ? 2 : x < 0.095 ? 1 : 0);
+            txt += m10 < 1e-9 ? (Z ? `买入后的 ${hz}里，至少九成的情况收盘价从未跌破买入价。` : `Within ${hz} of buying, at least nine cases in ten never closed below the purchase price. `)
+              : m50 < 1e-9 ? (Z ? `买入后的 ${hz}里，至少一半的情况收盘价从未跌破买入价，最差的 10% 跌过 ${fp(m10)} 以上。` : `Within ${hz} of buying, at least half the cases never closed below the purchase price, and the worst 10% fell ${fp(m10)} or more. `)
+              : (Z ? `买入后的 ${hz}里，一半的情况中途还跌过 ${fp(m50)} 以上，最差的 10% 跌过 ${fp(m10)} 以上。` : `Within ${hz} of buying, half the cases fell at least another ${fp(m50)} along the way, and the worst 10% fell ${fp(m10)} or more. `);
+            if (cmpKey && r1.cs.n) txt += Z ? `同样这些日子买 ${cmpNm}（不加杠杆），${hz}后的中位数是 ${fmtR(r1.cs.q(0.5))}，${U.pct(r1.cs.pos, 0)} 为正。` : `Buying ${cmpNm} (no leverage) on the same days gave a ${hzAdj(r1.H.m)} median of ${fmtR(r1.cs.q(0.5))}, positive ${U.pct(r1.cs.pos, 0)} of the time. `;
             if (r1.st.n < 3) txt += Z ? `只有 ${r1.st.n} 个样本，这些数字只是个例。` : `With only ${r1.st.n} sample${r1.st.n > 1 ? 's' : ''}, these figures are anecdotes. `;
             else if (DS.first) txt += Z ? `每轮只取一天时，样本就是这 ${r1.st.n} 轮本身，分位数只是在这几个数之间插值。` : `With one day per fall the sample is just these ${r1.st.n} ${epWord}; the percentiles merely interpolate between them. `;
             else if (r1.big && r1.big.n / r1.st.n > 0.4 && !DS.wFall && !simNote) txt += Z ? `注意样本高度重叠：仅 ${epDates[r1.big.ep]} 开始的那一${c.dd.on ? '轮' : '个时段'}就贡献了 ${b(U.pct(r1.big.n / r1.st.n, 0))} 的样本，而独立的${c.dd.on ? `下跌只有 ${r1.H.nEp} 轮` : `时段只有 ${r1.H.nEp} 个`}——这些数字更像少数几段历史的记录，不是可靠的概率；可以试试“每轮相同”的权重。`
@@ -771,7 +788,7 @@
         });
         // ---- the falls one by one ----
         const showPk = c.dd.on && sigSelf, sigNm = nmOf(dipSig(c));
-        const fr = (i, h) => { const j = ctx.ends[h][i - s]; if (j < 0) return NaN; const x = v[j] / v[i] - 1; return DS.ann ? Math.pow(1 + x, 12 / months[h]) - 1 : x; };
+        const fr = (i, h) => { const j = ctx.ends[h][i - s]; if (j < 0) return NaN; const x = v[j] / v[i] - 1; return DS.ann ? Math.pow(1 + x, Calc.annK(months[h])) - 1 : x; };
         out.appendChild(h('details', null, h('summary', { class: 'linkbtn' }, Z ? `逐${c.dd.on ? '轮' : '个'}明细（${R.eps.length} ${c.dd.on ? '轮' : '个时段'}，从第一次符合条件的那天算起）` : `The ${epWord} one by one (${R.eps.length}, measured from the first qualifying day)`),
           h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
             h('thead', null, h('tr', null, showPk ? h('th', null, Z ? '高点' : 'High') : null, h('th', null, Z ? '第一次符合条件' : 'First qualifying day'), c.dd.on ? h('th', null, (Z ? '当时距高点' : 'Below the high then') + (sigSelf ? '' : ` (${sigNm})`)) : null,
@@ -782,8 +799,8 @@
               showPk ? h('td', { class: 'nowrap' }, p.recI >= 0 ? Core.iso(p.recI) : (Z ? '尚未' : 'not yet')) : null, DS.first ? null : h('td', null, p.nDays.toLocaleString('en-US')),
               months.map((m, hh) => { const y = fr(p.i, hh); return h('td', { class: U.signCls(y) }, fmtR(y)); }))))))));
         out.appendChild(h('p', { class: 'note' }, Z
-          ? `条件的定义——距高点的跌幅：收盘价相对参照高点（所选数据里截至当天的最高收盘价，或最近 N 个交易日的最高收盘价）的跌幅；“这一轮最深”= 从这一轮的高点到目前为止最低收盘价的跌幅；“这一轮”从收盘价回到参照高点的那天算起。距阶段低点的反弹：收盘价相对这一轮最低收盘价（或最近 N 个交易日的最低收盘价）的涨幅。${dipUnder() ? `跌幅和反弹可以按 ${nmOf(key)} 本身或 ${nmOf(dipUnder())} 计算；切换时门槛按 ${DIP_LEV[DS.key]} 倍杠杆近似换算（1 + 杠杆收益 ≈（1 + 指数收益）^${DIP_LEV[DS.key]}，例如跌 50% ≈ 指数跌 ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}）。` : ''}恐慌程度用 VIX（1990 年起）或 ${nmOf(dipUnl())} 最近 20 个交易日的年化波动率；趋势看 ${nmOf(dipUnl())} 与它的均线；大盘看标普500 全收益与它的均线。所有条件都只用当天收盘及以前的数据，勾选的条件同时满足的交易日才算符合条件。设了起点时，只有起点及之后的交易日算作买入日（「任意一天买入」的对照组也一样）；高点、低点、均线和波动率仍然连同起点之前的数据一起计算，所以起点之前就开始的一轮下跌，跌幅照样从它真正的高点算起，并从起点后第一次符合条件的那天开始计入。设了终点时，数据只用到终点那天：买入日在起点和终点之间，持有期也必须在终点之前结束（所以持有期越长，能用的买入日越少），终点之后的价格一概不用。这样可以先用一段历史找规律，再把起点设在这个终点之后，用之后的数据检验。最上面一行的“今天”始终是最新一个交易日。有跌幅条件时，一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次回到参照高点为止；没有跌幅条件时，相隔不超过 21 个交易日的符合条件日子算作同一个时段。“每轮相同”的权重下，同一轮里的样本合计权重为 1，分位数按加权的经验分布插值。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日；年化 =（1 + 累计收益）^(12/m) − 1。全收益口径（股息、分红再投资）。${key === SIMK[DS.key] ? `${DS.key} 上市（${Core.iso(Core.S[DS.key].s)}）以前为模拟值${dipUnder() === 'SOXXU' ? '，按标的计算的条件在那几年用 SOXX*' : ''}（见“方法论”）。` : ''}不计交易成本与税。历史统计不是预测。`
-          : `Definitions — fall from the high: the close against the reference high (the highest close in the selected data up to that day, or of the last N sessions); “deepest so far” is the fall from this fall's high to its lowest close to date; “this fall” starts at the last close at the reference high. Rise from the low: the close against the lowest close of this fall (or of the last N sessions). ${dipUnder() ? `The fall and the rebound can be measured on ${nmOf(key)} itself or on ${nmOf(dipUnder())}; switching converts the thresholds as if the fund compounded ${DIP_LEV[DS.key]}× the index (1 + fund return ≈ (1 + index return)^${DIP_LEV[DS.key]}, so a 50% fall ≈ an index fall of ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}). ` : ''}Fear is the VIX (from 1990) or ${nmOf(dipUnl())}'s annualized volatility over the last 20 sessions; trend is ${nmOf(dipUnl())} against its moving average; the market is the S&P 500 total return against its moving average. Every condition uses only closes up to that day, and a day qualifies when all ticked conditions hold. With a start date, only sessions from that day on count as purchases (the any-day baseline too); highs, lows, averages and volatility still use the history before it, so a fall that began earlier is still measured from its real high and enters on its first qualifying day from the start. With an end date the data stop there: purchases fall between the start and the end, and each holding period must also finish by the end (so longer horizons use fewer purchases); no price after the end is used. That lets you look for a pattern in one stretch of history and test it on the years after, by moving the start past that end. The status line at the top always shows the latest session. With the fall condition, a fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it; without it, qualifying days at most 21 sessions apart form one spell. With each fall weighing the same, the samples of a fall add up to a weight of 1 and percentiles interpolate the weighted distribution. Forward returns use calendar months, ending on the last session on or before the same date m months later; annualized = (1 + total return)^(12/m) − 1. Total return, dividends and distributions reinvested.${key === SIMK[DS.key] ? ` Before ${DS.key}'s launch on ${Core.iso(Core.S[DS.key].s)} the series is simulated${dipUnder() === 'SOXXU' ? ', and conditions on the index use SOXX* for those years' : ''} (see Methodology).` : ''} No costs or taxes. Past statistics are not a forecast.`));
+          ? `条件的定义——距高点的跌幅：收盘价相对参照高点（所选数据里截至当天的最高收盘价，或最近 N 个交易日的最高收盘价）的跌幅；“这一轮最深”= 从这一轮的高点到目前为止最低收盘价的跌幅；“这一轮”从收盘价回到参照高点的那天算起。距阶段低点的反弹：收盘价相对这一轮最低收盘价（或最近 N 个交易日的最低收盘价）的涨幅。${dipUnder() ? `跌幅和反弹可以按 ${nmOf(key)} 本身或 ${nmOf(dipUnder())} 计算；切换时门槛按 ${DIP_LEV[DS.key]} 倍杠杆近似换算（1 + 杠杆收益 ≈（1 + 指数收益）^${DIP_LEV[DS.key]}，例如跌 50% ≈ 指数跌 ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}）。` : ''}恐慌程度用 VIX（1990 年起）或 ${nmOf(dipUnl())} 最近 20 个交易日的年化波动率；趋势看 ${nmOf(dipUnl())} 与它的均线；大盘看标普500 全收益与它的均线。所有条件都只用当天收盘及以前的数据，勾选的条件同时满足的交易日才算符合条件。设了起点时，只有起点及之后的交易日算作买入日（「任意一天买入」的对照组也一样）；高点、低点、均线和波动率仍然连同起点之前的数据一起计算，所以起点之前就开始的一轮下跌，跌幅照样从它真正的高点算起，并从起点后第一次符合条件的那天开始计入。设了终点时，数据只用到终点那天：买入日在起点和终点之间，持有期也必须在终点之前结束（所以持有期越长，能用的买入日越少），终点之后的价格一概不用。这样可以先用一段历史找规律，再把起点设在这个终点之后，用之后的数据检验。最上面一行的“今天”始终是最新一个交易日。有跌幅条件时，一轮下跌从收盘价回到参照高点之后第一次符合条件的那天开始，到下一次回到参照高点为止；没有跌幅条件时，相隔不超过 21 个交易日的符合条件日子算作同一个时段。“每轮相同”的权重下，同一轮里的样本合计权重为 1，分位数按加权的经验分布插值。未来收益按日历月计算，终点取 m 个月后同一日期当天或之前最近的交易日，年化 =（1 + 累计收益）^(12/m) − 1；以“天”为单位的时间跨度按交易日计算，N 天 = 买入后第 N 个交易日的收盘（5 天约一周、21 天约一个月），年化 =（1 + 累计收益）^(252/N) − 1。全收益口径（股息、分红再投资）。${key === SIMK[DS.key] ? `${DS.key} 上市（${Core.iso(Core.S[DS.key].s)}）以前为模拟值${dipUnder() === 'SOXXU' ? '，按标的计算的条件在那几年用 SOXX*' : ''}（见“方法论”）。` : ''}不计交易成本与税。历史统计不是预测。`
+          : `Definitions — fall from the high: the close against the reference high (the highest close in the selected data up to that day, or of the last N sessions); “deepest so far” is the fall from this fall's high to its lowest close to date; “this fall” starts at the last close at the reference high. Rise from the low: the close against the lowest close of this fall (or of the last N sessions). ${dipUnder() ? `The fall and the rebound can be measured on ${nmOf(key)} itself or on ${nmOf(dipUnder())}; switching converts the thresholds as if the fund compounded ${DIP_LEV[DS.key]}× the index (1 + fund return ≈ (1 + index return)^${DIP_LEV[DS.key]}, so a 50% fall ≈ an index fall of ${pctN(Math.round((1 - Math.pow(0.5, 1 / DIP_LEV[DS.key])) * 1000) / 10)}). ` : ''}Fear is the VIX (from 1990) or ${nmOf(dipUnl())}'s annualized volatility over the last 20 sessions; trend is ${nmOf(dipUnl())} against its moving average; the market is the S&P 500 total return against its moving average. Every condition uses only closes up to that day, and a day qualifies when all ticked conditions hold. With a start date, only sessions from that day on count as purchases (the any-day baseline too); highs, lows, averages and volatility still use the history before it, so a fall that began earlier is still measured from its real high and enters on its first qualifying day from the start. With an end date the data stop there: purchases fall between the start and the end, and each holding period must also finish by the end (so longer horizons use fewer purchases); no price after the end is used. That lets you look for a pattern in one stretch of history and test it on the years after, by moving the start past that end. The status line at the top always shows the latest session. With the fall condition, a fall starts on the first qualifying day after a close at the reference high and ends at the next close back at it; without it, qualifying days at most 21 sessions apart form one spell. With each fall weighing the same, the samples of a fall add up to a weight of 1 and percentiles interpolate the weighted distribution. Forward returns use calendar months, ending on the last session on or before the same date m months later, annualized = (1 + total return)^(12/m) − 1; horizons in days count trading days, N days ending at the close N sessions after the purchase (5 days is about a week, 21 about a month), annualized = (1 + total return)^(252/N) − 1. Total return, dividends and distributions reinvested.${key === SIMK[DS.key] ? ` Before ${DS.key}'s launch on ${Core.iso(Core.S[DS.key].s)} the series is simulated${dipUnder() === 'SOXXU' ? ', and conditions on the index use SOXX* for those years' : ''} (see Methodology).` : ''} No costs or taxes. Past statistics are not a forecast.`));
       }
       buildCtl(); requestAnimationFrame(draw);
       return sec;
@@ -929,5 +946,5 @@
 
   for (const k of Object.keys(FUNDS)) App.register(FUNDS[k].view, makeView(FUNDS[k]));
   // shared with the SOXL vs TQQQ comparison
-  root.LEV = { FUNDS, SIMK, legendOpt, take, section, simYear, pctDeep, hzLab, hzShort, statLab, statRank, statVal, dipStatOk, dipStatList, fmtR, pctN, fade, logTicks, multLab, winLab, winAdj, lwinLab, lwinAdj, dipClean, dipCopy, dipSwapSig, DIP_HZ, DIP_STATS, DIP_WIN, DIP_LWIN, DIP_MA, DIP_CONDS, DIP_LEV };
+  root.LEV = { FUNDS, SIMK, legendOpt, take, section, simYear, pctDeep, hzLab, hzShort, hzKey, hzCmp, statLab, statRank, statVal, dipStatOk, dipStatList, fmtR, pctN, fade, logTicks, multLab, winLab, winAdj, lwinLab, lwinAdj, dipClean, dipCopy, dipSwapSig, DIP_HZ, DIP_STATS, DIP_WIN, DIP_LWIN, DIP_MA, DIP_CONDS, DIP_LEV };
 })(window);

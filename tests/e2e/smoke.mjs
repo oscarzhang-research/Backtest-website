@@ -211,6 +211,28 @@ for (const [lang, live, must] of [
   report('soxl end', problems);
   await ctx.close();
 }
+// SOXL S6 horizons in trading days: 1, 5 and 10 days by default, before the months, and a custom one added
+{
+  const { ctx, page, errors } = await open('zh', 'soxl');
+  const settle = async (pred) => { for (let k = 0; k < 120; k++) { await page.waitForTimeout(250); const t = await page.evaluate(() => (document.getElementById('sx-dip') || document.body).innerText); if (pred(t)) return t; } return null; };
+  const hzRows = () => page.$$eval('#sx-dip .table-wrap table.data:not(.dip-cmp)', (ts) => [...ts[0].querySelectorAll('tbody tr td:first-child')].map(td => td.textContent.replace(/[*†\s]+$/g, '')));
+  const problems = [];
+  if (!(await settle((t) => /年以来，符合全部条件/.test(t)))) problems.push('S6 did not render');
+  else {
+    const r0 = await hzRows();
+    if (r0.slice(0, 4).join() !== '1 天,5 天,10 天,1 个月') problems.push('horizons: ' + r0.join());
+    await page.fill('#dipHzN', '2'); await page.selectOption('#dipHzU', 'd');
+    await page.$eval('#dipHzN', (el) => el.parentElement.querySelector('button').click());
+    let r1 = []; for (let k = 0; k < 120 && !r1.includes('2 天'); k++) { await page.waitForTimeout(250); r1 = await hzRows().catch(() => []); }
+    const t1 = await settle((t) => /之后 1 年的收益/.test(t));
+    if (r1.slice(0, 3).join() !== '1 天,2 天,5 天') problems.push('the custom 2-day horizon: ' + r1.join());
+    if (!t1 || /\bNaN\b|undefined/.test(t1)) problems.push('NaN/undefined with day horizons');
+    if (!(await page.$('#sx-dip button.chip[aria-pressed="true"]:text-is("2 天")'))) problems.push('no chip for the custom 2-day horizon');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('soxl days', problems);
+  await ctx.close();
+}
 // TQQQ: each section's own dates — the simulated start, an end date, remembered after a reload
 {
   const { ctx, page, errors } = await open('zh', 'tqqq');

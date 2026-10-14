@@ -182,3 +182,20 @@ test('summary statistics, unweighted and with each fall weighing the same', () =
   assert.ok(ws.q(0.1) <= ws.q(0.5) && ws.q(0.5) <= ws.q(0.9) && ws.q(0) === ws.min && ws.q(1) === ws.max);
   const empty = Calc.summary([]); assert.ok(Number.isNaN(empty.mean) && Number.isNaN(empty.q(0.5)) && empty.n === 0);
 });
+
+test('horizons in trading days: the close N sessions later, annualized over 252 sessions', () => {
+  const S = Core.S.SOXL, v = S.v, s = S.s, e = idx('2024-12-31');
+  const ctx = Calc.dipContext(v, s, e, [-1, -5, 12], s);
+  for (const i of [s, s + 100, idx('2020-03-16'), e - 5]) {
+    assert.equal(ctx.ends[0][i - s], i + 1); assert.equal(ctx.ends[1][i - s], i + 5);
+  }
+  assert.equal(ctx.ends[1][e - 4 - s], -1, 'past the end');
+  // the baseline holds every session for exactly that many sessions
+  assert.equal(ctx.base[1].length, e - s + 1 - 5);
+  ctx.base[1].forEach((r, k) => { const i = s + k; assert.ok(Math.abs(r - (v[i + 5] / v[i] - 1)) < 1e-12); });
+  // a study on day horizons: the same returns, and their annualized values over 252 sessions
+  const R = Calc.dipStudy(ctx, { sv: v, ref: Calc.dipRef(v, s, e, 'ath', 252), dd: { on: true, lo: 0.5, hi: null, deep: false } });
+  const H = R.H[1]; assert.ok(H.r.length > 100);
+  H.at.forEach((i, k) => { assert.ok(Math.abs(H.r[k] - (v[i + 5] / v[i] - 1)) < 1e-12); assert.ok(Math.abs(H.ann[k] - (Math.pow(1 + H.r[k], 252 / 5) - 1)) < 1e-9); });
+  assert.equal(Calc.annK(-5), 252 / 5); assert.equal(Calc.annK(6), 2);
+});
