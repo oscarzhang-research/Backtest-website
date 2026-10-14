@@ -211,14 +211,18 @@
   };
 
   // ---------- After a fall from the high (SOXL Deep Dive, S6) ----------
-  // Shared context for one instrument v over [s, e] and forward horizons in calendar months: the session that ends
+  // Shared context for one instrument v over [s, e] and forward horizons (calendar months, or trading days): the session that ends
   // each horizon (-1 once a horizon runs past e, -2 for a gap in the calendar), the any-day baseline and the
   // lowest close between two sessions (for the worst fall while holding). Purchases start at `from` (default s): the
   // history before it still counts for highs, lows and averages, but not as purchase days or in the baseline.
+  // A horizon m > 0 is m calendar months (to the session on or before the same date m months later); m < 0 is −m trading
+  // days (the close −m sessions later). annK(m): the power that annualizes a return over it.
+  C.annK = (m) => (m < 0 ? 252 / -m : 12 / m);
   C.dipContext = function (v, s, e, months, from) {
     const D = Core.days, n = e - s + 1; from = from == null ? s : Math.min(e, Math.max(s, from));
     const ends = months.map(m => {
       const a = new Int32Array(n).fill(-1);
+      if (m < 0) { for (let i = s; i - m <= e; i++) a[i - s] = i - m; return a; }
       for (let i = s; i <= e; i++) { const t = Core.addYearsDay(D[i], m / 12); if (t > D[e]) break; const j = Core.idxOnOrBefore(t); a[i - s] = j > i && D[j] >= t - 7 ? j : -2; }
       return a;
     });
@@ -319,7 +323,7 @@
       const cnt = new Map(); for (const k of ep) cnt.set(k, (cnt.get(k) || 0) + 1);
       let rest = null;
       if (isS) { rest = []; for (let i = from; i <= e; i++) { const j = a[i - s]; if (j === -1) break; if (j >= 0 && !isS[i - s]) rest.push(v[j] / v[i] - 1); } }
-      return { m, r, ann: r.map(x => Math.pow(1 + x, 12 / m) - 1), w: o.wFall ? ep.map(k => 1 / cnt.get(k)) : null, ep, at, cmp, mae, rest, cnt, nEp: cnt.size };
+      return { m, r, ann: r.map(x => Math.pow(1 + x, C.annK(m)) - 1), w: o.wFall ? ep.map(k => 1 / cnt.get(k)) : null, ep, at, cmp, mae, rest, cnt, nEp: cnt.size };
     });
     return { q, eps, days, epOf, H };
   };
