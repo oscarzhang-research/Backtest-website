@@ -156,6 +156,60 @@ test('a missing bar on a new session counts as a flat day that the next session 
   assert.throws(() => applyUpdate(truncate(DATA, k), src2, { now: NOW }), /AMD: no data for 3/);
 });
 
+// what an update stored when the source had no bar for session i of `keys` (counted back from the end of `d`): a flat day,
+// with the next stored session (if any) catching up over both; SOXL* and TQQQ* copy SOXL and TQQQ
+function flatDay(d, back, keys) {
+  for (const key of keys.concat(Object.keys(MIRRORS).filter(x => keys.includes(MIRRORS[x])))) {
+    const r = d.etf[key].r, j = r.length - 1 - back;
+    if (back > 0) r[j + 1] = Math.round(((1 + r[j] / 1e6) * (1 + r[j + 1] / 1e6) - 1) * 1e6);
+    r[j] = 0;
+  }
+  return d;
+}
+
+test('a session stored flat for every fund and stock (no bars yet) is filled in once the source has them', () => {
+  // 2026-10-16: Yahoo had the S&P 500's bar but no fund's or stock's, and every later update stopped on SOXX's -4.14%
+  const k = 4, keys = Object.keys(DATA.etf).filter(x => !MIRRORS[x]);
+  const t = flatDay(truncate(DATA, k), 0, keys);
+  const { data, report } = applyUpdate(t, fixtures(N - 1 - k - 30, N - 1), { now: NOW });
+  assert.equal(report.added.length, k);
+  const at = Core.iso(N - 1 - k), i = N - 1 - k;
+  for (const key in DATA.etf) {
+    const o = data.etf[key], o0 = DATA.etf[key], j = i - o.s - 1;
+    assert.deepEqual(o.r.slice(0, j), o0.r.slice(0, j), key); assert.deepEqual(o.r.slice(j + 1), o0.r.slice(j + 1), key);
+    // filled in, unless the day's move was within the tolerance anyway
+    assert.ok(o.r[j] === o0.r[j] || (o.r[j] === 0 && Math.abs(o0.r[j]) <= 300), `${key} on ${at}: ${o.r[j]} vs ${o0.r[j]}`);
+  }
+  assert.ok(report.revisions.some(x => x.startsWith(`SOXX ${at}: 0.00% → `) && x.endsWith('(filled in: no data when stored)')), report.revisions.join('; '));
+  validate(data);
+});
+
+test('a flat day further back is re-split with the session that caught up, and SOXL* follows', () => {
+  const k = 2, back = 9; // nine sessions before the old last one: outside the revision window
+  const t = flatDay(truncate(DATA, k), back, ['SOXL', 'AMD']);
+  const { data, report } = applyUpdate(t, fixtures(N - 1 - k - 30, N - 1), { now: NOW });
+  for (const key of ['SOXL', 'AMD', 'SOXLX']) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);
+  assert.equal(report.revisions.filter(x => /filled in/.test(x)).length, 4, report.revisions.join('; '));
+  validate(data);
+  // a flat day whose next session did not catch up changes the level: the update stops as before
+  const t2 = truncate(DATA, k), r2 = t2.etf.AMD.r; r2[r2.length - 1 - back] = 0;
+  assert.throws(() => applyUpdate(t2, fixtures(N - 1 - k - 30, N - 1), { now: NOW }), /AMD: return on/);
+});
+
+test('a new session most funds and stocks have no bar for yet is left for the next run', () => {
+  const k = 3, src = fixtures(N - 1 - k - 30, N - 1), keys = Object.keys(src.etf).filter(x => x !== 'SPY');
+  keys.slice(4).forEach(x => src.etf[x].bars.pop()); // only SPY and four others have the newest session
+  const { data, report } = applyUpdate(truncate(DATA, k), src, { now: NOW });
+  assert.deepEqual(report.added, [Core.iso(N - 3), Core.iso(N - 2)]);
+  assert.ok(report.warnings.some(w => w.startsWith(`${DATA.asOf}: only 5 of `) && /left for the next run/.test(w)), report.warnings.join('; '));
+  const t1 = truncate(DATA, 1);
+  for (const key in DATA.etf) assert.deepEqual(data.etf[key].r, t1.etf[key].r, key);
+  // the next run adds it in full
+  const next = applyUpdate(data, fixtures(N - 1 - k - 30, N - 1), { now: NOW });
+  assert.deepEqual(next.report.added, [DATA.asOf]);
+  for (const key in DATA.etf) assert.deepEqual(next.data.etf[key].r, DATA.etf[key].r, key);
+});
+
 test('SOXL* and TQQQ* follow SOXL and TQQQ; the leveraged funds count distributions like every other ETF', () => {
   assert.equal(PRICE_ONLY.size, 0, 'no series is price-only since the 2026-10 rebuild');
   assert.deepEqual(MIRRORS, { SOXLX: 'SOXL', TQQQX: 'TQQQ' });
