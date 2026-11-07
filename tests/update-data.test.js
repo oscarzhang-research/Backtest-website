@@ -114,7 +114,7 @@ test('a download that disagrees with the stored returns stops the update', () =>
   assert.throws(() => applyUpdate(truncate(DATA, 1), src3, { now: NOW }), /disagree with the stored calendar/);
 });
 
-test('a dividend posted late is corrected in the newest stored sessions only', () => {
+test('a dividend posted late is added to the stored return anywhere in the verification window', () => {
   const k = 2; const src = fixtures(N - 1 - k - 30, N - 1);
   const bars = src.etf.TLT.bars; const late = bars[bars.length - 1 - k - 2]; // two sessions before the old last session
   late.div = late.close * 0.004;
@@ -123,9 +123,35 @@ test('a dividend posted late is corrected in the newest stored sessions only', (
   assert.match(report.revisions[0], new RegExp('^TLT ' + late.date));
   const j = codec.dayNum(late.date); const i = Core.days.indexOf(j); const o = data.etf.TLT;
   assert.equal(o.r[i - o.s - 1], DATA.etf.TLT.r[i - o.s - 1] + Math.round(0.004 * 1e6 * Core.S.TLT.v[i] / Core.S.TLT.v[i - 1]));
-  // the same dividend further back is outside the revision window: the update stops instead
+  // further back too, when the dividend accounts for the whole difference
   const src2 = fixtures(N - 1 - k - 30, N - 1); const b2 = src2.etf.TLT.bars[src2.etf.TLT.bars.length - 1 - k - 10]; b2.div = b2.close * 0.004;
-  assert.throws(() => applyUpdate(truncate(DATA, k), src2, { now: NOW }), /TLT: return on/);
+  const r2 = applyUpdate(truncate(DATA, k), src2, { now: NOW }), i2 = Core.days.indexOf(codec.dayNum(b2.date));
+  assert.deepEqual(r2.report.revisions.map(x => x.split(':')[0]), ['TLT ' + b2.date]);
+  assert.match(r2.report.revisions[0], /posted late/);
+  assert.equal(r2.data.etf.TLT.r[i2 - o.s - 1], DATA.etf.TLT.r[i2 - o.s - 1] + Math.round(0.004 * 1e6 * Core.S.TLT.v[i2] / Core.S.TLT.v[i2 - 1]));
+  // a difference a dividend does not explain stops the update, as before
+  const src3 = fixtures(N - 1 - k - 30, N - 1); const b3 = src3.etf.TLT.bars[src3.etf.TLT.bars.length - 1 - k - 10]; b3.div = b3.close * 0.004; b3.close *= 1.002;
+  assert.throws(() => applyUpdate(truncate(DATA, k), src3, { now: NOW }), /TLT: return on/);
+});
+
+test('a dividend the source no longer lists is kept, with a warning; a lower close is not mistaken for one', () => {
+  // TLT and IEF in November 2026: Yahoo stopped listing their monthly distributions, so the download came out 0.40% lower
+  // than the stored return on the ex-date
+  const k = 2, back = 9, t = truncate(DATA, k), o = t.etf.TLT, j = o.r.length - 1 - back; o.r[j] += 4000; // a 0.4% dividend
+  const { data, report } = applyUpdate(t, fixtures(N - 1 - k - 30, N - 1), { now: NOW });
+  assert.equal(data.etf.TLT.r[j], o.r[j], 'the stored return keeps the dividend');
+  assert.deepEqual(data.etf.TLT.r.slice(j + 1), DATA.etf.TLT.r.slice(j + 1));
+  const at = Core.iso(o.s + 1 + j);
+  assert.ok(report.warnings.some(w => w.startsWith(`TLT: the download has no dividend on ${at} (0.40%)`)), report.warnings.join('; '));
+  // a close revised down 0.5% looks the same on its own day, but the next session disagrees: the update stops
+  const src = fixtures(N - 1 - k - 30, N - 1); const bars = src.etf.TLT.bars; bars[bars.length - 1 - k - back].close *= 0.995;
+  assert.throws(() => applyUpdate(truncate(DATA, k), src, { now: NOW }), /TLT: return on/);
+});
+
+test('every fund and stock is checked before the update stops, so one cannot hide another', () => {
+  const src = fixtures(N - 41, N - 1);
+  for (const key of ['QQQ', 'AMD']) { const bars = src.etf[key].bars; bars[bars.length - 12].close *= 1.01; }
+  assert.throws(() => applyUpdate(truncate(DATA, 1), src, { now: NOW }), (e) => /QQQ: return on/.test(e.message) && /AMD: return on/.test(e.message));
 });
 
 test('a revised S&P 500 close is corrected in the newest stored sessions only', () => {
