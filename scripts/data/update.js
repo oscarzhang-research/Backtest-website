@@ -6,6 +6,13 @@
 //    sessions are first recomputed from the download and must match what is stored, which proves that source and
 //    method still agree with the existing data. Only the newest REVISE_DAYS stored sessions may be corrected, and
 //    only by a clear amount (a dividend the source posted late, say).
+//  * A fund or stock with no bar for a new session gets a flat day there, and the next session catches up. Once the
+//    source has the bar, the flat day is filled in (re-split with the session that caught up, whose level must not
+//    change). A new session most funds and stocks have no bar for yet (the source can post the index first) is left,
+//    with any later one, for the next run.
+//  * A dividend the source posts late is added wherever it falls in the verification window; one the source no longer
+//    lists is kept (when the next session agrees, which shows the close itself is unchanged), with a warning.
+//  * Every fund and stock is checked before the update stops, so one series cannot hide another's problem.
 //  * Values that were provisional are rebuilt from their last confirmed point: the T-bill rate and USD/CNY after
 //    their last published observation, and the S&P 500 dividend of a month that was still running.
 //  * Monthly series (CPI, 10-year yield) gain the months published since.
@@ -23,6 +30,7 @@ const TOL_OK = 3e-4;        // |difference in a daily return| that still counts 
 const TOL_FAIL = 3e-3;      // any larger difference in the verification window stops the update
 const MAX_SOFT = 2;         // differences between TOL_OK and TOL_FAIL tolerated per series
 const REVISE_MAX = 0.03;    // the largest correction allowed in the revision window
+const DIV_MAX = 0.03;       // the largest single distribution (a share of the price) taken for a dividend
 const PRICE_ONLY = new Set();                     // series built from closes only, distributions excluded (none since SOXL
                                                   // and TQQQ were rebuilt as total return by scripts/rebuild-leveraged.js)
 const MIRRORS = { SOXLX: 'SOXL', TQQQX: 'TQQQ' }; // simulated before the fund's launch, the real fund afterwards
@@ -73,6 +81,18 @@ function applyUpdate(data0, src, opts = {}) {
   const cutoff = opts.live ? lastOpenedDay(now) : lastClosedDay(now);
   const newDays = [...gspc.keys()].filter(d => d > last0 && d <= cutoff).sort((a, b) => a - b);
   for (const d of newDays) { const wd = new Date(d * 864e5).getUTCDay(); if (wd === 0 || wd === 6) throw new Error('^GSPC has a weekend session on ' + isoOf(d)); }
+  // a session most funds and stocks have no bar for yet is only partly published: leave it, and any later one, for the
+  // next run rather than store flat days for nearly every series
+  {
+    const ser = Object.keys(data.etf).filter(k => !MIRRORS[k]);
+    const has = ser.map(k => { const it = src.etf && src.etf[k]; return new Set((it && Array.isArray(it.bars) ? it.bars : []).filter(x => x.close > 0).map(x => dayNum(x.date))); });
+    const posted = (d) => has.filter(h => h.has(d)).length;
+    const cut = newDays.findIndex(d => posted(d) * 2 < ser.length);
+    if (cut >= 0) {
+      warn(`${isoOf(newDays[cut])}: only ${posted(newDays[cut])} of ${ser.length} funds and stocks have a bar for it so far; ${newDays.length - cut > 1 ? `it and the ${newDays.length - cut - 1} session(s) after it are` : 'it is'} left for the next run`);
+      newDays.splice(cut);
+    }
+  }
   let prev = last0; for (const d of newDays) { data.cal += encodeGap(d - prev); prev = d; }
   const days = days0.concat(newDays); const N = days.length;
   const idx = new Map(days.map((d, i) => [d, i]));
@@ -99,18 +119,33 @@ function applyUpdate(data0, src, opts = {}) {
 
   // ---------- 3. ETFs and stocks: daily returns in millionths ----------
   const revisedAt = {}; // key -> Map(calendar index -> new value) for the mirrors
-  for (const k of Object.keys(data.etf)) {
-    if (MIRRORS[k]) continue;
+  const updateEtf = (k) => {
     const o = data.etf[k];
     const end = o.s + o.r.length; // calendar index of the last stored session
-    if (end !== N0 - 1) { warn(`${k}: the stored series ends on ${isoOf(days0[end])}, not ${data.asOf}; left unchanged`); continue; }
+    if (end !== N0 - 1) { warn(`${k}: the stored series ends on ${isoOf(days0[end])}, not ${data.asOf}; left unchanged`); return; }
     const b = barsOf(src.etf && src.etf[k], k);
     const priceOnly = PRICE_ONLY.has(k);
     const from = Math.max(o.s + 1, N0 - VERIFY_DAYS);
     // the close just before the window: the latest bar on or before that session
     let prevClose = null; for (const [d, x] of b) if (d <= days[from - 1] && (prevClose === null || d > prevClose.d)) prevClose = { d, close: x.close };
     if (!prevClose) throw new Error(`${k}: the download starts after ${isoOf(days[from - 1])}`);
-    let pc = prevClose.close, gap = false, n = 0, maxD = 0, soft = 0, missNew = 0; const rev = new Map(); const appended = [];
+    let pc = prevClose.close, gap = false, n = 0, maxD = 0, soft = 0, missNew = 0; const rev = new Map(); const appended = [], dropped = [];
+    const lim = LEVERAGED.has(k) ? 0.95 : 0.5; // the largest plausible daily return
+    // Stored flat days from session i on (the source had no bar yet) that the download now has: their returns, plus the
+    // session after them when it is stored (it caught up, spanning the gap) and its level agrees. null otherwise.
+    const fillGap = (i, r) => {
+      const out = [[i, r]]; let q = i + 1, c = b.get(days[i]).close;
+      for (; q < N0; q++) {
+        const bq = b.get(days[q]); if (!bq) return null;
+        out.push([q, (bq.close + (priceOnly ? 0 : bq.div)) / c - 1]); c = bq.close;
+        if (o.r[q - o.s - 1] !== 0) break; // the session that caught up
+      }
+      if (!out.every(([, x]) => Math.abs(x) <= lim)) return null;
+      if (q < N0 && Math.abs(out.reduce((a, [, x]) => a * (1 + x), 1) / (1 + o.r[q - o.s - 1] / 1e6) - 1) > TOL_OK) return null;
+      return out;
+    };
+    // the next stored session's return agrees with the download, so the close of session i is the one stored
+    const nextAgrees = (i) => { const b0 = b.get(days[i]), b1 = i + 1 < N0 && b.get(days[i + 1]); return !!b1 && Math.abs((b1.close + (priceOnly ? 0 : b1.div)) / b0.close - 1 - o.r[i - o.s] / 1e6) <= TOL_OK; };
     for (let i = from; i < N; i++) {
       const bar = b.get(days[i]);
       if (!bar) { // carry the close; the next return spans both days
@@ -118,10 +153,24 @@ function applyUpdate(data0, src, opts = {}) {
         else warn(`${k}: no data for ${isoOf(days[i])} in the verification window`);
         gap = true; continue;
       }
-      const r = (bar.close + (priceOnly ? 0 : bar.div)) / pc - 1; pc = bar.close;
+      const p0 = pc, r = (bar.close + (priceOnly ? 0 : bar.div)) / p0 - 1; pc = bar.close;
       if (i >= N0) { appended.push(r); gap = false; continue; }
       const j = i - o.s - 1; const old = o.r[j] / 1e6; const d = Math.abs(r - old);
       if (gap) { gap = false; continue; } // a return spanning a missing bar cannot be compared
+      const fill = o.r[j] === 0 && d > TOL_OK ? fillGap(i, r) : null;
+      if (fill) { // the later sessions of the gap now match what is stored, so the loop counts them as verified
+        for (const [q, x] of fill) { const jq = q - o.s - 1; rep.revisions.push(`${k} ${isoOf(days[q])}: ${fmtPct(o.r[jq] / 1e6)} → ${fmtPct(x)} (filled in: no data when stored)`); o.r[jq] = Math.round(x * 1e6); rev.set(q, o.r[jq]); }
+        continue;
+      }
+      if (!priceOnly && d > TOL_OK) {
+        // a dividend the stored return lacks and the download now has, which accounts for the whole difference
+        if (bar.div > 0 && bar.div / p0 <= DIV_MAX && Math.abs(old - (bar.close / p0 - 1)) <= TOL_OK) {
+          o.r[j] = Math.round(r * 1e6); rev.set(i, o.r[j]);
+          rep.revisions.push(`${k} ${isoOf(days[i])}: ${fmtPct(old)} → ${fmtPct(r)} (dividend ${bar.div} posted late)`); continue;
+        }
+        // a dividend the stored return has and the source no longer lists: kept
+        if (!bar.div && old - r > TOL_OK && old - r <= DIV_MAX && nextAgrees(i)) { dropped.push(`${isoOf(days[i])} (${fmtPct(old - r)})`); n++; continue; }
+      }
       if (i < N0 - REVISE_DAYS) {
         n++; maxD = Math.max(maxD, d);
         if (d > TOL_FAIL) throw new Error(`${k}: return on ${isoOf(days[i])} is ${fmtPct(r)} in the download but ${fmtPct(old)} stored`);
@@ -132,9 +181,9 @@ function applyUpdate(data0, src, opts = {}) {
         rep.revisions.push(`${k} ${isoOf(days[i])}: ${fmtPct(old)} → ${fmtPct(r)}${bar.div ? ` (dividend ${bar.div})` : ''}`);
       } else { n++; maxD = Math.max(maxD, d); }
     }
+    if (dropped.length) warn(`${k}: the download has no dividend on ${dropped.join(', ')}, where the stored return has one; the stored returns are kept, and new dividends may be missing from the source too`);
     if (soft > MAX_SOFT) throw new Error(`${k}: ${soft} returns in the verification window differ by more than ${TOL_OK}`);
     if (missNew > 2) throw new Error(`${k}: no data for ${missNew} of the ${newDays.length} new sessions`);
-    const lim = LEVERAGED.has(k) ? 0.95 : 0.5;
     appended.forEach((r, q) => { if (!(Math.abs(r) <= lim)) throw new Error(`${k}: implausible return ${fmtPct(r)} on ${isoOf(newDays[q])}`); o.r.push(Math.round(r * 1e6)); });
     revisedAt[k] = rev;
     const lastBar = b.get(days[N - 1]);
@@ -143,13 +192,17 @@ function applyUpdate(data0, src, opts = {}) {
     }
     let lv = 1; appended.forEach(r => { lv *= 1 + r; });
     rep.series.push({ k, last: lastBar ? lastBar.close : NaN, ret: lv - 1, n, maxD, soft, revised: rev.size });
-  }
+  };
+  const errs = [];
+  for (const k of Object.keys(data.etf)) { if (MIRRORS[k]) continue; try { updateEtf(k); } catch (e) { errs.push(e.message); } }
+  if (errs.length) throw new Error(errs.join('; '));
   for (const [k, from] of Object.entries(MIRRORS)) {
     const o = data.etf[k], s = data.etf[from]; if (!o || !s) continue;
     const o0 = data0.etf[k], s0 = data0.etf[from];
     if (o.s + o.r.length !== N0 - 1) { warn(`${k}: the stored series ends early; left unchanged`); continue; }
     for (let i = Math.max(N0 - VERIFY_DAYS, s0.s + 1); i < N0; i++) if (o0.r[i - o0.s - 1] !== s0.r[i - s0.s - 1]) throw new Error(`${k} and ${from} differ on ${isoOf(days[i])} before the update`);
     for (let i = Math.max(N0 - REVISE_DAYS, s.s + 1); i < s.s + 1 + s.r.length; i++) o.r[i - o.s - 1] = s.r[i - s.s - 1];
+    for (const i of (revisedAt[from] || new Map()).keys()) o.r[i - o.s - 1] = s.r[i - s.s - 1]; // a gap filled in further back
   }
   for (const k in data.meta || {}) { const o = data.etf[k]; if (o) data.meta[k] = Object.assign({}, data.meta[k], { last: isoOf(days[o.s + o.r.length]), n: o.r.length + 1 }); }
   if (newDays.length && data.lastPx) {
