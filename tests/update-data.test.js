@@ -65,8 +65,12 @@ test('cutting off the last week and updating again reproduces the stored data', 
   for (const key in DATA.etf) assert.deepEqual(data.etf[key], DATA.etf[key], key);
   assert.deepEqual(data.fx, DATA.fx);
   assert.deepEqual(data.lr.y10, DATA.lr.y10);
-  // the S&P 500 dividend of the unfinished month is recomputed from SPY's trailing dividends (+ fee)
-  assert.deepEqual(data.spx.D.slice(0, -1), DATA.spx.D.slice(0, -1));
+  // the S&P 500 dividend of the month still running at the cut, and of any later one, is recomputed from SPY's trailing
+  // dividends (+ fee); the months finished before stay as they are (early in a month the cut falls in the month before)
+  const m0 = codec.monthKey(DATA.spx.m0), mCut = codec.monthKey(Core.iso(N - 1 - k)), mNext = codec.monthKey(Core.iso(N - k));
+  const redo = (mNext === mCut ? mCut : mNext) - m0;
+  assert.deepEqual(data.spx.D.slice(0, redo), DATA.spx.D.slice(0, redo));
+  for (let j = redo; j < DATA.spx.D.length; j++) assert.ok(Math.abs(data.spx.D[j] / DATA.spx.D[j] - 1) < 0.15, `S&P 500 dividend of ${codec.monthIso(m0 + j)}`);
   const src = fixtures(N - 1 - k - 30, N - 1); const spy = src.etf.SPY.bars; const t = codec.dayNum(DATA.asOf);
   const ttm = spy.filter(x => codec.dayNum(x.date) > t - 365 && codec.dayNum(x.date) <= t).reduce((s2, x) => s2 + x.div, 0);
   assert.equal(data.spx.D[data.spx.D.length - 1], Math.round((ttm / spy[spy.length - 1].close + SPY_FEE) * Math.round(Core.spxPrice[N - 1] * 100)));
