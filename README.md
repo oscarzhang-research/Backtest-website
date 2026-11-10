@@ -48,6 +48,7 @@ Full details are on the Methodology tab.
 | SPY, QQQ, SOXX, TLT, IEF, GLD | from 1995 / 1999 / 2001 / 2002 / 2004 | Yahoo closes + dividends + splits (Johnbrick123/sp500-data) |
 | SMH, VGT | from 2006-09-29 | yfinance adjusted closes (public cache) |
 | SOXL, TQQQ | from 2010 (simulated from 2001 / 1999) | Yahoo full-precision closes + distributions; before launch SOXL\* = 3× the PHLX Semiconductor index, TQQQ\* = 3× QQQ, calibrated on the real funds ([`scripts/rebuild-leveraged.js`](scripts/rebuild-leveraged.js)) |
+| Opening prices of SOXL, TQQQ, SOXX, QQQ | from 2010 | Yahoo split-adjusted opens, kept as each session's move from the previous close to its open (S6's check of judging and buying at the next open) |
 | Ten chip stocks | mostly from 1995 | Yahoo closes + dividends + splits |
 | T-bills · CPI-U · VIX | 1928+ · 1913+ · 1990+ | Ken French, FRED DTB3, then the U.S. Treasury · BLS · CBOE, then Yahoo |
 | 10-year yield · gold · USD/CNY (long-run and currency views) | 1953+ · 1960+ · 1981+ | FRED GS10, then the U.S. Treasury · World Bank · FRED H.10, then Yahoo |
@@ -58,7 +59,7 @@ All data is embedded in [`data/market-data.js`](data/market-data.js) in a compac
 
 After every US market close (23:17 UTC: 19:17 in New York in summer, 18:17 in winter) and again before the next open (11:17 UTC, to catch up anything the evening run missed), the [Update market data](.github/workflows/update-data.yml) workflow:
 
-1. downloads the new sessions from Yahoo Finance (the S&P 500, VIX, USD/CNY and every ETF and stock: closes, dividends, splits), the U.S. Treasury (T-bill rate, 10-year yield) and the BLS (CPI). FRED refuses connections from GitHub's servers;
+1. downloads the new sessions from Yahoo Finance (the S&P 500, VIX, USD/CNY and every ETF and stock: closes, dividends, splits, and the opens of SOXL, TQQQ, SOXX and QQQ), the U.S. Treasury (T-bill rate, 10-year yield) and the BLS (CPI). FRED refuses connections from GitHub's servers;
 2. recomputes the last 20 stored sessions of every series from the new download and stops if they disagree;
 3. appends the new sessions to `data/market-data.js` and rebuilds values that were provisional (the latest T-bill rate and exchange rate, the S&P 500 dividend of the current month);
 4. runs the unit tests and the browser smoke test on the result, commits it to `main` and redeploys the site.

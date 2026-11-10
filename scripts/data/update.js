@@ -13,6 +13,9 @@
 //  * A dividend the source posts late is added wherever it falls in the verification window; one the source no longer
 //    lists is kept (when the next session agrees, which shows the close itself is unchanged), with a warning.
 //  * Every fund and stock is checked before the update stops, so one series cannot hide another's problem.
+//  * Opening prices (OPEN_KEYS, from OPEN_FROM) are derived data that never stop the update: each session's move from the
+//    previous close to its open is appended, a stored one the download disagrees with is replaced, and a series without
+//    them is filled in once from a download of its whole history, if that agrees with the stored returns.
 //  * Values that were provisional are rebuilt from their last confirmed point: the T-bill rate and USD/CNY after
 //    their last published observation, and the S&P 500 dividend of a month that was still running.
 //  * Monthly series (CPI, 10-year yield) gain the months published since.
@@ -35,6 +38,8 @@ const PRICE_ONLY = new Set();                     // series built from closes on
                                                   // and TQQQ were rebuilt as total return by scripts/rebuild-leveraged.js)
 const MIRRORS = { SOXLX: 'SOXL', TQQQX: 'TQQQ' }; // simulated before the fund's launch, the real fund afterwards
 const LEVERAGED = new Set(['SOXL', 'TQQQ', 'SOXLX', 'TQQQX']);
+const OPEN_KEYS = ['SOXL', 'TQQQ', 'SOXX', 'QQQ']; // series with opening prices (judging and buying at the next open, S6)
+const OPEN_FROM = '2010-02-01';                    // from the leveraged funds' launch
 const RF_EXACT_UNTIL = '2025-12-19';            // last FRED DTB3 value in the original build (then the Fed funds target midpoint)
 const SPY_FEE = 0.000945;                       // SPY's expense ratio, added back to its yield to estimate the index yield
 
@@ -53,7 +58,7 @@ function lastOpenedDay(now) { const c = nyClock(now); return c.min >= OPEN_MIN ?
 function barsOf(item, name) {
   if (!item || !Array.isArray(item.bars) || !item.bars.length) throw new Error(name + ': no data downloaded');
   const m = new Map();
-  for (const b of item.bars) { if (!(b.close > 0) || !Number.isFinite(b.close)) continue; m.set(dayNum(b.date), { close: b.close, div: +b.div || 0 }); }
+  for (const b of item.bars) { if (!(b.close > 0) || !Number.isFinite(b.close)) continue; m.set(dayNum(b.date), { close: b.close, div: +b.div || 0, open: b.open > 0 ? b.open : NaN }); }
   return m;
 }
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -205,6 +210,39 @@ function applyUpdate(data0, src, opts = {}) {
     for (const i of (revisedAt[from] || new Map()).keys()) o.r[i - o.s - 1] = s.r[i - s.s - 1]; // a gap filled in further back
   }
   for (const k in data.meta || {}) { const o = data.etf[k]; if (o) data.meta[k] = Object.assign({}, data.meta[k], { last: isoOf(days[o.s + o.r.length]), n: o.r.length + 1 }); }
+
+  // ---------- 3b. Opening prices: each session's (open + dividend) / previous close − 1, in millionths ----------
+  if (data.open || !opts.live) {
+    const oo = data.open || {}, f0 = days.findIndex(d => d >= dayNum(OPEN_FROM));
+    for (const k of OPEN_KEYS) {
+      const E = data.etf[k]; if (!E || f0 < 0) continue;
+      const lim = LEVERAGED.has(k) ? 0.95 : 0.5, s0 = Math.max(E.s + 1, f0);
+      const ovn = (bm, i) => { const b1 = bm.get(days[i]), b0 = bm.get(days[i - 1]); if (!b1 || !b0 || !(b1.open > 0)) return null; const x = (b1.open + b1.div) / b0.close - 1; return Math.abs(x) <= lim ? Math.round(x * 1e6) : null; };
+      let o = oo[k];
+      if (!o) { // added once from the whole history, where it agrees with the stored returns (not in a live update)
+        const it = !opts.live && src.openHist && src.openHist[k];
+        if (!it || !Array.isArray(it.bars) || !it.bars.length) { if (!opts.live) warn(`${k}: no opening prices yet (its whole history was not downloaded); next time`); continue; }
+        const h = barsOf(it, k), r = []; let cnt = 0, bad = 0;
+        for (let i = s0; i < N0; i++) {
+          const b1 = h.get(days[i]), b0 = h.get(days[i - 1]); let x = null;
+          if (b1 && b0) { cnt++; if (Math.abs((b1.close + b1.div) / b0.close - 1 - E.r[i - E.s - 1] / 1e6) > 0.005) bad++; else x = ovn(h, i); }
+          r.push(x);
+        }
+        if (cnt < 0.9 * (N0 - s0) || bad > 0.01 * cnt) { warn(`${k}: its whole-history download covers ${cnt} of ${N0 - s0} sessions and disagrees with the stored returns on ${bad}; no opening prices added`); continue; }
+        o = oo[k] = { s: s0, r };
+        check(`${k}: opening prices added from ${isoOf(days[s0])} (${r.filter(x => x != null).length} of ${r.length} sessions${bad ? `; ${bad} left out where the download disagrees with the stored return` : ''})`);
+      }
+      while (o.s + o.r.length < N0) o.r.push(null); o.r.length = N0 - o.s;
+      // the verification window again, then the new sessions, from the regular download
+      const bm = barsOf(src.etf && src.etf[k], k); let fixed = 0;
+      for (let i = Math.max(o.s, N0 - VERIFY_DAYS); i < N; i++) {
+        const x = ovn(bm, i), j = i - o.s;
+        if (i >= N0) o.r.push(x); else if (x != null && (o.r[j] == null || Math.abs(x - o.r[j]) > TOL_OK * 1e6)) { o.r[j] = x; fixed++; }
+      }
+      if (fixed) check(`${k}: ${fixed} opening price(s) of the last ${VERIFY_DAYS} sessions replaced by the download's`);
+    }
+    if (Object.keys(oo).length) data.open = oo;
+  }
   if (newDays.length && data.lastPx) {
     const t = isoOf(days[N - 1]); data.lastPx.date = t;
     for (const key of Object.keys(data.lastPx)) if (/_d$/.test(key)) data.lastPx[key] = t;
@@ -358,6 +396,10 @@ function validate(data) {
   for (let i = 1; i < N; i++) { const wd = Core.wday[i]; if (Core.days[i] <= Core.days[i - 1]) throw new Error('calendar not increasing at ' + i); if (i > N - 400 && (wd === 0 || wd === 6)) throw new Error('weekend session ' + Core.iso(i)); }
   for (const k in Core.S) { const s = Core.S[k]; for (let i = s.s; i <= s.e; i++) if (!(s.v[i] > 0) || !Number.isFinite(s.v[i])) throw new Error(`${k}: bad value on ${Core.iso(i)}`); }
   for (const k in data.etf) if (Core.S[k].e !== N - 1) throw new Error(`${k} ends on ${Core.iso(Core.S[k].e)}`);
+  for (const k in data.open || {}) {
+    const o = data.open[k]; if (!data.etf[k] || o.s + o.r.length !== N) throw new Error(`opening prices of ${k} do not end on ${data.asOf}`);
+    for (const x of o.r) if (x !== null && !(Number.isInteger(x) && Math.abs(x) < 1e6)) throw new Error(`opening prices of ${k}: bad value ${x}`);
+  }
   for (let i = N - 400; i < N; i++) {
     if (!(Core.rfAnn[i] > -0.01 && Core.rfAnn[i] < 0.25)) throw new Error('T-bill rate out of range on ' + Core.iso(i));
     if (!(Core.vix[i] >= 5 && Core.vix[i] <= 150)) throw new Error('VIX out of range on ' + Core.iso(i));
@@ -386,4 +428,4 @@ function commitMessage(rep) {
   return L.join('\n') + '\n';
 }
 
-module.exports = { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, VERIFY_DAYS, REVISE_DAYS, RF_EXACT_UNTIL, SPY_FEE };
+module.exports = { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, VERIFY_DAYS, REVISE_DAYS, RF_EXACT_UNTIL, SPY_FEE, OPEN_KEYS, OPEN_FROM };

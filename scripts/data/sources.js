@@ -9,7 +9,7 @@
 // and the BLS allows 25 requests a day.
 'use strict';
 const { dayNum, isoOf, monthKey, monthIso, decodeCalendar } = require('./codec.js');
-const { MIRRORS, RF_EXACT_UNTIL } = require('./update.js');
+const { MIRRORS, RF_EXACT_UNTIL, OPEN_KEYS, OPEN_FROM } = require('./update.js');
 
 // Yahoo answers 429 to unusual user agents (a non-standard Chrome string or curl's), so use a common browser's.
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -39,7 +39,7 @@ async function yahooSession() {
   return yahooCookie;
 }
 
-// Yahoo Finance chart API: split-adjusted daily closes plus dividends by ex-date (also split-adjusted). While a session
+// Yahoo Finance chart API: split-adjusted daily opens and closes plus dividends by ex-date (also split-adjusted). While a session
 // is trading, its bar holds the latest price; `time` is the time of that price (seconds). opt.fill adds that bar from
 // the quote itself when the daily bars do not have it yet.
 async function yahoo(symbol, fromDay, toDay, opt = {}) {
@@ -61,11 +61,11 @@ async function yahoo(symbol, fromDay, toDay, opt = {}) {
   const splits = Object.values(ev.splits || {}).map(v => ({ date: dateOf(v.date), ratio: v.numerator / v.denominator }));
   const q = r.indicators.quote[0] || {}; const ts = r.timestamp || [];
   const byDate = new Map();
-  for (let i = 0; i < ts.length; i++) { const c = q.close && q.close[i]; if (c == null || !(c > 0)) continue; const d = dateOf(ts[i]); byDate.set(d, { date: d, close: c, div: divs.get(d) || 0 }); }
+  for (let i = 0; i < ts.length; i++) { const c = q.close && q.close[i]; if (c == null || !(c > 0)) continue; const d = dateOf(ts[i]), op = q.open && q.open[i]; byDate.set(d, { date: d, close: c, open: op > 0 ? op : null, div: divs.get(d) || 0 }); }
   const m = r.meta || {}; const time = m.regularMarketTime > 0 ? m.regularMarketTime : null;
   if (opt.fill && time && m.regularMarketPrice > 0) {
     const d = dateOf(time); const wd = new Date(dayNum(d) * 864e5).getUTCDay();
-    if (wd > 0 && wd < 6 && !byDate.has(d) && [...byDate.keys()].every(x => x < d)) byDate.set(d, { date: d, close: m.regularMarketPrice, div: divs.get(d) || 0 });
+    if (wd > 0 && wd < 6 && !byDate.has(d) && [...byDate.keys()].every(x => x < d)) byDate.set(d, { date: d, close: m.regularMarketPrice, open: null, div: divs.get(d) || 0 });
   }
   const bars = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
   const orphanDivs = [...divs.keys()].filter(d => !byDate.has(d));
@@ -125,6 +125,15 @@ async function fetchAll(data, opts = {}) {
     const x = src.etf[k]; const nd = x.bars.filter(b => b.div && b.date > isoOf(last - 45)).length;
     log(`  ${k} ${x.bars.length} bars${nd ? `, ${nd} dividend(s)` : ''}${x.splits.length ? `, splits ${x.splits.map(s => s.date + ' ' + s.ratio).join(', ')}` : ''}${x.orphanDivs.length ? `, dividends without a bar: ${x.orphanDivs.join(', ')}` : ''}`);
     if (x.orphanDivs.length) src.issues.push(`${k}: dividends on days without a bar (${x.orphanDivs.join(', ')}) were ignored`);
+    await sleep(opts.delay == null ? 300 : opts.delay);
+  }
+
+  // the whole history of a series that has no opening prices yet (once: they are kept up from then on)
+  src.openHist = {};
+  if (!light) for (const k of OPEN_KEYS) {
+    if (!data.etf[k] || (data.open && data.open[k])) continue;
+    const h = await optional(`${k} whole history`, () => yahoo(k, dayNum(OPEN_FROM) - 10, to));
+    if (h) { src.openHist[k] = h; log(`  ${k} whole history for its opening prices: ${h.bars.length} bars`); }
     await sleep(opts.delay == null ? 300 : opts.delay);
   }
 

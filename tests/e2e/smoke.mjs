@@ -233,6 +233,41 @@ for (const [lang, live, must] of [
   report('soxl days', problems);
   await ctx.close();
 }
+// SOXL S6 at a price typed in (an overnight quote): the conditions as if the next session closed there; the fall
+// threshold set to it in one click; and the check with opening prices (or its note until the data have them)
+{
+  const { ctx, page, errors } = await open('zh', 'soxl');
+  const text = (sel) => page.$eval(sel, (el) => el.innerText).catch(() => '');
+  const problems = [];
+  for (let k = 0; k < 120 && !(await page.$('#dipNowPx')); k++) await page.waitForTimeout(250);
+  const t0 = await text('#dipNow');
+  if (!t0) problems.push('no status line');
+  else {
+    const px = await page.evaluate(() => window.__DATA__.lastPx.SOXL), p = Math.round(px * 0.9 * 100) / 100;
+    await page.fill('#dipNowPx', String(p)); await page.press('#dipNowPx', 'Enter');
+    let t1 = ''; for (let k = 0; k < 40; k++) { await page.waitForTimeout(250); t1 = await text('#dipNow'); if (t1.includes('按现价')) break; }
+    if (!t1.includes(`按现价 $${p.toFixed(2)}`) || !t1.includes('低 10.0%')) problems.push('the price typed in is not used: ' + t1.slice(0, 120));
+    if (!/SOXX ≈ \$[\d.,]+（按 SOXL 涨跌的 1\/3 估算）/.test(t1)) problems.push('no estimate for SOXX');
+    const fall = (t) => { const m = t.match(/距高点 -?([\d.]+)%/); return m ? +m[1] : NaN; };
+    if (!(fall(t1) > fall(t0))) problems.push(`the fall did not deepen at a lower price (${fall(t0)} → ${fall(t1)})`);
+    if (await page.$('#dipNowDd')) {
+      await page.click('#dipNowDd');
+      for (let k = 0; k < 40; k++) { await page.waitForTimeout(250); if ((await page.$eval('#dipDdLo', (el) => el.value)) === String(Math.floor(fall(t1)))) break; }
+      const lo = await page.$eval('#dipDdLo', (el) => el.value);
+      if (lo !== String(Math.floor(fall(t1)))) problems.push(`the fall threshold is ${lo}, not ${Math.floor(fall(t1))}`);
+    } else problems.push('no button for the fall threshold');
+    const oc = await text('#dipOpen');
+    if (!oc.includes('换成开盘价判断')) problems.push('no check with opening prices');
+    else if (!(await page.$('#dipOpenT')) && !oc.includes('开盘价数据会在下一次数据更新时加入')) problems.push('neither the check nor its note: ' + oc.slice(-120));
+    if (/\bNaN\b|undefined/.test(t1 + oc)) problems.push('NaN/undefined at a price typed in');
+    await page.click('#sx-dip button:text-is("恢复按收盘")');
+    for (let k = 0; k < 40 && (await text('#dipNow')).includes('按现价'); k++) await page.waitForTimeout(250);
+    if ((await text('#dipNow')).includes('按现价')) problems.push('"恢复按收盘" did not go back to the close');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('soxl now', problems);
+  await ctx.close();
+}
 // TQQQ: each section's own dates — the simulated start, an end date, remembered after a reload
 {
   const { ctx, page, errors } = await open('zh', 'tqqq');
@@ -377,6 +412,24 @@ for (const [lang, live, must] of [
   if ((await rowsOf('lc-todayT')) !== 9) problems.push('today’s table has ' + (await rowsOf('lc-todayT')) + ' rows');
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('levcmp exits', problems);
+  await ctx.close();
+}
+// SOXL vs TQQQ, C4: each fund at a price typed in
+{
+  const { ctx, page, errors } = await open(null, 'levcmp');
+  const problems = [];
+  for (let k = 0; k < 160 && !(await page.$('#lc-c4Px-TQQQ')); k++) await page.waitForTimeout(250);
+  if (!(await page.$('#lc-c4Px-TQQQ'))) problems.push('no price boxes in C4');
+  else {
+    const px = await page.evaluate(() => window.__DATA__.lastPx.TQQQ), p = Math.round(px * 1.05 * 100) / 100;
+    await page.fill('#lc-c4Px-TQQQ', String(p)); await page.press('#lc-c4Px-TQQQ', 'Enter');
+    let t = ''; for (let k = 0; k < 40; k++) { await page.waitForTimeout(250); t = await page.$eval('#lc-c4Now', (el) => el.innerText); if (t.includes(`at $${p.toFixed(2)}`)) break; }
+    if (!t.includes(`TQQQ (at $${p.toFixed(2)}, 5.0% above the close`)) problems.push('TQQQ at the price typed in: ' + t.slice(0, 160));
+    if (/SOXL \(at \$/.test(t)) problems.push('SOXL moved without a price');
+    if (/\bNaN\b|undefined/.test(t)) problems.push('NaN/undefined in C4 at a price typed in');
+  }
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('levcmp now', problems);
   await ctx.close();
 }
 await browser.close();

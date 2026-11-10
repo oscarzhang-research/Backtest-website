@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { Core, DATA, ROOT } = require('./helpers/site.js');
 const codec = require('../scripts/data/codec.js');
-const { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, SPY_FEE } = require('../scripts/data/update.js');
+const { applyUpdate, validate, reportMarkdown, commitMessage, lastClosedDay, lastOpenedDay, nyClock, MIRRORS, PRICE_ONLY, SPY_FEE, OPEN_KEYS, OPEN_FROM } = require('../scripts/data/update.js');
 
 const N = Core.N;
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -18,6 +18,7 @@ function truncate(data, k) {
   const d = clone(data); const days = codec.decodeCalendar(data); const last = codec.isoOf(days[N - 1 - k]);
   d.cal = d.cal.slice(0, -k); d.asOf = last; d.spx.pxd = d.spx.pxd.slice(0, -k); d.rf = d.rf.slice(0, -k); d.vix.v = d.vix.v.slice(0, -k);
   for (const key in d.etf) d.etf[key].r = d.etf[key].r.slice(0, -k);
+  for (const key in d.open || {}) d.open[key].r = d.open[key].r.slice(0, -k);
   for (const key in d.meta) d.meta[key] = Object.assign({}, d.meta[key], { last, n: d.meta[key].n - k });
   d.fx.cny.dv = d.fx.cny.dv.slice(0, -k); if (d.fx.cny.last > last) d.fx.cny.last = last;
   if (d.rfThrough && d.rfThrough > last) d.rfThrough = last;
@@ -25,6 +26,13 @@ function truncate(data, k) {
 }
 // SPY goes ex-dividend on the third Friday of Mar/Jun/Sep/Dec (or the next session when that is a holiday)
 const exDateIn = (a, b) => { for (let d = a + 1; d <= b; d++) { const dt = new Date(d * 864e5); if (dt.getUTCDay() === 5 && dt.getUTCDate() >= 15 && dt.getUTCDate() <= 21 && [2, 5, 8, 11].includes(dt.getUTCMonth())) return true; } return false; };
+// A session's opening price on the scale of the stored total-return levels: the stored one where the data have it, else
+// 30% of the day's move made overnight
+function openOf(k, i) {
+  const v = Core.S[k].v, o = DATA.open && DATA.open[k];
+  if (o && i >= o.s && i < o.s + o.r.length) return o.r[i - o.s] == null ? null : v[i - 1] * (1 + o.r[i - o.s] / 1e6);
+  return v[i - 1] * (1 + 0.3 * (v[i] / v[i - 1] - 1));
+}
 // "Downloads" rebuilt from the stored series for sessions [a, b]. ETF closes are the stored total-return levels;
 // SPY gets quarterly dividends at the stored S&P 500 yield with prices that keep its total return unchanged.
 function fixtures(a, b) {
@@ -33,7 +41,7 @@ function fixtures(a, b) {
   src.gspc = { bars: bars(i => ({ close: Core.spxPrice[i] })) };
   src.vix = { bars: bars(i => ({ close: Math.round(Core.vix[i] * 100) / 100 })) };
   src.ndx = null;
-  for (const k in DATA.etf) if (!MIRRORS[k]) src.etf[k] = { bars: bars(i => ({ close: Core.S[k].v[i] })) };
+  for (const k in DATA.etf) if (!MIRRORS[k]) src.etf[k] = { bars: bars(i => ({ close: Core.S[k].v[i], open: openOf(k, i) })) };
   const D = DATA.spx.D, m0 = codec.monthKey(DATA.spx.m0); const L = Core.S.SPY.v; let P = 500; const spy = [];
   for (let i = b - 600; i <= b; i++) {
     const iso = Core.iso(i); let div = 0;
@@ -41,7 +49,7 @@ function fixtures(a, b) {
       if (exDateIn(Core.days[i - 1], Core.days[i])) div = ((D[Math.min(D.length - 1, codec.monthKey(iso) - m0)] / 100) / Core.spxPrice[i] - SPY_FEE) / 4 * P;
       P = P * L[i] / L[i - 1] - div;
     }
-    spy.push({ date: iso, close: P, div });
+    spy.push({ date: iso, close: P, open: null, div });
   }
   src.etf.SPY = { bars: spy };
   src.tbill = new Map(); for (let i = b - 300; i <= b; i++) src.tbill.set(Core.iso(i), Math.round(Core.rfAnn[i] * 1e4) / 100);
@@ -360,7 +368,7 @@ test('the downloaders read Yahoo chart JSON, Treasury CSV and BLS JSON, and the 
   const toYahoo = (bars) => {
     const ts = bars.map(b => codec.dayNum(b.date) * 86400 + 13.5 * 3600); // 09:30 in New York (EDT)
     const dividends = {}; bars.forEach((b, q) => { if (b.div) dividends[ts[q]] = { amount: b.div, date: ts[q] }; });
-    return JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, exchangeTimezoneName: 'America/New_York' }, timestamp: ts, events: { dividends }, indicators: { quote: [{ close: bars.map(b => b.close) }] } }], error: null } });
+    return JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, exchangeTimezoneName: 'America/New_York' }, timestamp: ts, events: { dividends }, indicators: { quote: [{ close: bars.map(b => b.close), open: bars.map(b => (b.open == null ? null : b.open)) }] } }], error: null } });
   };
   const usDate = (iso) => iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4);
   const billCsv = 'Date,"4 WEEKS BANK DISCOUNT","13 WEEKS BANK DISCOUNT"\n' + [...src.tbill].reverse().map(([d, v]) => `${usDate(d)},4.00,${v == null ? '' : v.toFixed(2)}`).join('\n') + '\n';
@@ -404,7 +412,7 @@ test('a live download asks Yahoo only, and the quote fills the bar Yahoo has not
     const sym = y && decodeURIComponent(y[1]); const s2 = !y ? null : sym === '^GSPC' ? src.gspc : sym === '^VIX' ? src.vix : src.etf[sym];
     if (!s2) return { ok: false, status: 404, text: async () => '' };
     const bars = s2.bars.slice(0, -1), last = s2.bars[s2.bars.length - 1]; // the daily bars stop the day before; the quote is today's
-    return { ok: true, status: 200, text: async () => JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, regularMarketTime: tq, regularMarketPrice: last.close }, timestamp: bars.map(b => codec.dayNum(b.date) * 86400 + 13.5 * 3600), indicators: { quote: [{ close: bars.map(b => b.close) }] } }], error: null } }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ chart: { result: [{ meta: { gmtoffset: -14400, regularMarketTime: tq, regularMarketPrice: last.close }, timestamp: bars.map(b => codec.dayNum(b.date) * 86400 + 13.5 * 3600), indicators: { quote: [{ close: bars.map(b => b.close), open: bars.map(b => (b.open == null ? null : b.open)) }] } }], error: null } }) };
   };
   let got, plain;
   try {
@@ -416,6 +424,48 @@ test('a live download asks Yahoo only, and the quote fills the bar Yahoo has not
   for (const key of ['tbill', 'gs10', 'cpi', 'cny', 'ndx']) assert.equal(got[key], null, key);
   assert.equal(got.gspc.time, tq);
   assert.equal(got.gspc.bars[got.gspc.bars.length - 1].date, DATA.asOf);
-  assert.deepEqual(got.etf.QQQ.bars.slice(-1), src.etf.QQQ.bars.slice(-1));
+  assert.deepEqual(got.etf.QQQ.bars.slice(-1), src.etf.QQQ.bars.slice(-1).map(b => Object.assign({}, b, { open: null })), 'the quote has no open');
   assert.notEqual(plain.bars[plain.bars.length - 1].date, DATA.asOf, 'without fill: the daily bars only');
+});
+
+test('opening prices: added once from the whole history, then kept up with every update, never stopping it', () => {
+  const k = 3, f0 = Core.days.findIndex(d => d >= codec.dayNum(OPEN_FROM));
+  const t = truncate(DATA, k); delete t.open;
+  // the whole history from OPEN_FROM, as the downloader fetches it once for a series without opening prices
+  const hist = (key) => { const out = []; for (let i = f0 - 5; i <= N - 1; i++) out.push({ date: Core.iso(i), close: Core.S[key].v[i], open: openOf(key, i), div: 0 }); return { bars: out }; };
+  const ovn = (key, i) => { const x = openOf(key, i); return x == null ? null : Math.round((x / Core.S[key].v[i - 1] - 1) * 1e6); };
+  const src = fixtures(N - 1 - k - 30, N - 1); src.openHist = {}; for (const key of OPEN_KEYS) src.openHist[key] = hist(key);
+  const { data, report } = applyUpdate(t, src, { now: NOW });
+  assert.equal(report.added.length, k);
+  for (const key of OPEN_KEYS) {
+    const o = data.open[key], s0 = Math.max(DATA.etf[key].s + 1, f0);
+    assert.equal(o.s, s0, key + ' from OPEN_FROM or the first session after the launch'); assert.equal(o.s + o.r.length, N, key + ' up to the last session');
+    for (const i of [s0, s0 + 1000, N - k - 2, N - k - 1, N - 1]) assert.equal(o.r[i - o.s], ovn(key, i), `${key} ${Core.iso(i)}`);
+    assert.ok(report.checks.some(c => c.startsWith(`${key}: opening prices added from ${Core.iso(s0)}`)), report.checks.join('; '));
+  }
+  // the site reads them as opens on each series' own scale; SOXL* takes SOXL's once SOXL trades
+  const C2 = validate(data), O = C2.openLv('SOXL'), OX = C2.openLv('SOXLX'), oS = data.open.SOXL;
+  for (const i of [oS.s, oS.s + 777, N - 1]) {
+    if (oS.r[i - oS.s] == null) continue;
+    assert.ok(Math.abs(O[i] / (C2.S.SOXL.v[i - 1] * (1 + oS.r[i - oS.s] / 1e6)) - 1) < 1e-12, 'SOXL open ' + Core.iso(i));
+    assert.ok(Math.abs(OX[i] / (C2.S.SOXLX.v[i - 1] * (1 + oS.r[i - oS.s] / 1e6)) - 1) < 1e-12, 'SOXL* open ' + Core.iso(i));
+  }
+  assert.ok(isNaN(OX[oS.s - 1]) && isNaN(O[oS.s - 1]), 'nothing before the first opening price');
+  assert.equal(C2.openLv('SPY'), null, 'only the series with opening prices');
+  // the next update keeps them up, and replaces a stored one the download disagrees with
+  const t2 = truncate(data, 2), r2 = t2.open.SOXL.r; r2[r2.length - 4] += 5000;
+  const u2 = applyUpdate(t2, fixtures(N - 1 - 2 - 30, N - 1), { now: NOW });
+  for (const key of OPEN_KEYS) assert.deepEqual(u2.data.open[key], data.open[key], key);
+  assert.ok(u2.report.checks.some(c => c.startsWith('SOXL: 1 opening price(s)')), u2.report.checks.join('; '));
+  // a whole history that disagrees with the stored returns adds nothing, and the update goes on
+  const src3 = fixtures(N - 1 - k - 30, N - 1); src3.openHist = { SOXX: hist('SOXX') };
+  src3.openHist.SOXX.bars.forEach((b, q) => { if (q % 20 === 7) b.close *= 1.02; });
+  const u3 = applyUpdate(t, src3, { now: NOW });
+  assert.equal(u3.report.added.length, k); assert.ok(!u3.data.open, 'no opening prices');
+  assert.ok(u3.report.warnings.some(w => /^SOXX: its whole-history download covers \d+ of \d+ sessions and disagrees/.test(w)), u3.report.warnings.join('; '));
+  assert.ok(u3.report.warnings.some(w => w.startsWith('SOXL: no opening prices yet')));
+  // a live update never adds the whole history
+  assert.equal(applyUpdate(t, src, { now: NOW, live: true }).data.open, undefined);
+  // validate() catches a series that does not reach the last session
+  const bad = clone(data); bad.open.QQQ.r.pop(); assert.throws(() => validate(bad), /opening prices of QQQ/);
 });

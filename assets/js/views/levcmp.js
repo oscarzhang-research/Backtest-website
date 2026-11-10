@@ -377,16 +377,26 @@
     const run = (c, o) => Calc.dipStudy(ctx, Object.assign({ sv: Core.S[sigK(c)].v, ref: refOf(c), roll: c.reb.on && c.reb.low === 'roll' ? rollOf(c) : null, mask: maskOf(c),
       dd: { on: c.dd.on, lo: c.dd.lo / 100, hi: c.dd.hi == null ? null : c.dd.hi / 100, deep: c.dd.deep },
       reb: { on: c.reb.on, lo: c.reb.lo / 100, hi: c.reb.hi == null ? null : c.reb.hi / 100, low: c.reb.low, days: c.reb.days } }, o || {}));
-    // each ticked condition on the last session of ctx
-    function status(c) {
+    // each ticked condition on the last session of ctx; with hy ({lv(k)}: the level of series k at a price typed in), as if
+    // the next session closed there — the VIX and the S&P 500 stay at the last close
+    function status(c, hy) {
       const i = ctx.e, q = i - ctx.s, out = [], k = sigK(c), sv = Core.S[k].v, R = refOf(c), Z = zh(), nm = (x) => U.assetName(x, true);
-      const rng = (lo, hi) => (hi == null ? (Z ? `${pctN(lo)} 以上` : `≥ ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`);
-      if (c.dd.on) { const x = c.dd.deep ? 1 - R.low[q] / sv[R.pk[q]] : -R.dd[q]; out.push({ ok: x >= c.dd.lo / 100 && (c.dd.hi == null || x <= c.dd.hi / 100), now: Z ? `${nm(k)} ${c.dd.deep ? '这一轮最深跌了' : '距高点'} ${U.pct(c.dd.deep ? x : -x, 1)}` : (c.dd.deep ? `${nm(k)}'s fall has reached ${U.pct(x, 1)}` : `${nm(k)} is ${U.pct(x, 1)} below the high`), need: (Z ? '跌幅 ' : 'fall ') + rng(c.dd.lo, c.dd.hi) }); }
-      if (c.reb.on) { const ro = c.reb.low === 'roll' ? rollOf(c) : null, lv = ro ? ro.val[q] : R.low[q], la = ro ? ro.at[q] : R.lowAt[q], x = sv[i] / lv - 1; out.push({ ok: x >= c.reb.lo / 100 && (c.reb.hi == null || x <= c.reb.hi / 100) && (!c.reb.days || i - la >= c.reb.days), now: Z ? `${nm(k)} 距低点 ${U.pct(x, 1, true)}（低点在 ${i - la} 个交易日前）` : `${nm(k)} ${U.pct(x, 1, true)} from the low (${i - la} sessions ago)`, need: (Z ? '反弹 ' : 'rebound ') + rng(c.reb.lo, c.reb.hi) + (c.reb.days ? (Z ? `，低点至少 ${c.reb.days} 天前` : `, low ≥ ${c.reb.days} sessions old`) : '') }); }
-      if (c.fear.on) { const y = fearVal(c.fear, i); out.push({ ok: fearOk(c.fear, y), now: c.fear.by === 'vix' ? `VIX ${U.num(y, 1)}` : (Z ? `${nm(unl)} 20 日波动率 ${U.pct(y, 0)}` : `${nm(unl)} 20-day vol ${U.pct(y, 0)}`), need: (c.fear.below ? (Z ? '低于 ' : 'below ') : (Z ? '不低于 ' : 'at least ')) + (c.fear.by === 'vix' ? +c.fear.x.toFixed(1) : pctN(c.fear.x)) }); }
-      const maNow = (kk, n, above) => { const g = Core.S[kk].v[i] / maOf(kk, n)[i] - 1; return { ok: isFinite(g) && (above ? g > 0 : g < 0), now: Z ? `${nm(kk)} 比 ${n} 日均线${g >= 0 ? '高' : '低'} ${U.pct(Math.abs(g), 1)}` : `${nm(kk)} ${U.pct(Math.abs(g), 1)} ${g >= 0 ? 'above' : 'below'} its ${n}-day average`, need: Z ? (above ? '在均线上方' : '在均线下方') : (above ? 'above it' : 'below it') }; };
-      if (c.trend.on) out.push(maNow(unl, c.trend.n, c.trend.above));
-      if (c.mkt.on) out.push(maNow('SPX', c.mkt.n, c.mkt.above));
+      const st = hy ? Calc.dipStateAt(sv, ctx.s, i, hy.lv(k), R, { ref: c.ref, win: c.win, lwin: c.reb.low === 'roll' ? c.reb.lwin : 0 }) : null;
+      const rng = (lo, hi) => (hi == null ? (Z ? `${pctN(lo)} 以上` : `≥ ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`), atClose = hy ? (Z ? '（按最新收盘）' : ' (at the latest close)') : '';
+      if (c.dd.on) { const x = st ? (c.dd.deep ? st.deep : st.fall) : c.dd.deep ? 1 - R.low[q] / sv[R.pk[q]] : -R.dd[q]; out.push({ ok: x >= c.dd.lo / 100 && (c.dd.hi == null || x <= c.dd.hi / 100), now: Z ? `${nm(k)} ${c.dd.deep ? '这一轮最深跌了' : '距高点'} ${U.pct(c.dd.deep ? x : -x, 1)}` : (c.dd.deep ? `${nm(k)}'s fall has reached ${U.pct(x, 1)}` : `${nm(k)} is ${U.pct(x, 1)} below the high`), need: (Z ? '跌幅 ' : 'fall ') + rng(c.dd.lo, c.dd.hi) }); }
+      if (c.reb.on) {
+        let x, age;
+        if (st) { x = c.reb.low === 'roll' ? st.rreb : st.reb; age = c.reb.low === 'roll' ? st.rlowAge : st.lowAge; }
+        else { const ro = c.reb.low === 'roll' ? rollOf(c) : null, lv = ro ? ro.val[q] : R.low[q], la = ro ? ro.at[q] : R.lowAt[q]; x = sv[i] / lv - 1; age = i - la; }
+        out.push({ ok: x >= c.reb.lo / 100 && (c.reb.hi == null || x <= c.reb.hi / 100) && (!c.reb.days || age >= c.reb.days), now: Z ? `${nm(k)} 距低点 ${U.pct(x, 1, true)}（${age ? `低点在 ${age} 个交易日前` : '创新低'}）` : `${nm(k)} ${U.pct(x, 1, true)} from the low (${age ? `${age} sessions ago` : 'a new low'})`, need: (Z ? '反弹 ' : 'rebound ') + rng(c.reb.lo, c.reb.hi) + (c.reb.days ? (Z ? `，低点至少 ${c.reb.days} 天前` : `, low ≥ ${c.reb.days} sessions old`) : '') });
+      }
+      if (c.fear.on) {
+        const vol = c.fear.by === 'vol', uS = Core.S[unl], y = hy && vol ? Calc.rvolAt(uS.v, uS.s, i, 20, hy.lv(unl)) : fearVal(c.fear, i);
+        out.push({ ok: fearOk(c.fear, y), now: (!vol ? `VIX ${U.num(y, 1)}` : (Z ? `${nm(unl)} 20 日波动率 ${U.pct(y, 0)}` : `${nm(unl)} 20-day vol ${U.pct(y, 0)}`)) + (vol ? '' : atClose), need: (c.fear.below ? (Z ? '低于 ' : 'below ') : (Z ? '不低于 ' : 'at least ')) + (c.fear.by === 'vix' ? +c.fear.x.toFixed(1) : pctN(c.fear.x)) });
+      }
+      const maNow = (kk, n, above, L) => { const S = Core.S[kk], g = (L != null ? L / Calc.smaAt(S.v, S.s, i, n, L) : S.v[i] / maOf(kk, n)[i]) - 1; return { ok: isFinite(g) && (above ? g > 0 : g < 0), now: (Z ? `${nm(kk)} 比 ${n} 日均线${g >= 0 ? '高' : '低'} ${U.pct(Math.abs(g), 1)}` : `${nm(kk)} ${U.pct(Math.abs(g), 1)} ${g >= 0 ? 'above' : 'below'} its ${n}-day average`) + (hy && L == null ? atClose : ''), need: Z ? (above ? '在均线上方' : '在均线下方') : (above ? 'above it' : 'below it') }; };
+      if (c.trend.on) out.push(maNow(unl, c.trend.n, c.trend.above, hy ? hy.lv(unl) : null));
+      if (c.mkt.on) out.push(maNow('SPX', c.mkt.n, c.mkt.above, null));
       return out;
     }
     return { run, status, sigK };
@@ -404,6 +414,8 @@
     trend: 'Whether each index (SOXX for SOXL, QQQ for TQQQ) closed above or below its N-day average.',
     mkt: 'Whether the S&P 500 (total return) closed above or below its N-day average; the same for both funds.',
   });
+  // C4: a price typed in for each fund (an overnight quote, say); its index moves by the fund's move ÷ 3. Not stored.
+  const C4NOW = { SOXL: null, TQQQ: null }; let c4T = 0;
   function falls(tk) {
     const ctl = h('div', { class: 'controls' }), ctl2 = h('div', { class: 'controls', style: { marginTop: '10px' } }), condBox = h('div', { style: { marginTop: '12px' } }), row = h('div', { class: 'controls', style: { marginTop: '12px' } }), out = h('div', { class: 'stack', style: { marginTop: '12px' } });
     const sec = section('lc-fall', 'C4', { zh: '大跌之后：同样的多重条件，两只各自的结果', en: 'After a big fall: the same combined conditions, each fund’s outcome' }, { zh: '跌幅、反弹、恐慌、趋势和大盘条件任意组合，两只用同一组条件；也可以让两只在同一批日子买入，直接比较差距', en: 'Combine the fall, the rebound, fear, the trend and the market; both funds get the same conditions — or buy both on the same days and compare them directly' }, ctl, ctl2, condBox, row, out);
@@ -503,9 +515,21 @@
       });
       // ---- today ----
       const lv = U.live(), when = !lv ? (Z ? `${iso(Core.N - 1)} 收盘` : `Close of ${iso(Core.N - 1)}`) : lv.closed ? (Z ? `${iso(Core.N - 1)} 收盘（初步）` : `Close of ${iso(Core.N - 1)} (preliminary)`) : (Z ? `${iso(Core.N - 1)} 盘中（美东 ${lv.et}）` : `Intraday ${iso(Core.N - 1)} (${lv.et} New York time)`);
-      const stLine = (x) => { const stt = (x.now || x.kit).status(c), ok = stt.every(y => y.ok);
-        return h('div', { html: `<b>${U.esc(x.f.k)}</b>${Z ? '：' : ': '}` + (stt.length ? stt.map(y => `${y.ok ? '✓' : '✗'} ${U.esc(y.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(y.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? ` → ${ok ? b('今天符合全部条件') : '今天不符合全部条件'}` : ` → ${ok ? b('all conditions hold today') : 'not all conditions hold today'}`) : (Z ? '没有勾选任何条件。' : 'no condition is ticked.')) }); };
-      out.appendChild(h('div', { class: 'callout' }, h('div', { html: `<b>${U.esc(when)}</b>` + (same >= 0 ? (Z ? `（两只都按 ${PAIR[same].k} 的信号买入）` : ` (both bought on ${PAIR[same].k}’s signal)`) : '') }), ...(same >= 0 ? [FS[same]] : FS).map(stLine)));
+      // a price typed in: the fund moves to it, its index by the fund's move ÷ 3, as if the next session closed there
+      const hyOf = (x) => { const p0 = Core.lastPx[x.f.k], px = C4NOW[x.f.k]; if (!(px > 0 && p0 > 0)) return null; const g = px / p0 - 1; return { px, p0, g, lv: (k) => { const S = Core.S[k]; return S.v[S.e] * (1 + (k === x.unl ? g / 3 : g)); } }; };
+      const stLine = (x) => { const hy = hyOf(x), stt = (x.now || x.kit).status(c, hy), ok = stt.every(y => y.ok), lab = hy ? (Z ? `按现价 $${U.num(hy.px, 2)}，比收盘价 $${U.num(hy.p0, 2)} ${hy.g >= 0 ? '高' : '低'} ${U.pct(Math.abs(hy.g), 1)}` : `at $${U.num(hy.px, 2)}, ${U.pct(Math.abs(hy.g), 1)} ${hy.g >= 0 ? 'above' : 'below'} the close of $${U.num(hy.p0, 2)}`) : '';
+        const what = hy ? (Z ? '按这个价格' : 'at this price') : (Z ? '今天' : 'today');
+        return h('div', { html: `<b>${U.esc(x.f.k)}</b>${lab ? (Z ? `（${lab}）` : ` (${lab})`) : ''}${Z ? '：' : ': '}` + (stt.length ? stt.map(y => `${y.ok ? '✓' : '✗'} ${U.esc(y.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(y.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? ` → ${ok ? b(what + '符合全部条件') : what + '不符合全部条件'}` : ` → ${ok ? b('all conditions hold ' + what) : 'not all conditions hold ' + what}`) : (Z ? '没有勾选任何条件。' : 'no condition is ticked.')) }); };
+      out.appendChild(h('div', { class: 'callout', id: 'lc-c4Now' }, h('div', { html: `<b>${U.esc(when)}</b>` + (same >= 0 ? (Z ? `（两只都按 ${PAIR[same].k} 的信号买入）` : ` (both bought on ${PAIR[same].k}’s signal)`) : '') }), ...(same >= 0 ? [FS[same]] : FS).map(stLine)));
+      { // the prices typed in; redrawn after the event, as the boxes are part of what is redrawn
+        const box = (k) => { const x = h('input', { type: 'number', id: 'lc-c4Px-' + k, value: C4NOW[k] > 0 ? String(C4NOW[k]) : '', min: 0, step: 'any', inputmode: 'decimal', placeholder: '$' + U.num(Core.lastPx[k], 2), 'aria-label': Z ? `${k} 现价` : `${k} price now` }); x.style.width = '96px';
+          x.addEventListener('change', () => { const y = parseFloat(x.value); C4NOW[k] = y > 0 ? y : null; clearTimeout(c4T); c4T = setTimeout(draw, 0); }); return h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, h('span', null, k + ' $'), x); };
+        const any = PAIR.some(f => C4NOW[f.k] > 0);
+        out.appendChild(h('div', { class: 'controls', style: { marginTop: '-4px' } }, U.ctl(Z ? '用现价判断（比如 IBKR 夜盘报价；空着就按最新收盘）' : 'Judge at a price now (an overnight quote, say; empty: the latest close)', h('div', { class: 'chips', style: { alignItems: 'center', gap: '10px' } },
+          ...PAIR.map(f => box(f.k)), any ? h('button', { type: 'button', class: 'btn small ghost', onclick: () => { for (const f of PAIR) C4NOW[f.k] = null; draw(); } }, Z ? '恢复按收盘' : 'Back to the close') : null))));
+        if (any) out.appendChild(h('p', { class: 'note', style: { marginTop: '-6px' } }, Z ? '把这个价格当作下一个交易日的收盘重算条件：SOXX、QQQ 按各自基金涨跌的 1/3 估算，VIX 和标普500 仍按最新收盘。下面的历史结果仍是“收盘时符合条件、按收盘价买入”；开盘价检验见 SOXL、TQQQ 专题的 S6。'
+          : 'This price is taken as the next session’s close: SOXX and QQQ move by a third of each fund’s move, the VIX and the S&P 500 stay at the latest close. The history below is still “conditions met at a close, bought at that close”; the check with opening prices is in S6 of the SOXL and TQQQ deep dives.'))
+      }
       const nDays = cur.map(x => x.R.days.length), nEps = cur.map(x => x.R.eps.length);
       if (!nDays.some(Boolean)) out.appendChild(h('div', { class: 'empty' }, Z ? '所选区间里两只都没有一天同时满足这些条件；换一组条件，或看下方「条件组合对比」。' : 'Neither fund met all these conditions on any day of the selected range; try another set, or see the comparison table below.'));
       else {
