@@ -91,7 +91,20 @@
       for (let i = L + 1; i <= X.e; i++) arr[i] = arr[i - 1] * X.v[i] / X.v[i - 1];
       S.SOXXU = { key: 'SOXXU', s: s0, e: X.e, v: arr, hidden: true };
     }
-    // Fill SPX-like NaN outside for uniformity
+    // ---------- Opening prices (SOXL, TQQQ, SOXX, QQQ from 2010): the move from each close to the next open ----------
+    // DATA.open[k] = {s, r}: r[j] is session s + j's (open + that day's dividend) / previous close − 1, in millionths (null:
+    // unknown). Core.openLv(k): the open of every session in k's own units (its close-to-close index), NaN where unknown;
+    // SOXL*, TQQQ* and SOXX* use the real fund's opens from the days they trade.
+    const OPEN = DATA.open || {}, OPEN_OF = { SOXLX: 'SOXL', TQQQX: 'TQQQ', SOXXU: 'SOXX' }, openC = new Map();
+    Core.openLv = function (k) {
+      if (!openC.has(k)) {
+        const o = OPEN[OPEN_OF[k] || k], X = S[k]; let out = null;
+        if (o && X) { out = new Float64Array(n).fill(NaN); for (let j = 0; j < o.r.length; j++) { const i = o.s + j; if (o.r[j] != null && i > X.s && i <= X.e) out[i] = X.v[i - 1] * (1 + o.r[j] / 1e6); } }
+        openC.set(k, out);
+      }
+      return openC.get(k);
+    };
+    Core.openKeys = Object.keys(OPEN);
     // ---------- Risk-free ----------
     const rfd = DATA.rf; const rfAnn = new Float64Array(n);
     let acc = 0;

@@ -199,3 +199,56 @@ test('horizons in trading days: the close N sessions later, annualized over 252 
   H.at.forEach((i, k) => { assert.ok(Math.abs(H.r[k] - (v[i + 5] / v[i] - 1)) < 1e-12); assert.ok(Math.abs(H.ann[k] - (Math.pow(1 + H.r[k], 252 / 5) - 1)) < 1e-9); });
   assert.equal(Calc.annK(-5), 252 / 5); assert.equal(Calc.annK(6), 2);
 });
+
+test('the conditions at a price that is not a close: as if the next session closed there', () => {
+  // SOXL and SOXX over their whole history: for sessions all over it and prices around the close (a new high, a new
+  // low, anything between), the state must equal what the existing study gives once that price is appended as a close
+  const S = Core.S.SOXL, U = Core.S.SOXX, s = S.s, e = Core.N - 1;
+  const pick = []; for (let i = s + 300; i < e; i += 97) pick.push(i);
+  pick.push(idx('2020-03-23'), idx('2021-12-27'), idx('2022-10-13'), e - 1);
+  const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9 || (a === b), `${msg}: ${a} vs ${b}`);
+  for (const ref of [{ ref: 'ath' }, { ref: 'roll', win: 252 }, { ref: 'roll', win: 63 }]) {
+    const R = Calc.dipRef(S.v, s, e, ref.ref, ref.win);
+    for (const i of pick) {
+      const k = i - s, hi = S.v[R.hiAt[k]];
+      for (const L of [S.v[i] * 0.9, S.v[i] * 1.03, R.low[k] * 0.97, hi * 1.01, hi, S.v[i]]) {
+        const w = Float64Array.from(S.v.subarray(0, i + 2)); w[i + 1] = L;
+        const R2 = Calc.dipRef(w, s, i + 1, ref.ref, ref.win), q = i + 1 - s, m2 = Calc.rollMin(w, s, i + 1, 21);
+        const got = Calc.dipStateAt(S.v, s, i, L, R, Object.assign({ lwin: 21 }, ref)), tag = `${ref.ref}${ref.win || ''} ${Core.iso(i)} L=${L}`;
+        close(got.fall, -R2.dd[q], tag + ' fall');
+        close(got.deep, 1 - R2.low[q] / w[R2.pk[q]], tag + ' deepest');
+        close(got.reb, L / R2.low[q] - 1, tag + ' rebound'); assert.equal(got.lowAge, i + 1 - R2.lowAt[q], tag + ' age of the low');
+        close(got.rreb, L / m2.val[q] - 1, tag + ' rebound from the rolling low'); assert.equal(got.rlowAge, i + 1 - m2.at[q], tag + ' age of the rolling low');
+      }
+      // the index: its moving average and 20-session volatility with today's price in
+      for (const Lu of [U.v[i] * 0.97, U.v[i] * 1.02]) {
+        const w = Float64Array.from(U.v.subarray(0, i + 2)); w[i + 1] = Lu;
+        for (const n of [50, 200]) close(Calc.smaAt(U.v, U.s, i, n, Lu), Calc.sma(w, U.s, i + 1, n)[i + 1], `average ${n} ${Core.iso(i)}`);
+        close(Calc.rvolAt(U.v, U.s, i, 20, Lu), Calc.rvol(w, U.s, i + 1, 20)[i + 1], `volatility ${Core.iso(i)}`);
+      }
+    }
+  }
+  assert.ok(isNaN(Calc.smaAt(U.v, U.s, U.s + 10, 200, U.v[U.s + 10])), 'not enough history');
+});
+
+test('judging and buying at the next open: the same days, the same exit close, the move overnight', () => {
+  const S = Core.S.SOXL, v = S.v, s = S.s, e = Core.N - 1, months = [-1, -5, 12];
+  const ctx = Calc.dipContext(v, s, e, months, idx('2012-01-03'));
+  // opens a third of the way through each day's move, unknown on every 50th session
+  const vO = new Float64Array(Core.N).fill(NaN); for (let i = s + 1; i <= e; i++) if (i % 50) vO[i] = v[i - 1] * (1 + (v[i] / v[i - 1] - 1) / 3);
+  const R = Calc.dipRef(v, s, e, 'ath', 252), qC = Calc.dipStudy(ctx, { sv: v, ref: R, dd: { on: true, lo: 0.5, hi: null, deep: false } }).q;
+  const okO = (i, o) => Calc.dipStateAt(v, s, i, o, R, { ref: 'ath' }).fall >= 0.5;
+  const X = Calc.dipOpenCheck(ctx, qC, okO, vO);
+  const want = months.map(() => ({ c: [], o: [] })), gap = []; let nC = 0, nO = 0;
+  for (let i = ctx.from; i < e; i++) {
+    const o = vO[i + 1]; if (!(o > 0)) continue;
+    const c1 = qC[i - s] === 1, o1 = okO(i, o); if (c1) { nC++; gap.push(o / v[i] - 1); } if (o1) nO++;
+    months.forEach((m, h) => { const j = ctx.ends[h][i - s]; if (j < 0) return; if (c1) want[h].c.push(v[j] / v[i] - 1); if (o1) want[h].o.push(v[j] / o - 1); });
+  }
+  assert.deepEqual(X.H, want); assert.deepEqual(X.gap, gap); assert.equal(X.nC, nC); assert.equal(X.nO, nO);
+  assert.ok(nC > 500 && nO > 500, 'both find the falls');
+  assert.equal(X.first, ctx.from + (vO[ctx.from + 1] > 0 ? 0 : 1), 'from the first close with an open after it');
+  // a one-day hold from the open is that session alone: open to close
+  const i = X.first; let k = 0; for (let q = ctx.from; q < i; q++) if (vO[q + 1] > 0 && okO(q, vO[q + 1])) k++;
+  if (okO(i, vO[i + 1])) assert.ok(Math.abs(X.H[0].o[k] - (v[i + 1] / vO[i + 1] - 1)) < 1e-15);
+});

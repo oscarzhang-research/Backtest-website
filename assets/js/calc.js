@@ -271,6 +271,48 @@
     }
     return out;
   };
+  // ---------- The conditions at a price that is not a close (S6, C4: a quote typed in, or the next open) ----------
+  // Signal series sv (from s) as if session i + 1 closed at level L, from the closes up to i: what C.dipRef (R, the same
+  // series and reference) and C.rollMin (lwin) would give for session i + 1 once it closed there. fall: below the
+  // reference high; deep: the deepest point of this fall; reb: the rise from its low, lowAge: sessions since that low;
+  // with lwin, rreb/rlowAge from the lowest close of the last lwin sessions.
+  C.dipStateAt = function (sv, s, i, L, R, o) {
+    o = o || {}; const W = o.ref === 'roll' ? Math.max(1, Math.round(o.win || 252)) : 0, k = i - s, n1 = i + 1;
+    let top = -Infinity, topAt = -1; // the reference high among the earlier closes (the latest on a tie, as C.dipRef)
+    if (!W) { topAt = R.hiAt[k]; top = sv[topAt]; } else for (let j = Math.max(s, i - W + 2); j <= i; j++) if (sv[j] >= top) { top = sv[j]; topAt = j; }
+    const high = L >= top; let pk, low, lowAt;
+    if (high) { pk = n1; low = L; lowAt = n1; } else { pk = R.pk[k]; low = R.low[k]; lowAt = R.lowAt[k]; if (L < low) { low = L; lowAt = n1; } }
+    const out = { fall: high ? 0 : 1 - L / top, deep: 1 - low / (pk === n1 ? L : sv[pk]), reb: L / low - 1, lowAge: n1 - lowAt };
+    if (o.lwin) { let m = L, at = n1; for (let j = i; j >= Math.max(s, i - o.lwin + 2); j--) if (sv[j] < m) { m = sv[j]; at = j; } out.rreb = L / m - 1; out.rlowAge = n1 - at; }
+    return out;
+  };
+  // C.sma and C.rvol of v (history from s0) for session i + 1, had it closed at level L; NaN without enough history
+  C.smaAt = function (v, s0, i, n, L) { if (i - s0 + 2 < n) return NaN; let t = L; for (let j = i - n + 2; j <= i; j++) t += v[j]; return t / n; };
+  C.rvolAt = function (v, s0, i, n, L) {
+    if (i + 1 - s0 < n) return NaN; let a = 0, b = 0;
+    for (let j = i - n + 2; j <= i + 1; j++) { const x = Math.log((j > i ? L : v[j]) / v[j - 1]); a += x; b += x * x; }
+    const m = a / n; return Math.sqrt(Math.max(0, (b - n * m * m) / (n - 1)) * 252);
+  };
+
+  // Judging the conditions and buying at the next open instead of at the close (S6's check). For each close i of
+  // [ctx.from, ctx.e) whose next session has an open (vO: the bought series' opens on its own scale, NaN where unknown),
+  // qC[i − s] (the conditions at that close, as C.dipStudy found them) and okO(i, open) (the conditions at the next open)
+  // pick the purchases; both are held to the same close, ends[h][i − s]. Per horizon: the returns bought at the close
+  // (c) and at the open (o); gap: the move from each qualifying close to the next open.
+  C.dipOpenCheck = function (ctx, qC, okO, vO) {
+    const { v, s, e, months, ends } = ctx, from = ctx.from == null ? s : ctx.from, H = months.map(() => ({ c: [], o: [] })), gap = [];
+    let nC = 0, nO = 0, first = -1;
+    for (let i = from; i < e; i++) {
+      const o = vO[i + 1]; if (!(o > 0)) continue;
+      if (first < 0) first = i;
+      const inC = qC[i - s] === 1, inO = !!okO(i, o);
+      if (inC) { nC++; gap.push(o / v[i] - 1); }
+      if (inO) nO++;
+      if (inC || inO) for (let h = 0; h < months.length; h++) { const j = ends[h][i - s]; if (j < 0) continue; if (inC) H[h].c.push(v[j] / v[i] - 1); if (inO) H[h].o.push(v[j] / o - 1); }
+    }
+    return { H, gap, nC, nO, first };
+  };
+
   // One combination of conditions, evaluated on a signal series and applied to buying ctx.v.
   // o: { sv, ref (C.dipRef of sv), roll (C.rollMin of sv, when the rebound is measured from a rolling low),
   //      dd:  { on, lo, hi, deep }        fall below the reference high (fractions; deep = the deepest point of this fall)

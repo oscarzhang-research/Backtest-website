@@ -413,6 +413,7 @@
       return [{ reb: { on: true, lo: 20 }, fear: { on: true } }, { reb: { on: true, lo: 20 }, mkt: { on: true } }, { trend: { on: true }, mkt: { on: true } }].map(c => ({ name: null, c: dipClean(c) }));
     })();
     const saveD = () => { U.store.set(F.dipStore, DS); U.store.set(F.dipSaved, DSAVED); };
+    const NOWQ = { px: null, upx: null, key: null }; // a price typed in for the status line (the fund's, the index's, for which instrument); not stored
     const dipKey = () => SIMK[DS.key] && DS.sim ? SIMK[DS.key] : DS.key; // the series bought
     // the last session used (the visitor's end date, or the latest) and the first purchase day (the visitor's start date,
     // or the start of the data; earlier history still counts for highs, lows and averages)
@@ -563,18 +564,98 @@
       const baseSum = (h, ann) => getC(`base|${h}|${ann}`, () => Calc.summary(ann ? ctx.base[h].map(x => Math.pow(1 + x, Calc.annK(ctx.months[h])) - 1) : ctx.base[h]));
       const annOf = (arr, m) => arr.map(x => Math.pow(1 + x, Calc.annK(m)) - 1);
       const shareAtMost = (arr, w, x) => { let a = 0, t = 0; arr.forEach((y, j) => { const ww = w ? w[j] : 1; t += ww; if (y <= x) a += ww; }); return t ? a / t : NaN; };
-      // each ticked condition on the latest session
-      function statusOf(c) {
+      // ---- a price typed in (a quote between closes, an overnight one say): the conditions as if the next session closed
+      // there. The index (SOXX, QQQ) moves by its own price when given, else by the fund's move ÷ the leverage; the VIX and
+      // the S&P 500 stay at the last close.
+      const pxLast = (k) => (k === 'SPX' ? Core.spxPrice[Core.N - 1] : Core.lastPx[k]); // dollars (index points for the S&P 500)
+      function nowQ() {
+        if (NOWQ.key !== DS.key) { NOWQ.px = NOWQ.upx = null; NOWQ.key = DS.key; } // typed for another instrument
+        const p0 = pxLast(DS.key); if (!(NOWQ.px > 0 && p0 > 0)) return null;
+        const g = NOWQ.px / p0 - 1, U0 = dipUnder(), uK = DIP_UNDER[DS.key], up0 = uK ? pxLast(uK) : null;
+        const ug = U0 ? (NOWQ.upx > 0 && up0 > 0 ? NOWQ.upx / up0 - 1 : g / (DIP_LEV[DS.key] || 1)) : null;
+        return { p0, g, ug, uK, uEst: !!U0 && !(NOWQ.upx > 0 && up0 > 0), up: up0 > 0 && ug != null ? up0 * (1 + ug) : null, lv: (k) => { const S = Core.S[k]; return S.v[S.e] * (1 + (k === U0 ? ug : g)); } };
+      }
+      // each ticked condition on the latest session, or with hy (nowQ()) as if the next session closed at the price typed in
+      function statusOf(c, hy) {
         const i = ctx.e, q = i - ctx.s, out2 = [], k = dipSig(c), sv = Core.S[k].v, R = refOf(c), Z = zh();
+        const st = hy ? Calc.dipStateAt(sv, ctx.s, i, hy.lv(k), R, { ref: c.ref, win: c.win, lwin: c.reb.low === 'roll' ? c.reb.lwin : 0 }) : null;
         const rng = (lo, hi) => hi == null ? (Z ? `${pctN(lo)} 以上` : `≥ ${pctN(lo)}`) : `${pctN(lo)}–${pctN(hi)}`;
-        if (c.dd.on) { const x = c.dd.deep ? 1 - R.low[q] / sv[R.pk[q]] : -R.dd[q]; out2.push({ ok: x >= c.dd.lo / 100 && (c.dd.hi == null || x <= c.dd.hi / 100), now: Z ? `${nmOf(k)} ${c.dd.deep ? '这一轮最深跌了' : '距高点'} ${U.pct(c.dd.deep ? x : -x, 1)}` : (c.dd.deep ? `${nmOf(k)}'s fall has reached ${U.pct(x, 1)}` : `${nmOf(k)} is ${U.pct(x, 1)} below the high`), need: (Z ? '跌幅 ' : 'fall ') + rng(c.dd.lo, c.dd.hi) }); }
-        if (c.reb.on) { const ro = c.reb.low === 'roll' ? rollOf(c) : null, lv = ro ? ro.val[q] : R.low[q], la = ro ? ro.at[q] : R.lowAt[q], x = sv[i] / lv - 1; out2.push({ ok: x >= c.reb.lo / 100 && (c.reb.hi == null || x <= c.reb.hi / 100) && (!c.reb.days || i - la >= c.reb.days), now: Z ? `${nmOf(k)} 距低点 ${U.pct(x, 1, true)}（低点在 ${i - la} 个交易日前）` : `${nmOf(k)} ${U.pct(x, 1, true)} from the low (${i - la} sessions ago)`, need: (Z ? '反弹 ' : 'rebound ') + rng(c.reb.lo, c.reb.hi) + (c.reb.days ? (Z ? `，低点至少 ${c.reb.days} 天前` : `, low ≥ ${c.reb.days} sessions old`) : '') }); }
-        if (c.fear.on) { const y = fearVal(c.fear, i); out2.push({ ok: fearOk(c.fear, y), now: c.fear.by === 'vix' ? `VIX ${U.num(y, 1)}` : (Z ? `${nmOf(dipUnl())} 20 日波动率 ${U.pct(y, 0)}` : `${nmOf(dipUnl())} 20-day vol ${U.pct(y, 0)}`), need: (c.fear.below ? (Z ? '低于 ' : 'below ') : (Z ? '不低于 ' : 'at least ')) + (c.fear.by === 'vix' ? +c.fear.x.toFixed(1) : pctN(c.fear.x)) }); }
-        const maNow = (key, n, above) => { const g = Core.S[key].v[i] / maOf(key, n)[i] - 1; return { ok: isFinite(g) && (above ? g > 0 : g < 0), now: Z ? `${nmOf(key)} 比 ${n} 日均线${g >= 0 ? '高' : '低'} ${U.pct(Math.abs(g), 1)}` : `${nmOf(key)} ${U.pct(Math.abs(g), 1)} ${g >= 0 ? 'above' : 'below'} its ${n}-day average`, need: Z ? (above ? '在均线上方' : '在均线下方') : (above ? 'above it' : 'below it') }; };
-        if (c.trend.on) out2.push(maNow(dipUnl(), c.trend.n, c.trend.above));
-        if (c.mkt.on) out2.push(maNow('SPX', c.mkt.n, c.mkt.above));
+        const atClose = hy ? (Z ? `（按 ${Core.iso(i)} 收盘）` : ` (at the ${Core.iso(i)} close)`) : '';
+        if (c.dd.on) { const x = st ? (c.dd.deep ? st.deep : st.fall) : c.dd.deep ? 1 - R.low[q] / sv[R.pk[q]] : -R.dd[q]; out2.push({ k: 'dd', x, ok: x >= c.dd.lo / 100 && (c.dd.hi == null || x <= c.dd.hi / 100), now: Z ? `${nmOf(k)} ${c.dd.deep ? '这一轮最深跌了' : '距高点'} ${U.pct(c.dd.deep ? x : -x, 1)}` : (c.dd.deep ? `${nmOf(k)}'s fall has reached ${U.pct(x, 1)}` : `${nmOf(k)} is ${U.pct(x, 1)} below the high`), need: (Z ? '跌幅 ' : 'fall ') + rng(c.dd.lo, c.dd.hi) }); }
+        if (c.reb.on) {
+          let x, age;
+          if (st) { x = c.reb.low === 'roll' ? st.rreb : st.reb; age = c.reb.low === 'roll' ? st.rlowAge : st.lowAge; }
+          else { const ro = c.reb.low === 'roll' ? rollOf(c) : null, lv = ro ? ro.val[q] : R.low[q], la = ro ? ro.at[q] : R.lowAt[q]; x = sv[i] / lv - 1; age = i - la; }
+          out2.push({ k: 'reb', x, ok: x >= c.reb.lo / 100 && (c.reb.hi == null || x <= c.reb.hi / 100) && (!c.reb.days || age >= c.reb.days), now: Z ? `${nmOf(k)} 距低点 ${U.pct(x, 1, true)}（${age ? `低点在 ${age} 个交易日前` : '创新低'}）` : `${nmOf(k)} ${U.pct(x, 1, true)} from the low (${age ? `${age} sessions ago` : 'a new low'})`, need: (Z ? '反弹 ' : 'rebound ') + rng(c.reb.lo, c.reb.hi) + (c.reb.days ? (Z ? `，低点至少 ${c.reb.days} 天前` : `, low ≥ ${c.reb.days} sessions old`) : '') });
+        }
+        if (c.fear.on) {
+          const vol = c.fear.by === 'vol', uS = Core.S[dipUnl()], y = hy && vol ? Calc.rvolAt(uS.v, uS.s, i, 20, hy.lv(dipUnl())) : fearVal(c.fear, i);
+          out2.push({ k: 'fear', ok: fearOk(c.fear, y), now: (!vol ? `VIX ${U.num(y, 1)}` : (Z ? `${nmOf(dipUnl())} 20 日波动率 ${U.pct(y, 0)}` : `${nmOf(dipUnl())} 20-day vol ${U.pct(y, 0)}`)) + (vol ? '' : atClose), need: (c.fear.below ? (Z ? '低于 ' : 'below ') : (Z ? '不低于 ' : 'at least ')) + (c.fear.by === 'vix' ? +c.fear.x.toFixed(1) : pctN(c.fear.x)) });
+        }
+        const maNow = (key, n, above, L) => { const S = Core.S[key], g = (L != null ? L / Calc.smaAt(S.v, S.s, i, n, L) : S.v[i] / maOf(key, n)[i]) - 1; return { k: 'ma', ok: isFinite(g) && (above ? g > 0 : g < 0), now: (Z ? `${nmOf(key)} 比 ${n} 日均线${g >= 0 ? '高' : '低'} ${U.pct(Math.abs(g), 1)}` : `${nmOf(key)} ${U.pct(Math.abs(g), 1)} ${g >= 0 ? 'above' : 'below'} its ${n}-day average`) + (hy && L == null ? atClose : ''), need: Z ? (above ? '在均线上方' : '在均线下方') : (above ? 'above it' : 'below it') }; };
+        if (c.trend.on) out2.push(maNow(dipUnl(), c.trend.n, c.trend.above, hy ? hy.lv(dipUnl()) : null));
+        if (c.mkt.on) out2.push(maNow('SPX', c.mkt.n, c.mkt.above, null));
         return out2;
       }
+      // ---- judging and buying at the next open (S6's check): the conditions at the open after close i — the fall and the
+      // rebound at the signal series' open, the index's average and volatility at its open, the VIX and the S&P 500 at close i
+      function okAtOpen(c) {
+        const k = dipSig(c), sv = Core.S[k].v, R = refOf(c), sO = Core.openLv(k), uK = dipUnl(), uS = Core.S[uK], uO = Core.openLv(uK);
+        const needU = c.trend.on || (c.fear.on && c.fear.by === 'vol');
+        if (((c.dd.on || c.reb.on) && !sO) || (needU && !uO)) return null;
+        const fixed = []; if (c.fear.on && c.fear.by === 'vix') fixed.push(fearMask(c.fear)); if (c.mkt.on) fixed.push(maMask('SPX', c.mkt.n, c.mkt.above));
+        const so = { ref: c.ref, win: c.win, lwin: c.reb.low === 'roll' ? c.reb.lwin : 0 }, ddHi = c.dd.hi == null ? Infinity : c.dd.hi / 100, rbHi = c.reb.hi == null ? Infinity : c.reb.hi / 100;
+        return (i) => {
+          for (const m of fixed) if (!m[i - ctx.s]) return false;
+          if (c.dd.on || c.reb.on) {
+            const L = sO[i + 1]; if (!(L > 0)) return false;
+            const st = Calc.dipStateAt(sv, ctx.s, i, L, R, so);
+            if (c.dd.on) { const x = c.dd.deep ? st.deep : st.fall; if (!(x >= c.dd.lo / 100 && x <= ddHi)) return false; }
+            if (c.reb.on) { const roll = c.reb.low === 'roll', x = roll ? st.rreb : st.reb, age = roll ? st.rlowAge : st.lowAge; if (!(x >= c.reb.lo / 100 && x <= rbHi) || (c.reb.days > 0 && age < c.reb.days)) return false; }
+          }
+          if (needU) {
+            const Lu = uO[i + 1]; if (!(Lu > 0)) return false;
+            if (c.trend.on) { const g = Lu / Calc.smaAt(uS.v, uS.s, i, c.trend.n, Lu) - 1; if (!(isFinite(g) && (c.trend.above ? g > 0 : g < 0))) return false; }
+            if (c.fear.on && c.fear.by === 'vol' && !fearOk(c.fear, Calc.rvolAt(uS.v, uS.s, i, 20, Lu))) return false;
+          }
+          return true;
+        };
+      }
+      function openCheck(c, R, months) {
+        const Z = zh(), key = dipKey(), vO = Core.openLv(key), wrap = h('div', { class: 'stack', id: F.pre + 'dipOpen' });
+        wrap.appendChild(h('h4', { class: 'sh-h4' }, Z ? '换成开盘价判断、开盘买入，结果一样吗？' : 'Judged and bought at the next open instead: the same result?'));
+        wrap.appendChild(h('p', { class: 'note', style: { marginTop: 0 } }, Z
+          ? '收盘之后（比如纽约凌晨 2 点）用现价查历史，就是在两次收盘之间判断条件、按当时的价格买入。开盘价是收盘之后最早、又有完整历史的价格，所以用它检验：同样的条件，改成按第二天的开盘价判断、在开盘时买入，持有到同一个卖出收盘，和按收盘判断、收盘买入相比。两者接近，说明用收盘之间的价格查历史是可靠的。'
+          : 'Looking up history at a price between closes (2 a.m. in New York, say) means judging the conditions and buying between two closes. The open is the earliest price after a close with a full history, so it makes the test: the same conditions judged at the next open and bought there, held to the same closing day, against judging and buying at the close. If the two agree, a price between closes finds the right history.'));
+        const okO = okAtOpen(c), empty = (t) => { wrap.appendChild(h('p', { class: 'empty' }, t)); return wrap; };
+        if (!Core.openKeys.length) return empty(Z ? '开盘价数据会在下一次数据更新时加入（SOXL、TQQQ、SOXX、QQQ，2010 年起）。' : 'Opening prices arrive with the next data update (SOXL, TQQQ, SOXX and QQQ, from 2010).');
+        const lack = [key, dipSig(c), dipUnl()].filter((x, j, a) => a.indexOf(x) === j && !Core.openLv(x)).map(nmOf);
+        if (!vO || !okO) return empty(Z ? `${lack.join('、')} 没有开盘价数据（只有 SOXL、TQQQ、SOXX、QQQ 有）。` : `No opening prices for ${lack.join(', ')} (only SOXL, TQQQ, SOXX and QQQ have them).`);
+        const X = Calc.dipOpenCheck(ctx, R.q, okO, vO);
+        if (X.first < 0 || !(X.nC + X.nO)) return empty(Z ? '有开盘价的这段历史里，没有一天符合这些条件。' : 'No day with an opening price met these conditions.');
+        const cell = (a) => { if (!a.length) return '—'; const t = Calc.summary(a); return Z ? `${fmtR(t.q(0.5))}（${fmtR(t.q(0.25))} 至 ${fmtR(t.q(0.75))}）` : `${fmtR(t.q(0.5))} (${fmtR(t.q(0.25))} to ${fmtR(t.q(0.75))})`; };
+        // the difference in end value: (1 + the open's median) / (1 + the close's) − 1, which stays readable at long horizons
+        const med = (a) => (a.length ? Calc.summary(a).q(0.5) : NaN), dpp = (x) => (U.isNum(x) ? U.pct(x, 1, true) : '—');
+        const diffs = X.H.map(Hh => (1 + med(Hh.o)) / (1 + med(Hh.c)) - 1);
+        wrap.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data', id: F.pre + 'dipOpenT' },
+          h('thead', null, h('tr', null, h('th', null, Z ? '时间跨度' : 'Horizon'), h('th', null, Z ? '收盘判断 · 样本' : 'At the close · samples'), h('th', null, Z ? '收盘买入 · 中位数（P25 至 P75）' : 'Bought at the close · median (P25 to P75)'),
+            h('th', null, Z ? '开盘判断 · 样本' : 'At the open · samples'), h('th', null, Z ? '开盘买入 · 中位数（P25 至 P75）' : 'Bought at the open · median (P25 to P75)'), h('th', null, Z ? '差别（开盘相对收盘，按期末金额）' : 'Difference (open against close, in end value)'))),
+          h('tbody', null, months.map((m, hh) => h('tr', null, h('td', { class: 'nowrap' }, hzLab(m)), h('td', null, X.H[hh].c.length.toLocaleString('en-US')), h('td', null, cell(X.H[hh].c)),
+            h('td', null, X.H[hh].o.length.toLocaleString('en-US')), h('td', null, cell(X.H[hh].o)), h('td', { class: U.signCls(diffs[hh]) }, dpp(diffs[hh]))))))));
+        const g = X.gap.length ? Calc.summary(X.gap) : null, ok = diffs.map((d, hh) => ({ d, m: months[hh] })).filter(x => U.isNum(x.d));
+        const span = (arr) => { if (!arr.length) return null; const lo = Math.min(...arr.map(x => x.d)), hi = Math.max(...arr.map(x => x.d)); return lo === hi ? dpp(lo) : Z ? `${dpp(lo)} 到 ${dpp(hi)} 之间` : `${dpp(lo)} to ${dpp(hi)}`; };
+        const dShort = span(ok.filter(x => x.m < 0)), dLong = span(ok.filter(x => x.m > 0));
+        let txt = Z ? `开盘价从 ${Core.iso(X.first + 1)} 起；这段历史里，按收盘符合条件的有 ${b(X.nC.toLocaleString('en-US') + ' 天')}，按第二天开盘符合条件的有 ${b(X.nO.toLocaleString('en-US') + ' 天')}。`
+          : `Opening prices start on ${Core.iso(X.first + 1)}; over that history the conditions held at ${b(X.nC.toLocaleString('en-US'))} closes and at ${b(X.nO.toLocaleString('en-US'))} next opens. `;
+        if (g) txt += Z ? `符合条件的收盘之后，到第二天开盘的涨跌中位数是 ${b(fmtR(g.q(0.5)))}，一半的情况在 ${fmtR(g.q(0.25))} 到 ${fmtR(g.q(0.75))} 之间，${U.pct(1 - g.pos, 0)} 的时候开盘比收盘低。`
+          : `From a qualifying close to the next open the median move was ${b(fmtR(g.q(0.5)))}, half of them between ${fmtR(g.q(0.25))} and ${fmtR(g.q(0.75))}; the open was lower than the close ${U.pct(1 - g.pos, 0)} of the time. `;
+        if (dLong || dShort) txt += Z ? `按期末金额算，开盘买入和收盘买入的中位数相差：${[dLong ? `持有 1 个月以上在 ${dLong}` : null, dShort ? `持有几天在 ${dShort}` : null].filter(Boolean).join('，')}。` : `In end value the medians bought at the open and at the close differ by ${[dLong ? `${dLong} over a month or more` : null, dShort ? `${dShort} over a few days` : null].filter(Boolean).join(', and ')}. `;
+        wrap.appendChild(take(txt));
+        wrap.appendChild(h('p', { class: 'note' }, Z ? '开盘版的条件按第二天的开盘价判断（距高点、这一轮最深、距低点反弹；均线和波动率用标的指数的开盘价），VIX 和标普500 仍按前一天收盘；持有到同一个卖出收盘，所以比收盘版少一个晚上，短期的差别里有一部分就是这一晚的涨跌。每个符合条件的日子都算一个样本、权重相同，累计收益。'
+          : 'The open version judges the conditions at the next open (the fall, the deepest point, the rebound; the index’s average and volatility at its open), with the VIX and the S&P 500 at the previous close. Both are held to the same closing day, so the open version is one night shorter, and part of any short-term gap is that night’s move. Every qualifying day is one sample with equal weight; total returns.'));
+        return wrap;
+      }
+      let nowT = 0;
       function draw() {
         U.disposeIn(out); U.clear(out);
         const key = dipKey(), S0 = Core.S[key], months = DS.hz.slice().sort(hzCmp), to = dipTo(S0), from = dipFrom(S0), id = [key, months.join(','), from, to].join('|');
@@ -582,7 +663,7 @@
         // the status line is about the latest session even when the study ends earlier
         if (to < S0.e && (!DIP_NOW || DIP_NOW.id !== key)) DIP_NOW = { id: key, v: S0.v, s: S0.s, e: S0.e, n: S0.e - S0.s + 1, cache: new Map() };
         ctx = to < S0.e ? DIP_NOW : DIP_CTX;
-        const stt = statusOf(DS.c), allOk = stt.every(x => x.ok);
+        const hy = nowQ(), stt = statusOf(DS.c, hy), allOk = stt.every(x => x.ok);
         ctx = DIP_CTX;
         const v = ctx.v, s = ctx.s, e = ctx.e, Z = zh(), c = DS.c, own = from > s, ownEnd = e < S0.e; // the visitor set a later start / an earlier end
         const nm = nmOf(key), nmH = U.esc(nm), col = U.assetColor(DS.key, tk), cmpKey = dipUnder(), cmpNm = cmpKey ? nmOf(cmpKey) : '';
@@ -590,9 +671,29 @@
         // ---- today ----
         const eNow = S0.e, lv = eNow === Core.N - 1 ? U.live() : null; // the newest session may still be trading
         const when = !lv ? (Z ? `${Core.iso(eNow)} 收盘` : `Close of ${Core.iso(eNow)}`) : lv.closed ? (Z ? `${Core.iso(eNow)} 收盘（初步）` : `Close of ${Core.iso(eNow)} (preliminary)`) : (Z ? `${Core.iso(eNow)} 盘中（美东 ${lv.et}）` : `Intraday ${Core.iso(eNow)} (${lv.et} New York time)`);
-        out.appendChild(h('div', { class: 'callout', html: (Z ? `<b>${when}</b>：` : `<b>${when}</b>: `) + (stt.length
-          ? stt.map(x => `${x.ok ? '✓' : '✗'} ${U.esc(x.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(x.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? `。${allOk ? b('今天符合全部条件') : '今天不符合全部条件'}。` : `. ${allOk ? b('All conditions hold today') : 'Not all conditions hold today'}.`)
+        const money = (x) => (DS.key === 'SPX' ? U.num(x, 2) : '$' + U.num(x, 2)), tkr = DS.key === 'SPX' ? (Z ? '标普500' : 'S&P 500') : DS.key;
+        const vs = !hy ? '' : Z ? (hy.g === 0 ? '持平' : `${hy.g > 0 ? '高' : '低'} ${U.pct(Math.abs(hy.g), 1)}`) : (hy.g === 0 ? 'level with' : `${U.pct(Math.abs(hy.g), 1)} ${hy.g > 0 ? 'above' : 'below'}`);
+        const head = !hy ? when : Z ? `按现价 ${money(NOWQ.px)}（比 ${Core.iso(eNow)} 收盘价 ${money(hy.p0)} ${vs}），当作下一次收盘计算` : `At ${money(NOWQ.px)} (${vs} the ${Core.iso(eNow)} close of ${money(hy.p0)}), taken as the next close`;
+        const uTxt = hy && hy.up != null ? (Z ? `${hy.uK} ${hy.uEst ? '≈ ' : ''}$${U.num(hy.up, 2)}${hy.uEst ? `（按 ${DS.key} 涨跌的 1/${DIP_LEV[DS.key]} 估算）` : ''}。` : `${hy.uK} ${hy.uEst ? '≈ ' : ''}$${U.num(hy.up, 2)}${hy.uEst ? ` (estimated as 1/${DIP_LEV[DS.key]} of ${DS.key}'s move)` : ''}. `) : '';
+        const today = hy ? (Z ? '按这个价格' : 'At this price') : (Z ? '今天' : 'today');
+        out.appendChild(h('div', { class: 'callout', id: F.pre + 'dipNow', html: (Z ? `<b>${head}</b>：` : `<b>${head}</b>: `) + uTxt + (stt.length
+          ? stt.map(x => `${x.ok ? '✓' : '✗'} ${U.esc(x.now)}<span class="muted">${Z ? '（条件：' : ' (needs '}${U.esc(x.need)}${Z ? '）' : ')'}</span>`).join(Z ? '；' : '; ') + (Z ? `。${allOk ? b(today + '符合全部条件') : today + '不符合全部条件'}。` : `. ${allOk ? b(hy ? 'At this price all conditions hold' : 'All conditions hold today') : (hy ? 'At this price not all conditions hold' : 'Not all conditions hold today')}.`)
           : (Z ? '没有勾选任何条件，下面的结果就是任意一天买入。' : 'No condition is ticked, so the results below are simply buying on any day.')) }));
+        { // the price typed in: the fund's (and the index's, else estimated from the fund's move)
+          // redrawn after the event (redrawing inside it would remove the box while the browser still handles it)
+          const box = (id, val, ph, fn) => { const x = h('input', { type: 'number', id, value: val > 0 ? String(val) : '', min: 0, step: 'any', inputmode: 'decimal', placeholder: ph }); x.style.width = '96px'; x.addEventListener('change', () => { const y = parseFloat(x.value); fn(y > 0 ? y : null); clearTimeout(nowT); nowT = setTimeout(draw, 0); }); return x; };
+          const uK = DIP_UNDER[DS.key], ddx = stt.find(x => x.k === 'dd');
+          const pIn = box(F.pre + 'dipNowPx', NOWQ.px, money(pxLast(DS.key)), (y) => { NOWQ.px = y; });
+          pIn.setAttribute('aria-label', Z ? `${tkr} 现价` : `${tkr} price now`);
+          const uIn = uK ? box(F.pre + 'dipNowUpx', NOWQ.upx, Z ? '估算' : 'estimate', (y) => { NOWQ.upx = y; }) : null;
+          if (uIn) uIn.setAttribute('aria-label', Z ? `${uK} 现价` : `${uK} price now`);
+          const lbl = (t, el) => h('span', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center' } }, h('span', null, t), el);
+          out.appendChild(h('div', { class: 'controls', style: { marginTop: '-4px' } }, U.ctl(Z ? '用现价判断（比如 IBKR 夜盘报价；空着就按最新收盘）' : 'Judge at a price now (an overnight quote, say; empty: the latest close)', h('div', { class: 'chips', style: { alignItems: 'center', gap: '10px' } },
+            lbl(tkr + (DS.key === 'SPX' ? '' : ' $'), pIn), uIn ? lbl(uK + ' $', uIn) : null,
+            hy && c.dd.on && ddx ? h('button', { type: 'button', class: 'btn small ghost', id: F.pre + 'dipNowDd', title: Z ? '把跌幅条件的下限设成现在的跌幅，看历史上跌到至少这么深之后的情况' : 'Set the fall condition’s lower bound to the fall now: history from falls at least this deep', onclick: () => { c.dd.lo = Math.max(1, Math.floor(ddx.x * 100)); if (c.dd.hi != null && c.dd.hi <= c.dd.lo) c.dd.hi = null; redo(); } }, Z ? `跌幅门槛设为 ${Math.max(1, Math.floor(ddx.x * 100))}%` : `Fall threshold to ${Math.max(1, Math.floor(ddx.x * 100))}%`) : null,
+            hy ? h('button', { type: 'button', class: 'btn small ghost', onclick: () => { NOWQ.px = NOWQ.upx = null; draw(); } }, Z ? '恢复按收盘' : 'Back to the close') : null))));
+          if (hy) out.appendChild(h('p', { class: 'note', style: { marginTop: '-6px' } }, Z ? `把这个价格当作下一个交易日的收盘：距高点、这一轮最深、距低点反弹、是否创新低${uK ? `，以及 ${uK} 的均线和波动率` : ''}都按它重算；VIX 和标普500 仍按 ${Core.iso(eNow)} 收盘。下面的历史结果仍是“收盘时符合条件、按收盘价买入”；条件按现价判断，挑出的就是现在这种状态的历史时刻（开盘价检验见下方）。` : `This price is taken as the next session's close: the fall from the high, the deepest point, the rebound and any new low${uK ? `, and ${uK}'s average and volatility,` : ''} are recomputed with it; the VIX and the S&P 500 stay at the ${Core.iso(eNow)} close. The history below is still “conditions met at a close, bought at that close”; judged at this price, it is the history of states like this one (see the check with opening prices below).`));
+        }
         const R = run(c, { cmp: cmpKey ? Core.S[cmpKey].v : null, mae: true, rest: true });
         // the reference horizon for counts and sentences: a year, else the shortest in months, else the longest in days
         const h1 = months.includes(12) ? months.indexOf(12) : months.some(m => m > 0) ? months.findIndex(m => m > 0) : months.length - 1;
@@ -667,6 +768,8 @@
                 : `<b>Robustness</b>: leaving out any one of the ${epWord}, the ${hzAdj(r1.H.m)} median ranges from ${fmtR(lo.med)} (without ${epDates[lo.k]}) to ${fmtR(hi.med)} (without ${epDates[hi.k]}).` }));
             }
           }
+          // ---- judged and bought at the next open: the check for prices between closes ----
+          out.appendChild(openCheck(c, R, months));
           // ---- how much further it fell while holding ----
           out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '买入后最多还会再跌多少？' : 'How much further did it fall after buying?'));
           out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
