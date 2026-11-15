@@ -173,8 +173,9 @@ function applyUpdate(data0, src, opts = {}) {
           o.r[j] = Math.round(r * 1e6); rev.set(i, o.r[j]);
           rep.revisions.push(`${k} ${isoOf(days[i])}: ${fmtPct(old)} → ${fmtPct(r)} (dividend ${bar.div} posted late)`); continue;
         }
-        // a dividend the stored return has and the source no longer lists: kept
-        if (!bar.div && old - r > TOL_OK && old - r <= DIV_MAX && nextAgrees(i)) { dropped.push(`${isoOf(days[i])} (${fmtPct(old - r)})`); n++; continue; }
+        // a dividend the stored return has and the source no longer lists: kept. A stored return of exactly 0 is a flat
+        // day (no bar when stored), never a dividend: one the next session did not catch up stops the update below
+        if (!bar.div && old !== 0 && old - r > TOL_OK && old - r <= DIV_MAX && nextAgrees(i)) { dropped.push(`${isoOf(days[i])} (${fmtPct(old - r)})`); n++; continue; }
       }
       if (i < N0 - REVISE_DAYS) {
         n++; maxD = Math.max(maxD, d);
