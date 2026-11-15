@@ -22,7 +22,9 @@ jobs:
 
   browser:
     name: Browser smoke test (every tab)
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.56.1 cannot install Chromium's dependencies on Ubuntu 26.04 (ubuntu-latest since 2026-11).
+    # Back to ubuntu-latest once Playwright is upgraded to a release that supports it.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

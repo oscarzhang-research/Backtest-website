@@ -229,9 +229,13 @@ test('a flat day further back is re-split with the session that caught up, and S
   for (const key of ['SOXL', 'AMD', 'SOXLX']) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);
   assert.equal(report.revisions.filter(x => /filled in/.test(x)).length, 4, report.revisions.join('; '));
   validate(data);
-  // a flat day whose next session did not catch up changes the level: the update stops as before
-  const t2 = truncate(DATA, k), r2 = t2.etf.AMD.r; r2[r2.length - 1 - back] = 0;
-  assert.throws(() => applyUpdate(t2, fixtures(N - 1 - k - 30, N - 1), { now: NOW }), /AMD: return on/);
+  // a flat day whose next session did not catch up changes the level: the update stops as before. The download is
+  // scaled from that session on so its return there is a fixed -2% whatever the stored data hold: a stored return
+  // above the download by less than DIV_MAX must not pass for a dividend the source dropped
+  const t2 = truncate(DATA, k), r2 = t2.etf.AMD.r, i2 = N - 1 - k - back; r2[r2.length - 1 - back] = 0;
+  const src2 = fixtures(N - 1 - k - 30, N - 1), bars2 = src2.etf.AMD.bars, q2 = bars2.findIndex(x => x.date === Core.iso(i2));
+  const f2 = 0.98 * bars2[q2 - 1].close / bars2[q2].close; for (let q = q2; q < bars2.length; q++) bars2[q].close *= f2;
+  assert.throws(() => applyUpdate(t2, src2, { now: NOW }), new RegExp(`AMD: return on ${Core.iso(i2)} is -2\\.00% in the download but 0\\.00% stored`));
 });
 
 test('a new session most funds and stocks have no bar for yet is left for the next run', () => {
