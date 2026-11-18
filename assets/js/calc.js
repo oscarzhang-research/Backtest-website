@@ -372,19 +372,23 @@
   // Mean, share above zero, extremes and any quantile of a sample. Unweighted: linear interpolation as Core.quantile.
   // Weighted: linear interpolation between the midpoints of each value's share of the total weight (identical medians
   // for equal weights).
+  // geo: the geometric (compound) mean of the returns, exp(mean of log(1 + x)) − 1 — what repeating the bet would grow
+  // a sum by on average; a return of −100% or worse counts as −99.9999999999%
+  const lg1 = (x) => Math.log(Math.max(1e-12, 1 + x));
+  C.lg1 = lg1;
   C.summary = function (arr, w) {
     const n = arr.length;
-    if (!n) return { n: 0, mean: NaN, pos: NaN, min: NaN, max: NaN, q: () => NaN };
+    if (!n) return { n: 0, mean: NaN, geo: NaN, pos: NaN, min: NaN, max: NaN, q: () => NaN };
     if (!w) {
       const a = Float64Array.from(arr).sort();
-      let sum = 0, pos = 0; for (const x of a) { sum += x; if (x > 0) pos++; }
-      return { n, mean: sum / n, pos: pos / n, min: a[0], max: a[n - 1], q: (p) => { const t = (n - 1) * p, lo = Math.floor(t), hi = Math.ceil(t); return a[lo] + (a[hi] - a[lo]) * (t - lo); } };
+      let sum = 0, pos = 0, lg = 0; for (const x of a) { sum += x; lg += lg1(x); if (x > 0) pos++; }
+      return { n, mean: sum / n, geo: Math.exp(lg / n) - 1, pos: pos / n, min: a[0], max: a[n - 1], q: (p) => { const t = (n - 1) * p, lo = Math.floor(t), hi = Math.ceil(t); return a[lo] + (a[hi] - a[lo]) * (t - lo); } };
     }
     const idx = Array.from({ length: n }, (_, k) => k).sort((x, y) => arr[x] - arr[y]);
-    let W = 0, sum = 0, pos = 0; for (let k = 0; k < n; k++) { W += w[k]; sum += w[k] * arr[k]; if (arr[k] > 0) pos += w[k]; }
+    let W = 0, sum = 0, pos = 0, lg = 0; for (let k = 0; k < n; k++) { W += w[k]; sum += w[k] * arr[k]; lg += w[k] * lg1(arr[k]); if (arr[k] > 0) pos += w[k]; }
     const xs = new Float64Array(n), cs = new Float64Array(n); let c = 0;
     idx.forEach((k, r) => { xs[r] = arr[k]; cs[r] = (c + w[k] / 2) / W; c += w[k]; });
-    return { n, mean: sum / W, pos: pos / W, min: xs[0], max: xs[n - 1], q: (p) => {
+    return { n, mean: sum / W, geo: Math.exp(lg / W) - 1, pos: pos / W, min: xs[0], max: xs[n - 1], q: (p) => {
       if (p <= cs[0]) return xs[0]; if (p >= cs[n - 1]) return xs[n - 1];
       let lo = 0, hi = n - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cs[mid] <= p) lo = mid; else hi = mid; }
       return xs[lo] + (xs[hi] - xs[lo]) * (p - cs[lo]) / (cs[hi] - cs[lo]);
@@ -534,7 +538,8 @@
   };
   // A selling rule for purchases of v at the close of each session in `at`, each held at most until ends[i − s] (one
   // horizon) and in T-bills after a sale. o: { v, s, ends, tab (C.rangeTab of v over [s, e]), c (paid on the purchase and
-  // on the sale) }. Price rules sell at the close that reaches the level (a resting order, priced at the close); signal
+  // on the sale), dest (optional: the levels of what the money buys after an early sale instead of T-bills, such as the
+  // 1× index; it pays c on the switch into it and again when it is sold at the horizon end) }. Price rules sell at the close that reaches the level (a resting order, priced at the close); signal
   // rules see the signal at a close and sell at the next one. Rule types:
   //   hold — to the horizon end;   best — at the highest close after the purchase (hindsight: a ceiling, not a rule);
   //   tp {x} — the first close x or more above the purchase price;   sl {y} — the first close y or more below it;
@@ -545,9 +550,9 @@
   // Per purchase: the session sold (j when nothing fires), whether the rule fired, the return when sold, the return at the
   // horizon end, the worst close until the sale, and the fund's move from the sale to the horizon end.
   C.exitStudy = function (o, at, rule) {
-    const { v, s, ends, tab } = o, c = o.c || 0, cash = Core.S.CASH.v, n = at.length;
+    const { v, s, ends, tab } = o, c = o.c || 0, cash = Core.S.CASH.v, n = at.length, dest = o.dest || null, dc = (1 - c) * (1 - c);
     const xs = new Int32Array(n), hit = new Uint8Array(n), rX = new Float64Array(n), rH = new Float64Array(n), mae = new Float64Array(n), after = new Float64Array(n);
-    const end = (i, x, j) => (1 - c) * (v[x] / v[i]) * (1 - c) * (cash[j] / cash[x]) - 1;
+    const end = (i, x, j) => (1 - c) * (v[x] / v[i]) * (1 - c) * (dest && x < j ? (dest[j] / dest[x]) * dc : cash[j] / cash[x]) - 1;
     const sellAt = (i, j) => {
       const t = rule.type, p0 = v[i];
       if (t === 'hold' || i >= j) return j;
@@ -573,6 +578,30 @@
       mae[q] = Math.min(0, v[tab.argMin(i, rule.type === 'scale' ? j : x)] / v[i] - 1); after[q] = v[j] / v[x] - 1; // half of a scaled sale is held to the end
     }
     return { x: xs, hit, rX, rH, mae, after };
+  };
+  // How sure is a difference in geometric means? a and b: two outcomes of the same purchases (a selling rule and holding
+  // to the end); cl: a cluster for each purchase (purchases in one cluster share most of their path — the same fall, or
+  // the same block of time); w: weights or null. The clusters are resampled with replacement (B times, a fixed seed, so
+  // the same data always give the same interval). Returns the point estimate d = geo(a) − geo(b), the 5% and 95%
+  // percentiles of the resampled differences (lo, hi) and the number of clusters k (lo = hi = NaN when k < 2).
+  C.geoDiffCI = function (a, b, cl, w, B, seed) {
+    const at = new Map(), SA = [], SB = [], SW = [];
+    for (let k = 0; k < a.length; k++) {
+      let j = at.get(cl[k]); if (j === undefined) { j = SA.length; at.set(cl[k], j); SA.push(0); SB.push(0); SW.push(0); }
+      const x = w ? w[k] : 1; SA[j] += x * lg1(a[k]); SB[j] += x * lg1(b[k]); SW[j] += x;
+    }
+    const K = SA.length, sum = (z) => z.reduce((p, y) => p + y, 0), tw = sum(SW);
+    const d = Math.exp(sum(SA) / tw) - Math.exp(sum(SB) / tw);
+    if (K < 2) return { d, lo: NaN, hi: NaN, k: K };
+    let x = (seed >>> 0) || 1; const rnd = () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; };
+    const n = B || 400, ds = new Float64Array(n);
+    for (let r = 0; r < n; r++) {
+      let sa = 0, sb = 0, sw = 0;
+      for (let k = 0; k < K; k++) { const j = Math.floor(rnd() * K); sa += SA[j]; sb += SB[j]; sw += SW[j]; }
+      ds[r] = sw > 0 ? Math.exp(sa / sw) - Math.exp(sb / sw) : 0;
+    }
+    ds.sort();
+    return { d, lo: ds[Math.floor(0.05 * (n - 1))], hi: ds[Math.ceil(0.95 * (n - 1))], k: K };
   };
 
   // Leverage curve (daily reset)

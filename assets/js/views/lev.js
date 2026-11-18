@@ -54,9 +54,9 @@
   const DIP_WIN = [63, 126, 252, 504, 756, 1260]; // sessions
   const DIP_LWIN = [21, 63, 126, 252];
   const DIP_MA = [20, 50, 100, 200];
-  const DIP_STATS = ['mean', 'p50', 'p25', 'p75', 'p10', 'p90', 'p5', 'p95', 'min', 'max', 'pos'];
+  const DIP_STATS = ['geo', 'mean', 'p50', 'p25', 'p75', 'p10', 'p90', 'p5', 'p95', 'min', 'max', 'pos'];
   const DIP_CONDS = ['dd', 'reb', 'fear', 'trend', 'mkt'];
-  const dipStatOk = (k) => typeof k === 'string' && /^(mean|min|max|pos|p\d+(\.\d)?)$/.test(k);
+  const dipStatOk = (k) => typeof k === 'string' && /^(geo|mean|min|max|pos|p\d+(\.\d)?)$/.test(k);
   const dipStatList = (a) => (Array.isArray(a) ? Array.from(new Set(a.filter(dipStatOk))) : []);
   const dipNum = (x, lo, hi, def) => (typeof x === 'number' && isFinite(x) && x >= lo && x <= hi ? x : def);
   // one combination of conditions, with defaults for anything missing or invalid
@@ -91,10 +91,10 @@
   const winAdj = (w) => ({ 63: '3-month', 126: '6-month', 252: '1-year', 504: '2-year', 756: '3-year', 1260: '5-year' }[w]);
   const lwinLab = (w) => zh() ? { 21: '1 个月', 63: '3 个月', 126: '6 个月', 252: '1 年' }[w] : { 21: '1 month', 63: '3 months', 126: '6 months', 252: '1 year' }[w];
   const lwinAdj = (w) => ({ 21: '1-month', 63: '3-month', 126: '6-month', 252: '1-year' }[w]);
-  const statP = (k) => k === 'min' ? 0 : k === 'max' ? 1 : k === 'mean' || k === 'pos' ? null : parseFloat(k.slice(1)) / 100;
-  const statLab = (k) => k === 'mean' ? (zh() ? '平均' : 'Mean') : k === 'p50' ? (zh() ? '中位数' : 'Median') : k === 'min' ? (zh() ? '最低' : 'Lowest') : k === 'max' ? (zh() ? '最高' : 'Highest') : k === 'pos' ? (zh() ? '正收益占比' : 'Share > 0') : 'P' + k.slice(1);
-  const statRank = (k) => k === 'mean' ? -1 : k === 'pos' ? 2 : statP(k);
-  const statVal = (st, k) => k === 'mean' ? st.mean : k === 'pos' ? st.pos : k === 'min' ? st.min : k === 'max' ? st.max : st.q(statP(k));
+  const statP = (k) => k === 'min' ? 0 : k === 'max' ? 1 : k === 'mean' || k === 'pos' || k === 'geo' ? null : parseFloat(k.slice(1)) / 100;
+  const statLab = (k) => k === 'geo' ? (zh() ? '几何平均' : 'Geometric mean') : k === 'mean' ? (zh() ? '平均' : 'Mean') : k === 'p50' ? (zh() ? '中位数' : 'Median') : k === 'min' ? (zh() ? '最低' : 'Lowest') : k === 'max' ? (zh() ? '最高' : 'Highest') : k === 'pos' ? (zh() ? '正收益占比' : 'Share > 0') : 'P' + k.slice(1);
+  const statRank = (k) => k === 'geo' ? -2 : k === 'mean' ? -1 : k === 'pos' ? 2 : statP(k);
+  const statVal = (st, k) => k === 'geo' ? st.geo : k === 'mean' ? st.mean : k === 'pos' ? st.pos : k === 'min' ? st.min : k === 'max' ? st.max : st.q(statP(k));
   const fmtR = (x) => !U.isNum(x) ? '—' : Math.abs(x) >= 10 ? (x < 0 ? '-' : '') + Math.round(Math.abs(x) * 100).toLocaleString('en-US') + '%' : U.pct(x, 1);
   const pctN = (x) => +x.toFixed(1) + '%'; // a percentage the visitor typed
   const fade = (c, a) => /^#[0-9a-f]{6}$/i.test(c) ? `rgba(${parseInt(c.slice(1, 3), 16)}, ${parseInt(c.slice(3, 5), 16)}, ${parseInt(c.slice(5, 7), 16)}, ${a})` : c;

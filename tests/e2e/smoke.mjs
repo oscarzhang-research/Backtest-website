@@ -419,21 +419,37 @@ for (const [lang, live, must] of [
   report('levcmp falls', problems);
   await ctx.close();
 }
-// SOXL vs TQQQ, C6: the selling rules — the tables, the levels, the heat maps; another purchase rule, a rule switched off;
-// and today's signals at the top of the page
+// SOXL vs TQQQ, C6: the selling rules — ranked by the geometric mean, with each difference from holding and its interval;
+// the tables, the decades and the insurance chart, where the money goes after a sale, the levels, the heat maps; another
+// purchase rule, a rule switched off; and today's signals at the top of the page
 {
   const { ctx, page, errors } = await open('zh', 'levcmp');
   const take = () => page.evaluate(() => { const el = document.querySelector('#lc-exit .takeaway'); return el ? el.innerText : ''; });
   const settle = async (pred) => { for (let q = 0; q < 200; q++) { await page.waitForTimeout(250); const t = await take(); if (pred(t)) return t; } return null; };
   const rowsOf = (id) => page.evaluate((x) => document.querySelectorAll('#' + x + ' tbody tr').length, id);
   const problems = [];
-  const t0 = await settle((t) => t.includes('任意一天买入') && t.includes('持有到期的中位数'));
+  const t0 = await settle((t) => t.includes('任意一天买入') && t.includes('持有到期的几何平均'));
   if (!t0) problems.push('C6 did not render');
   else {
     if (/\bNaN\b|undefined/.test(t0)) problems.push('NaN/undefined in C6');
     const n0 = await rowsOf('lc-c6Ret');
     if (n0 !== 10) problems.push('the returns table has ' + n0 + ' rows');
     if ((await rowsOf('lc-c6Beh')) !== n0) problems.push('the two tables differ in rows');
+    const on = await page.evaluate(() => [...document.querySelectorAll('#lc-c6Stats button.chip[aria-pressed="true"]')].map(x => x.textContent));
+    if (on[0] !== '几何平均') problems.push('the geometric mean does not lead the statistics: ' + on.join(', '));
+    const ci = await page.evaluate(() => [...document.querySelectorAll('#lc-c6Ret tbody tr')].slice(1).map(tr => tr.lastElementChild.innerText));
+    if (!ci.length || !ci.every(x => /^[+−]\d+\.\d/.test(x) && x.includes('~'))) problems.push('differences from holding with intervals: ' + ci.slice(0, 2).join(' | '));
+    if ((await rowsOf('lc-c6Era')) !== n0) problems.push('the decades table has ' + (await rowsOf('lc-c6Era')) + ' rows');
+    if ((await page.evaluate(() => document.querySelectorAll('#lc-c6Era thead th').length)) !== 6) problems.push('the decades table lacks a column');
+    if (!(await page.evaluate(() => document.querySelectorAll('#lc-c6Ins canvas').length))) problems.push('no insurance chart');
+    if ((await rowsOf('lc-c6DestT')) !== n0 - 2) problems.push('the destination table has ' + (await rowsOf('lc-c6DestT')) + ' rows');
+    const era0 = await page.evaluate(() => document.querySelector('#lc-c6Era tbody').innerText);
+    await page.click('#lc-c6EraF button[data-v="TQQQ"]');
+    let era1 = era0; for (let q = 0; q < 80 && era1 === era0; q++) { await page.waitForTimeout(250); era1 = await page.evaluate(() => (document.querySelector('#lc-c6Era tbody') || {}).innerText || ''); }
+    if (era1 === era0) problems.push('the decades table did not switch to TQQQ');
+    await page.click('#lc-c6Dest button[data-v="idx"]');
+    if (!(await settle((t) => t.includes('持有到期的几何平均')) && await page.evaluate(() => [...document.querySelectorAll('#lc-exit h4')].some(x => x.innerText.includes('提前卖出后的钱换成一倍指数'))))) problems.push('the 1× index after a sale did not show');
+    if (/\bNaN\b|undefined/.test(await page.evaluate(() => document.getElementById('lc-exit').innerText))) problems.push('NaN/undefined in C6 with the 1× index');
     const sw = await page.evaluate(() => ['tp', 'sl', 'trail'].map(k => document.querySelectorAll('#lc-c6Sw-' + k + ' canvas').length));
     if (sw.some(n => !n)) problems.push('a level chart is missing');
     if ((await rowsOf('lc-c6Heat-SOXL')) !== 6 || (await rowsOf('lc-c6Heat-TQQQ')) !== 6) problems.push('the heat maps are incomplete');

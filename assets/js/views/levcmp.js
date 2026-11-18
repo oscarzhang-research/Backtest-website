@@ -37,7 +37,7 @@
       c1: sec(st.c1, real), c2: sec(st.c2, real, { yrs: 5 }), c3: sec(st.c3, real, { reb: 'Q' }),
       c4: sec(st.c4, real, { same: 'own', first: false, wFall: false, ann: false, oos: null, hz: [3, 6, 12, 24, 36, 60], stats: ['p50', 'p25', 'p75'], cmpStats: ['p50'] }),
       c5: sec(st.c5, real, { rule: 'bh', n: 200, mom: 12, vt: 40, w: 33, a0: 10000, a1: 1000, freq: 'M', boost: 'none', bm: 3, bp: 50, one: null, smp: 'M', ann: false, scale: 'log', hzSel: 12, hz: [6, 12, 36, 60, 120], stats: ['p10', 'p25', 'p50', 'p75', 'p90'] }),
-      c6: sec(st.c6, real, { entry: 'any', hz: 12, ann: false, heat: 'p50', pick: 'tp', stats: ['p50', 'p10', 'p90'], r: null }),
+      c6: sec(st.c6, real, { v: 2, entry: 'any', hz: 12, ann: false, heat: 'geo', pick: 'tp', stats: ['geo', 'p50', 'p10'], r: null, dest: 'cash', eraF: 'SOXL' }),
     };
     d.c2.yrs = [3, 5, 10].includes(d.c2.yrs) ? d.c2.yrs : 5; d.c3.reb = ['D', 'M', 'Q', 'Y', 'N'].includes(d.c3.reb) ? d.c3.reb : 'Q';
     const c4 = d.c4;
@@ -66,8 +66,10 @@
         scale: { on: on(R6.scale, true), x: num(g('scale').x, 5, 2000, 100) }, tstop: { on: on(R6.tstop, true), m: Math.round(num(g('tstop').m, 1, 120, 6)) }, vix: { on: on(R6.vix, false), lvl: num(g('vix').lvl, 10, 80, 20) },
       };
       c6.entry = c6.entry === 'c4' ? 'c4' : 'any'; c6.hz = [3, 6, 12, 24, 36, 60].includes(c6.hz) ? c6.hz : 12; c6.ann = !!c6.ann;
-      c6.heat = ['p50', 'mean', 'p10', 'win'].includes(c6.heat) ? c6.heat : 'p50'; c6.pick = typeof c6.pick === 'string' ? c6.pick : 'tp';
-      c6.stats = dipStatList(c6.stats); if (!c6.stats.length) c6.stats = ['p50'];
+      c6.heat = ['geo', 'p50', 'mean', 'p10', 'win'].includes(c6.heat) ? c6.heat : 'geo'; c6.pick = typeof c6.pick === 'string' ? c6.pick : 'tp';
+      c6.stats = dipStatList(c6.stats); if (!c6.stats.length) c6.stats = ['geo'];
+      if (c6.v !== 2) { if (!c6.stats.includes('geo')) c6.stats.unshift('geo'); if (c6.heat === 'p50') c6.heat = 'geo'; c6.v = 2; } // the geometric mean leads since v2
+      c6.dest = c6.dest === 'idx' ? 'idx' : 'cash'; c6.eraF = c6.eraF === 'TQQQ' ? 'TQQQ' : 'SOXL';
     }
     c5.boost = ['none', 'mult', 'cash'].includes(c5.boost) ? c5.boost : 'none'; c5.bm = [2, 3, 5].includes(c5.bm) ? c5.bm : 3; c5.bp = [25, 50, 75, 100].includes(c5.bp) ? c5.bp : 50;
     c5.one = c5.one && typeof c5.one === 'object' && isoOk(c5.one.from) && isoOk(c5.one.to) && Number.isInteger(c5.one.m) ? { from: c5.one.from, to: c5.one.to, m: c5.one.m } : null;
@@ -1085,6 +1087,7 @@
       ctl2.appendChild(U.ctl(Z ? '买入时机' : 'Purchases', U.seg('lc-c6Entry', [['any', Z ? '任意一天买入' : 'On any day'], ['c4', Z ? '按 C4 当前的条件' : 'On C4’s current conditions']], st.entry, (v) => set(() => { st.entry = v; }))));
       ctl2.appendChild(U.ctl(Z ? '最长持有（期限）' : 'Holding period', U.seg('lc-c6Hz', [3, 6, 12, 24, 36, 60].map(x => [x, hzLab(x)]), m, (v) => set(() => { st.hz = +v; }))));
       ctl2.appendChild(U.ctl(Z ? '收益口径' : 'Returns', U.seg('lc-c6Ann', [['abs', Z ? '到期末的总收益' : 'Total to the end'], ['ann', Z ? '年化' : 'Annualized']], st.ann ? 'ann' : 'abs', (v) => set(() => { st.ann = v === 'ann'; }))));
+      ctl2.appendChild(U.ctl(Z ? '提前卖出后的钱' : 'After an early sale', U.seg('lc-c6Dest', [['cash', Z ? '放国库券' : 'T-bills'], ['idx', Z ? '换成一倍指数' : 'The 1× index']], st.dest, (v) => set(() => { st.dest = v; }))));
       if (st.entry === 'c4') ctl2.appendChild(h('div', { class: 'note', style: { flexBasis: '100%', margin: '0' } }, (Z ? 'C4 当前条件：' : 'C4’s current conditions: ') + comboTxt(c4.c, true) + (Z ? `（${c4.same === 'own' ? '两只各自判断' : `两只都按 ${c4.same} 的信号`}；${c4.first ? '每轮只取第一天' : '每个符合条件的交易日'}${c4.wFall ? '，每轮相同权重' : ''}）。` : ` (${c4.same === 'own' ? 'each fund on its own' : `both on ${c4.same}’s signal`}; ${c4.first ? 'the first day of each fall' : 'every qualifying day'}${c4.wFall ? ', each fall weighing the same' : ''}). `),
         h('button', { type: 'button', class: 'linkbtn', onclick: () => { const x = document.getElementById('lc-fall'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, Z ? '去 C4 修改条件 ↑' : 'Change them in C4 ↑')));
       // ---- the rule cards ----
@@ -1110,9 +1113,13 @@
         card('vix', fld(Z ? 'VIX 水平' : 'VIX level', numBox('c6VixL', R0.vix.lvl, 10, 80, 1, (x) => { R0.vix.lvl = x; })))));
       const all = ['hold', ...EXIT_KEYS, 'best'];
       docs.appendChild(docBox('c6Doc', Z ? '每种卖法具体是怎么操作的？（点击展开）' : 'How does each way out work? (click to open)', ...all.map(k => { const d = exitDoc(k, R0[k]); return h('div', { class: 'lc-doc-item' }, h('h5', null, d.name), h('p', null, d.tip), ...docBody(d.body)); })));
-      docs.appendChild(docBox('c6HowDoc', Z ? '怎么比较：同一个期限、卖出后放国库券' : 'How they are compared: the same period, T-bills after a sale', ...docBody(Z ? [
+      docs.appendChild(docBox('c6HowDoc', Z ? '怎么比较：同一个期限、几何平均、90% 区间和不同年代' : 'How they are compared: the same period, the geometric mean, 90% intervals and decades', ...docBody(Z ? [
         ['同一个期限', `每一笔买入最多持有 ${hzLab(m)}。按某条规则提前卖出后，钱放在国库券里直到期限结束；没有触发就在期限结束时卖出。所以每种卖法的结果都是“期限结束时的总收益”，可以直接比较。`],
         ['成本', '买入和卖出各付 0.05%。'],
+        ['提前卖出后的钱', '默认放国库券直到期限结束；也可以换成一倍的指数一直拿到期末（SOXL 换 SOXX，模拟段为 SOXX*；TQQQ 换 QQQ），换的时候买入、期末卖出各再付 0.05%。'],
+        ['几何平均', '把每一笔期末收益按复利平均：exp(平均 ln(1 + r)) − 1，也就是长期反复这样操作时财富的实际增长率。平均值会被少数暴涨拉高，中位数会被止盈线“钉住”，几何平均把两头都算进去，所以本节按它排序。'],
+        ['90% 区间', '相邻几天买入的结果几乎一样，不能当成独立样本。把买入按独立下跌（C4 的条件）或按和期限一样长的时间块整块重抽 400 次，每次重算“这条卖法减持有到期”的几何平均差，取第 5 和第 95 百分位；区间跨过 0，这点差距就可能只是运气。段数很少时（比如只有几轮下跌），区间本身也不可靠。'],
+        ['不同年代', '用每只基金的全部历史（2010 年以前为模拟值），按买入日期分成 2000–09 年和 2010 年以后，再单列三次熊市（只看从高点到低点之间买入的那些）。这部分不受“买入日起点”的限制，但买入条件、期限、卖法和去处都和上面相同。'],
         ['成交价', '价格类规则（止盈、止损、追踪止损、回到前高、分批）按收盘价判断、当天收盘成交，相当于挂单；信号类规则（均线、时间止损、VIX）在信号出现后的下一个交易日收盘卖出。'],
         ['卖出后又涨', '在已经提前卖出的买入里，期限结束时基金价格比卖出价更高的比例——止盈时是“卖飞”，止损时是“被洗出去”。'],
         ['比持有到期更好 / 更差', '同一笔买入，按这条规则卖的期末收益比持有到期高 / 低的比例；没有触发的买入两者相同，不算在内。'],
@@ -1120,6 +1127,10 @@
       ] : [
         ['The same period', `Every purchase is held at most ${hzLab(m)}. After an early sale the money sits in T-bills until the period ends; without a sale it is sold at the end. So each rule's result is the total return at the end of the period, directly comparable.`],
         ['Costs', '0.05% on the purchase and on the sale.'],
+        ['After an early sale', 'By default the money sits in T-bills until the period ends; it can instead buy the 1× index and hold it to the end (SOXX for SOXL — SOXX* in simulated years — and QQQ for TQQQ), paying another 0.05% to buy it and to sell it at the end.'],
+        ['Geometric mean', 'Every purchase’s outcome compounded together: exp(mean of ln(1 + r)) − 1, the rate at which repeating the approach would grow wealth. The mean is pulled up by a few huge gains and the median gets pinned at a take-profit target; the geometric mean counts both ends, so this section ranks by it.'],
+        ['90% interval', 'Purchases a few days apart end almost alike, so they are not independent. Whole separate falls (C4’s conditions) or blocks of time as long as the holding period are resampled 400 times, the difference “this rule minus holding” in geometric means recomputed each time, and the 5th and 95th percentiles kept; when the interval straddles 0 the gap may be luck. With few clusters (a handful of falls, say) the interval itself is unreliable.'],
+        ['Decades', 'Each fund’s whole history (simulated before 2010), split by purchase date into 2000–09 and the years since 2010, plus three bear markets (only purchases made between the peak and the trough). This part ignores “Purchases from”, but the conditions, period, rules and destination are the same as above.'],
         ['Fills', 'Price rules (take profit, stop loss, trailing stop, back to the prior high, half and half) are judged on the close and filled at that close, like resting orders; signal rules (the moving average, the time stop, the VIX) sell at the close after the signal.'],
         ['Rose after the sale', 'Of the purchases sold early, the share in which the fund ended the period above the sale price — selling too early for a take-profit, being shaken out for a stop.'],
         ['Better / worse than holding', 'The share of purchases for which the rule ended above / below holding to the end; purchases on which it never fired are the same and count as neither.'],
@@ -1145,7 +1156,7 @@
       else {
         const same = c4.same === 'own' ? -1 : c4.same === 'SOXL' ? 0 : 1;
         const runs = FS.map(x => kitOf(x.key, x.unl, Calc.dipContext(x.v, x.s, i1, [m], Math.max(i0, x.s))).run(c4.c, { first: c4.first, wFall: c4.wFall }).H[0]);
-        ent = FS.map((x, q) => { const H = runs[same < 0 ? q : same]; return { at: H.at, w: H.w, nEp: H.nEp }; });
+        ent = FS.map((x, q) => { const H = runs[same < 0 ? q : same]; return { at: H.at, w: H.w, nEp: H.nEp, ep: H.ep }; });
       }
       if (!ent.some(x => x.at.length)) { out.appendChild(h('div', { class: 'empty' }, st.entry === 'c4' ? (Z ? '所选区间里没有符合 C4 条件、而且持有期能在终点前结束的买入；放宽 C4 的条件、缩短期限，或换一个区间。' : 'No purchase in the range meets C4’s conditions with a holding period ending by the end date; loosen the conditions, shorten the period or pick another range.') : (Z ? '所选区间比期限还短。' : 'The range is shorter than the holding period.'))); return; }
       const ruleOf = (x, k, p) => {
@@ -1163,8 +1174,17 @@
         return { type: 'hold' };
       };
       const ann = (y) => (st.ann ? Math.pow(1 + y, 12 / m) - 1 : y);
-      const study = (q, rule) => Calc.exitStudy({ v: FS[q].v, s: FS[q].s, ends: FS[q].ends, tab: FS[q].tab, c: COST }, ent[q].at, rule);
+      // after an early sale the money sits in T-bills, or buys the fund's 1× index (SOXX — SOXX* in simulated years — or QQQ)
+      const destOf = (x, d) => (d === 'idx' ? Core.S[x.unl].v : null);
+      const studyAt = (x, at, rule, d) => Calc.exitStudy({ v: x.v, s: x.s, ends: x.ends, tab: x.tab, c: COST, dest: destOf(x, d) }, at, rule);
+      const study = (q, rule, d) => studyAt(FS[q], ent[q].at, rule, d || st.dest);
       const HOLD = [0, 1].map(q => study(q, { type: 'hold' }));
+      // clusters for the confidence intervals: C4's separate falls, otherwise blocks of time as long as the holding period
+      // (three months at least) — purchases in one cluster share most of their path, so they count as one observation
+      const blockD = Math.max(91, Math.round(m * 30.44));
+      const clOf = (e) => (e.ep ? e.ep : e.at.map(i => Math.floor((D[i] - D[e.at[0]]) / blockD)));
+      const CL = ent.map(clOf);
+      const ppS = (x) => (U.isNum(x) ? (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) : '—'); // percentage points, signed
       // the figures of one rule for one fund
       const figs = (q, R) => {
         const at = ent[q].at, w = ent[q].w, H0 = HOLD[q], n = at.length; let W = 0, win = 0, better = 0, worse = 0, hit = 0, up = 0; const held = [], aft = [], aw = [];
@@ -1173,11 +1193,14 @@
       };
       const keys = ['hold', ...EXIT_KEYS.filter(k => R0[k].on), 'best'];
       const RES = keys.map(k => ({ k, d: exitDoc(k, R0[k]), F: [0, 1].map(q => (k === 'hold' ? figs(q, HOLD[q]) : figs(q, study(q, ruleOf(FS[q], k))))) }));
+      // the difference from holding to the end in geometric means, with a 90% interval from resampling the clusters
+      RES.forEach(x => x.F.forEach((fg, q) => { fg.ci = x.k === 'hold' || !fg.n ? null : Calc.geoDiffCI(Array.from(fg.R.rH, ann), Array.from(HOLD[q].rH, ann), CL[q], ent[q].w, 400, 7 + q); }));
+      const destTxt = st.dest === 'idx' ? (Z ? '换成一倍指数（SOXL 换 SOXX、TQQQ 换 QQQ）' : 'buys the 1× index (SOXX for SOXL, QQQ for TQQQ)') : (Z ? '放国库券' : 'sits in T-bills');
       const sel = st.stats.slice().sort((x, y) => statRank(x) - statRank(y)), an = st.ann ? (Z ? '年化' : 'annualized ') : '';
       // ---- why it matters ----
       out.appendChild(h('div', { class: 'callout', html: Z
-        ? `<b>为什么“什么时候卖”对三倍 ETF 特别重要？</b>三倍 ETF 的结果和路径高度相关：涨 100% 之后只要再跌 50% 就回到原点，大熊市里可以跌掉 90% 以上。所以同样买在一个好时点，卖得早晚会让结果相差好几倍。这里把每一笔买入分别按不同的规则卖出，统一比较到同一个期限（最长持有 ${hzLab(m)}；提前卖出后的钱放国库券直到期限结束），所以不同卖法之间可以直接比较。买入可以是任意一天，也可以沿用 C4 的条件（比如大跌之后）。`
-        : `<b>Why does “when to sell” matter so much for a 3× ETF?</b> Its result depends heavily on the path: after +100%, a 50% fall is back to the start, and bear markets can take more than 90%. So two purchases made at the same good moment can end several times apart depending on when they are sold. Here every purchase is sold under each rule and all are compared over the same period (held at most ${hzLab(m)}; after an early sale the money sits in T-bills until the period ends), so the rules are directly comparable. Purchases can be on any day or on C4’s conditions (after a big fall, say).` }));
+        ? `<b>为什么“什么时候卖”对三倍 ETF 特别重要？</b>三倍 ETF 的结果和路径高度相关：涨 100% 之后只要再跌 50% 就回到原点，大熊市里可以跌掉 90% 以上。所以同样买在一个好时点，卖得早晚会让结果相差好几倍。这里把每一笔买入分别按不同的规则卖出，统一比较到同一个期限（最长持有 ${hzLab(m)}；提前卖出后的钱${destTxt}直到期限结束），所以不同卖法之间可以直接比较。买入可以是任意一天，也可以沿用 C4 的条件（比如大跌之后）。<br><b>排序看几何平均</b>：把每一笔结果按复利平均，也就是长期反复这样操作时财富实际的增长率。中位数会被止盈线“钉住”，容易高估止盈；卖出的代价和好处又在不同年代差别很大，所以下面还把 2000–09 年（含模拟）和 2010 年后分开比较，并给出每个差距的 90% 区间。`
+        : `<b>Why does “when to sell” matter so much for a 3× ETF?</b> Its result depends heavily on the path: after +100%, a 50% fall is back to the start, and bear markets can take more than 90%. So two purchases made at the same good moment can end several times apart depending on when they are sold. Here every purchase is sold under each rule and all are compared over the same period (held at most ${hzLab(m)}; after an early sale the money ${destTxt} until the period ends), so the rules are directly comparable. Purchases can be on any day or on C4’s conditions (after a big fall, say).<br><b>Rules are ranked by the geometric mean</b>: every outcome compounded together, which is what repeating the approach would grow wealth by. The median gets pinned at a take-profit target and flatters it, and what selling costs or saves differs greatly between decades, so 2000–09 (incl. simulated) and the years since 2010 are also compared apart below, with a 90% interval for each difference.` }));
       // ---- the spread of each rule, and the tables ----
       const cats = RES.map(x => x.d.name), box = h('div', { class: 'chart tall' }); out.appendChild(box);
       requestAnimationFrame(() => {
@@ -1198,9 +1221,12 @@
       const trCls = (x) => (x.k === 'hold' ? 'hl' : x.k === 'best' ? 'muted' : '');
       const head2 = (groups) => h('thead', null, h('tr', null, h('th', { rowspan: 2 }, Z ? '卖法' : 'Way out'), ...groups.map(([g0, tip]) => (tip ? U.tip(h('th', { colspan: 2, class: 'th-tip', style: { textAlign: 'center' } }, g0), U.esc(tip)) : h('th', { colspan: 2, style: { textAlign: 'center' } }, g0)))),
         h('tr', null, ...groups.map(() => PAIR.map(f => h('th', { style: { color: col(f, tk) } }, f.k))).flat()));
-      out.appendChild(h('h4', { class: 'sh-h4' }, Z ? `期限结束时的${an}收益（每一笔买入都持有 ${hzLab(m)}，卖出后放国库券）` : `The ${an}return at the end of the period (every purchase over ${hzLab(m)}, T-bills after a sale)`));
-      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data lc-exit', id: 'lc-c6Ret' }, head2(sel.map(k => [statLab(k)])),
-        h('tbody', null, RES.map(x => h('tr', { class: trCls(x) }, nameCell(x), ...sel.map(k => x.F.map(fg => { const y = fg.sm.n ? statVal(fg.sm, k) : NaN; return k === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y), style: k === 'p50' ? { fontWeight: 700 } : null }, fmtR(y)); })).flat()))))));
+      out.appendChild(h('h4', { class: 'sh-h4' }, Z ? `期限结束时的${an}收益（每一笔买入都持有 ${hzLab(m)}，提前卖出后的钱${st.dest === 'idx' ? '换成一倍指数' : '放国库券'}）` : `The ${an}return at the end of the period (every purchase over ${hzLab(m)}, ${st.dest === 'idx' ? 'the 1× index' : 'T-bills'} after an early sale)`));
+      const ciCell = (x, fg) => { const c = fg.ci; if (!c) return h('td', null, '—'); const sure = U.isNum(c.lo) && (c.lo > 0 || c.hi < 0);
+        return h('td', { class: 'nowrap ' + (sure ? U.signCls(c.d) : 'muted') }, ppS(c.d), U.isNum(c.lo) ? h('span', { class: 'hint' }, `${ppS(c.lo)} ~ ${ppS(c.hi)}`) : null); };
+      const ciHead = [Z ? '几何平均比持有到期（个百分点，90% 区间）' : 'Geometric mean vs holding (pp, 90% interval)', Z ? `同一批买入，这条卖法的几何平均减去持有到期的几何平均；小字是把买入按${st.entry === 'c4' ? '独立下跌' : '时间块'}整块重抽 400 次得到的 90% 区间，区间跨过 0（灰色）说明分不出高低` : `For the same purchases, this rule's geometric mean minus holding's; the small figures are a 90% interval from resampling whole ${st.entry === 'c4' ? 'falls' : 'blocks of time'} 400 times — grey when it straddles 0, i.e. no clear difference`];
+      out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data lc-exit', id: 'lc-c6Ret' }, head2(sel.map(k => [statLab(k)]).concat([ciHead])),
+        h('tbody', null, RES.map(x => h('tr', { class: trCls(x) }, nameCell(x), ...sel.map(k => x.F.map(fg => { const y = fg.sm.n ? statVal(fg.sm, k) : NaN; return k === 'pos' ? h('td', null, U.pct(y, 0)) : h('td', { class: U.signCls(y), style: k === 'geo' ? { fontWeight: 700 } : null }, fmtR(y)); })).flat(), ...x.F.map(fg => ciCell(x, fg))))))));
       const T = Z ? { win: ['期末赚钱的比例', '期限结束时总收益为正的买入占比'], bw: ['比持有到期 更好 / 更差', '同一笔买入，按这条规则卖的期末收益比持有到期高 / 低的比例（没触发的不算）'], hit: ['提前卖出', '在期限内触发、提前卖出的买入占比'], held: ['持有时间·中位数', '从买入到卖出（或期限结束）的时间'], up: ['卖出后又涨', '提前卖出的买入里，期限结束时价格比卖出价更高的比例（止盈是“卖飞”，止损是“被洗出去”）'], aft: ['卖出后到期末·中位数', '提前卖出后，基金从卖出价到期限结束的涨跌'], mae: ['卖出前最大浮亏·中位数', '从买入到卖出期间最低收盘价相对买入价的跌幅'] }
         : { win: ['Ended with a gain', 'The share of purchases with a positive total return at the end of the period'], bw: ['Better / worse than holding', 'For the same purchase, the share in which this rule ended above / below holding to the end (purchases where it never fired count as neither)'], hit: ['Sold early', 'The share of purchases on which the rule fired within the period'], held: ['Time held: median', 'From the purchase to the sale (or the end of the period)'], up: ['Rose after the sale', 'Of the purchases sold early, the share that ended the period above the sale price (selling too early for a take-profit, being shaken out for a stop)'], aft: ['After the sale: median', 'The fund’s move from the sale to the end of the period, for purchases sold early'], mae: ['Worst before the sale: median', 'The lowest close between the purchase and the sale, against the purchase price'] };
       const mo = (x) => (U.isNum(x) ? (Z ? `${x < 10 ? x.toFixed(1) : Math.round(x)} 个月` : `${x < 10 ? x.toFixed(1) : Math.round(x)} mo`) : '—');
@@ -1210,28 +1236,113 @@
           ...x.F.map(fg => h('td', { class: 'nowrap' }, mo(fg.held))), ...x.F.map(fg => h('td', null, U.isNum(fg.up) ? U.pct(fg.up, 0) : '—')), ...x.F.map(fg => h('td', { class: U.signCls(fg.aft) }, fmtR(fg.aft))), ...x.F.map(fg => h('td', { class: 'neg' }, fmtR(fg.mae)))))))));
       // ---- the summary ----
       const real = RES.filter(x => x.k !== 'hold' && x.k !== 'best'), H = RES[0], B = RES[RES.length - 1];
-      const med = (x, q) => x.F[q].sm.q(0.5), p10 = (x, q) => x.F[q].sm.q(0.1), up = (d) => (Z ? (d >= 0 ? '高' : '低') : (d >= 0 ? 'higher' : 'lower'));
+      const geo = (x, q) => x.F[q].sm.geo, med = (x, q) => x.F[q].sm.q(0.5), p10 = (x, q) => x.F[q].sm.q(0.1), up = (d) => (Z ? (d >= 0 ? '高' : '低') : (d >= 0 ? 'higher' : 'lower'));
       const top = (q, f) => (real.length ? real.reduce((p, x) => (f(x, q) > f(p, q) ? x : p), real[0]) : null);
       const entryTxt = st.entry === 'any' ? (Z ? '任意一天买入' : 'buying on any day') : (Z ? `在 C4 的条件（${comboTxt(c4.c, true)}）下买入` : `buying on C4’s conditions (${comboTxt(c4.c, true)})`);
       const nTxt = Z ? `（SOXL ${ent[0].at.length.toLocaleString('en-US')} 笔、TQQQ ${ent[1].at.length.toLocaleString('en-US')} 笔买入${ent[0].nEp != null ? `，独立下跌 ${ent[0].nEp} 轮和 ${ent[1].nEp} 轮` : ''}）` : ` (${ent[0].at.length.toLocaleString('en-US')} purchases of SOXL and ${ent[1].at.length.toLocaleString('en-US')} of TQQQ${ent[0].nEp != null ? `, from ${ent[0].nEp} and ${ent[1].nEp} separate falls` : ''})`;
+      const ciTxt = (x, q) => { const c = x.F[q].ci; if (!c || !U.isNum(c.lo)) return ''; const sure = c.lo > 0 || c.hi < 0; return Z ? `，90% 区间 ${ppS(c.lo)} ~ ${ppS(c.hi)} 个百分点${sure ? '' : '，统计上分不出高低'}` : `, 90% interval ${ppS(c.lo)} to ${ppS(c.hi)} pp${sure ? '' : ' — no clear difference'}`; };
       let say = Z
-        ? `${spanTxt(Math.max(i0, SIM0()), i1)}${simTxt(i0)}，${entryTxt}${nTxt}，最长持有 ${hzLab(m)}：持有到期的${an}中位数 SOXL ${b(fmtR(med(H, 0)))}（P10 ${fmtR(p10(H, 0))}），TQQQ ${b(fmtR(med(H, 1)))}（P10 ${fmtR(p10(H, 1))}）；事后最优的中位数是 SOXL ${fmtR(med(B, 0))}、TQQQ ${fmtR(med(B, 1))}——这是选卖点理论上能拿到的上限。`
-        : `${cap(spanTxt(Math.max(i0, SIM0()), i1))}${simTxt(i0)}, ${entryTxt}${nTxt}, held at most ${hzLab(m)}: holding to the end had ${st.ann ? 'an annualized' : 'a'} median of ${b(fmtR(med(H, 0)))} for SOXL (P10 ${fmtR(p10(H, 0))}) and ${b(fmtR(med(H, 1)))} for TQQQ (P10 ${fmtR(p10(H, 1))}); the hindsight best had medians of ${fmtR(med(B, 0))} and ${fmtR(med(B, 1))} — the ceiling for picking a selling point. `;
+        ? `${spanTxt(Math.max(i0, SIM0()), i1)}${simTxt(i0)}，${entryTxt}${nTxt}，最长持有 ${hzLab(m)}：持有到期的${an}几何平均 SOXL ${b(fmtR(geo(H, 0)))}（中位数 ${fmtR(med(H, 0))}，P10 ${fmtR(p10(H, 0))}），TQQQ ${b(fmtR(geo(H, 1)))}（中位数 ${fmtR(med(H, 1))}，P10 ${fmtR(p10(H, 1))}）；事后最优的几何平均是 SOXL ${fmtR(geo(B, 0))}、TQQQ ${fmtR(geo(B, 1))}——这是选卖点理论上能拿到的上限。`
+        : `${cap(spanTxt(Math.max(i0, SIM0()), i1))}${simTxt(i0)}, ${entryTxt}${nTxt}, held at most ${hzLab(m)}: holding to the end had ${st.ann ? 'an annualized' : 'a'} geometric mean of ${b(fmtR(geo(H, 0)))} for SOXL (median ${fmtR(med(H, 0))}, P10 ${fmtR(p10(H, 0))}) and ${b(fmtR(geo(H, 1)))} for TQQQ (median ${fmtR(med(H, 1))}, P10 ${fmtR(p10(H, 1))}); the hindsight best had geometric means of ${fmtR(geo(B, 0))} and ${fmtR(geo(B, 1))} — the ceiling for picking a selling point. `;
       if (real.length) {
-        const tm = [0, 1].map(q => top(q, med)), tp = [0, 1].map(q => top(q, p10));
+        const tg = [0, 1].map(q => top(q, geo)), tp = [0, 1].map(q => top(q, p10));
         say += Z
-          ? `所选卖法里，中位数最高的是 SOXL「${tm[0].d.name}」（${b(fmtR(med(tm[0], 0)))}，比持有到期${up(med(tm[0], 0) - med(H, 0))} ${ptsTxt(med(tm[0], 0) - med(H, 0))}）、TQQQ「${tm[1].d.name}」（${b(fmtR(med(tm[1], 1)))}，${up(med(tm[1], 1) - med(H, 1))} ${ptsTxt(med(tm[1], 1) - med(H, 1))}）；最差 10% 的情况最好的是 SOXL「${tp[0].d.name}」（P10 ${b(fmtR(p10(tp[0], 0)))}）、TQQQ「${tp[1].d.name}」（P10 ${b(fmtR(p10(tp[1], 1)))}）。`
-          : `Of the rules chosen, the best median came from “${tm[0].d.name}” for SOXL (${b(fmtR(med(tm[0], 0)))}, ${ptsTxt(med(tm[0], 0) - med(H, 0))} ${up(med(tm[0], 0) - med(H, 0))} than holding) and “${tm[1].d.name}” for TQQQ (${b(fmtR(med(tm[1], 1)))}, ${ptsTxt(med(tm[1], 1) - med(H, 1))} ${up(med(tm[1], 1) - med(H, 1))}); the best worst-10% from “${tp[0].d.name}” for SOXL (P10 ${b(fmtR(p10(tp[0], 0)))}) and “${tp[1].d.name}” for TQQQ (P10 ${b(fmtR(p10(tp[1], 1)))}). `;
-        // a take-profit that fires on most purchases puts the median right at its target: the mean and P90 show what it cut off
-        const capped = [0, 1].filter(q => ['tp', 'br', 'scale'].includes(tm[q].k) && tm[q].F[q].hit >= 0.45);
-        if (capped.length) say += capped.map(q => { const x = tm[q], f = PAIR[q].k;
-          return Z ? `注意：「${x.d.name}」在 ${U.pct(x.F[q].hit, 0)} 的 ${f} 买入里触发，中位数自然落在止盈线附近；它截掉了大涨——${f} 的平均值从持有到期的 ${fmtR(H.F[q].sm.mean)} 变成 ${fmtR(x.F[q].sm.mean)}，P90 从 ${fmtR(H.F[q].sm.q(0.9))} 变成 ${fmtR(x.F[q].sm.q(0.9))}，所以不能只看中位数。`
-            : `Note: “${x.d.name}” fired on ${U.pct(x.F[q].hit, 0)} of ${f}'s purchases, so its median sits right at the target; it cut off the big gains — ${f}'s mean went from ${fmtR(H.F[q].sm.mean)} when holding to ${fmtR(x.F[q].sm.mean)}, and P90 from ${fmtR(H.F[q].sm.q(0.9))} to ${fmtR(x.F[q].sm.q(0.9))}, so the median alone is not the whole story. `; }).join('');
+          ? `所选卖法里，几何平均最高的是 SOXL「${tg[0].d.name}」（${b(fmtR(geo(tg[0], 0)))}，比持有到期${up(geo(tg[0], 0) - geo(H, 0))} ${ptsTxt(geo(tg[0], 0) - geo(H, 0))}${ciTxt(tg[0], 0)}）、TQQQ「${tg[1].d.name}」（${b(fmtR(geo(tg[1], 1)))}，${up(geo(tg[1], 1) - geo(H, 1))} ${ptsTxt(geo(tg[1], 1) - geo(H, 1))}${ciTxt(tg[1], 1)}）；最差 10% 的情况最好的是 SOXL「${tp[0].d.name}」（P10 ${b(fmtR(p10(tp[0], 0)))}）、TQQQ「${tp[1].d.name}」（P10 ${b(fmtR(p10(tp[1], 1)))}）。`
+          : `Of the rules chosen, the best geometric mean came from “${tg[0].d.name}” for SOXL (${b(fmtR(geo(tg[0], 0)))}, ${ptsTxt(geo(tg[0], 0) - geo(H, 0))} ${up(geo(tg[0], 0) - geo(H, 0))} than holding${ciTxt(tg[0], 0)}) and “${tg[1].d.name}” for TQQQ (${b(fmtR(geo(tg[1], 1)))}, ${ptsTxt(geo(tg[1], 1) - geo(H, 1))} ${up(geo(tg[1], 1) - geo(H, 1))}${ciTxt(tg[1], 1)}); the best worst-10% from “${tp[0].d.name}” for SOXL (P10 ${b(fmtR(p10(tp[0], 0)))}) and “${tp[1].d.name}” for TQQQ (P10 ${b(fmtR(p10(tp[1], 1)))}). `;
+        // the median trap: the rule with the best median when it does not have the best compound growth
+        const tm = [0, 1].map(q => top(q, med)), trap = [0, 1].filter(q => tm[q] !== tg[q] && med(tm[q], q) > med(H, q) && geo(tm[q], q) < geo(H, q));
+        if (trap.length) { const capd = trap.some(q => ['tp', 'br', 'scale'].includes(tm[q].k));
+          say += Z ? `按中位数排，最好的是${trap.map(q => `${PAIR[q].k}「${tm[q].d.name}」（中位数 ${fmtR(med(tm[q], q))}，持有到期 ${fmtR(med(H, q))}；几何平均却只有 ${fmtR(geo(tm[q], q))}，持有到期 ${fmtR(geo(H, q))}）`).join('、')}：${capd ? '止盈一触发，结果就被“钉”在止盈线附近，中位数好看，却截掉了大涨' : '中位数只看排在正中间的那一笔，看不到两端'}，所以本节按几何平均排序。`
+            : `Ranked by the median, the best was ${trap.map(q => `“${tm[q].d.name}” for ${PAIR[q].k} (median ${fmtR(med(tm[q], q))} against ${fmtR(med(H, q))} when holding, yet a geometric mean of only ${fmtR(geo(tm[q], q))} against ${fmtR(geo(H, q))})`).join(' and ')}: ${capd ? 'once a take-profit fires, the outcome is pinned near the target, which flatters the median while cutting off the big gains' : 'the median looks only at the middle purchase, not at either end'}. That is why this section ranks by the geometric mean. `; }
         const tpR = RES.find(x => x.k === 'tp'), slR = RES.find(x => x.k === 'sl');
         if (tpR) say += Z ? `「${tpR.d.name}」在期限内触发的比例 SOXL ${U.pct(tpR.F[0].hit, 0)}、TQQQ ${U.pct(tpR.F[1].hit, 0)}，其中卖出后到期末又涨了的占 ${U.pct(tpR.F[0].up, 0)} 和 ${U.pct(tpR.F[1].up, 0)}。` : `“${tpR.d.name}” fired on ${U.pct(tpR.F[0].hit, 0)} of SOXL’s purchases and ${U.pct(tpR.F[1].hit, 0)} of TQQQ’s, and the fund was higher at the end after ${U.pct(tpR.F[0].up, 0)} and ${U.pct(tpR.F[1].up, 0)} of those sales. `;
         if (slR) say += Z ? `「${slR.d.name}」触发 SOXL ${U.pct(slR.F[0].hit, 0)}、TQQQ ${U.pct(slR.F[1].hit, 0)}，其中被洗出去（卖出后又涨）的占 ${U.pct(slR.F[0].up, 0)} 和 ${U.pct(slR.F[1].up, 0)}；P10 从持有到期的 ${fmtR(p10(H, 0))} / ${fmtR(p10(H, 1))} 变成 ${fmtR(p10(slR, 0))} / ${fmtR(p10(slR, 1))}。` : `“${slR.d.name}” fired on ${U.pct(slR.F[0].hit, 0)} and ${U.pct(slR.F[1].hit, 0)}, and ${U.pct(slR.F[0].up, 0)} and ${U.pct(slR.F[1].up, 0)} of those sales were shaken out (the fund rose afterwards); P10 went from ${fmtR(p10(H, 0))} / ${fmtR(p10(H, 1))} when holding to ${fmtR(p10(slR, 0))} / ${fmtR(p10(slR, 1))}. `;
       }
       out.appendChild(take(say));
+      // ---- decades: the same rules over each fund's whole history (simulated before the launch), split by purchase date ----
+      if (real.length) {
+        const EXS = Z ? { tp: '止盈', sl: '止损', br: '止盈+止损', trail: '追踪止损', ma: '均线破位', prior: '回到前高', scale: '一半止盈', tstop: '时间止损', vix: 'VIX 回落' } : { tp: 'Take profit', sl: 'Stop loss', br: 'Bracket', trail: 'Trailing stop', ma: 'MA break', prior: 'Prior high', scale: 'Half', tstop: 'Time stop', vix: 'VIX fades' };
+        const ERAS = [
+          { k: 'old', name: Z ? '2000–09（含模拟）' : '2000–09 (incl. sim.)', a: null, b: '2009-12-31' },
+          { k: 'new', name: Z ? `${Core.year[REAL0()]} 年后（真实）` : `Since ${Core.year[REAL0()]} (actual)`, a: iso(REAL0()), b: null },
+          { k: 'dot', name: Z ? '科网泡沫' : 'Dot-com bust', sub: '2000-03 → 2002-10', a: '2000-03-10', b: '2002-10-09' },
+          { k: 'gfc', name: Z ? '金融危机' : 'Financial crisis', sub: '2007-10 → 2009-03', a: '2007-10-09', b: '2009-03-09' },
+          { k: 'y22', name: Z ? '2022 年熊市' : 'The 2022 bear', sub: '2021-11 → 2022-12', a: '2021-11-19', b: '2022-12-30' },
+        ];
+        // each fund from the start of its simulated history (both from the later start when they buy on one fund's signal)
+        const sameDays = st.entry === 'c4' && c4.same !== 'own';
+        const FA = PAIR.map((f) => {
+          const key = f.x, S0 = Core.S[key], s = S0.s, v = S0.v, unl = f.und(), hzs = tsM < m ? [m, tsM] : [m], from = sameDays ? SIM0() : s;
+          const ctx = Calc.dipContext(v, s, i1, hzs, from);
+          return { f, key, S0, s, v, unl, from, ends: ctx.ends[0], endsT: hzs.length > 1 ? ctx.ends[1] : null, tab: Calc.rangeTab(v, s, i1) };
+        });
+        let entA;
+        if (st.entry === 'any') entA = FA.map(x => { const at = []; for (let i = x.from; i <= i1; i++) { const j = x.ends[i - x.s]; if (j === -1) break; if (j > i) at.push(i); } return { at, w: null, ep: null }; });
+        else {
+          const same = c4.same === 'own' ? -1 : c4.same === 'SOXL' ? 0 : 1;
+          const runs = FA.map(x => kitOf(x.key, x.unl, Calc.dipContext(x.v, x.s, i1, [m], x.from)).run(c4.c, { first: c4.first, wFall: c4.wFall }).H[0]);
+          entA = FA.map((x, q) => { const H2 = runs[same < 0 ? q : same]; return { at: H2.at, w: H2.w, ep: H2.ep }; });
+        }
+        const RA = keys.map(k => ({ k, d: exitDoc(k, R0[k]), R: [0, 1].map(q => studyAt(FA[q], entA[q].at, k === 'hold' ? { type: 'hold' } : ruleOf(FA[q], k), st.dest)) }));
+        const pickE = ERAS.map(E => [0, 1].map(q => { const at = entA[q].at, a = E.a ? Core.idxOnOrAfter(Core.parseISO(E.a)) : -1, z = E.b ? Core.idxOnOrBefore(Core.parseISO(E.b)) : Infinity, ks = []; for (let k = 0; k < at.length; k++) if (at[k] >= a && at[k] <= z) ks.push(k); return ks; }));
+        const eraFig = (R, e, q) => { const ks = pickE[e][q], w = entA[q].w; if (!ks.length) return null; const sm = Calc.summary(ks.map(k => ann(R.rH[k])), w ? ks.map(k => w[k]) : null); return { n: ks.length, geo: sm.geo, p10: sm.q(0.1), first: entA[q].at[ks[0]], nEp: entA[q].ep ? new Set(ks.map(k => entA[q].ep[k])).size : null }; };
+        const EF = RA.map(x => ({ x, E: ERAS.map((_, e) => [0, 1].map(q => eraFig(x.R[q], e, q))) }));
+        const holdE = (e, q) => EF[0].E[e][q];
+        // the table, one fund at a time
+        const qF = st.eraF === 'TQQQ' ? 1 : 0;
+        out.appendChild(h('h4', { class: 'sh-h4', id: 'lc-c6EraH' }, Z ? `不同年代：同样的买入和卖法，在坏年代和好年代（${an}几何平均，小字为 P10）` : `Different decades: the same purchases and rules in bad years and good ones (${an}geometric mean; P10 in small type)`));
+        out.appendChild(h('div', { class: 'controls' }, U.ctl(Z ? '基金' : 'Fund', U.seg('lc-c6EraF', PAIR.map(f => [f.k, f.k]), PAIR[qF].k, (v) => set(() => { st.eraF = v; })))));
+        const sub = (txt) => h('div', { class: 'hint', style: { marginLeft: 0, fontWeight: 400 } }, txt);
+        const bestIn = ERAS.map((_, e) => Math.max(...EF.filter(r => r.x.k !== 'best' && r.E[e][qF]).map(r => r.E[e][qF].geo)));
+        out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data lc-exit', id: 'lc-c6Era' },
+          h('thead', null, h('tr', null, h('th', null, Z ? '卖法' : 'Way out'), ERAS.map((E, e) => { const g0 = holdE(e, qF), late = g0 && (!E.a || Core.days[g0.first] - Core.parseISO(E.a) > 15);
+            return h('th', null, E.name, E.sub ? sub(E.sub) : null, g0 ? sub((Z ? `${g0.n.toLocaleString('en-US')} 笔` : `${g0.n.toLocaleString('en-US')} buys`) + (g0.nEp != null ? (Z ? ` · ${g0.nEp} 轮` : ` · ${g0.nEp} falls`) : '') + (late ? (Z ? ` · ${iso(g0.first).slice(0, 7)} 起` : ` · from ${iso(g0.first).slice(0, 7)}`) : '')) : sub('—')); }))),
+          h('tbody', null, EF.map(r => h('tr', { class: trCls(r.x) }, nameCell(r.x), ERAS.map((_, e) => { const g = r.E[e][qF]; if (!g) return h('td', null, '—');
+            return h('td', { class: 'nowrap ' + U.signCls(g.geo), style: r.x.k !== 'best' && g.geo === bestIn[e] ? { fontWeight: 700 } : null }, fmtR(g.geo), h('span', { class: 'hint' }, 'P10 ' + fmtR(g.p10))); })))))));
+        out.appendChild(h('p', { class: 'note' }, Z ? '这张表用每只基金从模拟段开始的全部历史，所以“回到前高”的前高可以追溯到 2001 年（SOXL*）或 1999 年（TQQQ*），均线看的标的为 SOXX*（SOXL）和 QQQ（TQQQ）；因此即使上面的区间也从 2010 年开始，这两种卖法在“2010 年后”一列的结果也可能和上表略有不同。熊市三列只算从高点到低点之间买入的那些。' : 'This table uses each fund’s whole history from the start of its simulation, so “back to the prior high” can reach back to 2001 (SOXL*) or 1999 (TQQQ*), and the moving average is taken on SOXX* (SOXL) and QQQ (TQQQ); even when the range above also starts in 2010, these two rules may therefore differ slightly from the table above in the “since 2010” column. The three bear-market columns count only purchases between the peak and the trough.'));
+        // the price of insurance: what each rule gave up after 2010 against what it saved in 2000–09, both funds
+        const pts = [];
+        EF.forEach(r => { if (r.x.k === 'hold' || r.x.k === 'best') return; [0, 1].forEach(q => { const gn = r.E[1][q], go = r.E[0][q], hn = holdE(1, q), ho = holdE(0, q); if (gn && go && hn && ho) pts.push({ r, q, x: gn.geo - hn.geo, y: go.geo - ho.geo, pn: gn.p10, po: go.p10, hpn: hn.p10, hpo: ho.p10 }); }); });
+        out.appendChild(h('div', { class: 'xs muted', style: { fontWeight: 700, margin: '12px 0 2px' } }, Z ? '保险价格图：横轴 = 2010 年后比持有到期多赚（右）或少赚（左），纵轴 = 2000–09 年比持有到期少亏（上）或多亏（下）；几何平均，个百分点。越靠上越能防住坏年代，越靠右在好年代付出的代价越小：右上方是“便宜又有效的保险”，左上方是“有效但很贵的保险”' : 'The price of insurance: across, how much more (right) or less (left) a rule made than holding after 2010; up, how much less (up) or more (down) it lost in 2000–09; geometric means, percentage points. Higher protects more in bad decades, further right costs less in good ones: the upper right is cheap, effective insurance, the upper left effective but expensive'));
+        const insEl = h('div', { class: 'chart', id: 'lc-c6Ins' }); out.appendChild(insEl);
+        requestAnimationFrame(() => {
+          const ch = U.chart(insEl); if (!ch) return;
+          const ax = (name) => U.valAxis(tk, { scale: true, name, nameLocation: 'middle', nameGap: 28, nameTextStyle: { color: tk.muted, fontSize: 11 }, axisLabel: { color: tk.muted, fontSize: 11, formatter: (v) => (v > 0 ? '+' : '') + Math.round(v) } });
+          const o = U.baseOpt(tk, { legend: legendOpt(tk), grid: { left: 16, right: 24, top: 34, bottom: 34, containLabel: true },
+            xAxis: ax(Z ? '2010 年后 比持有到期（个百分点）' : 'Since 2010 vs holding (pp)'), yAxis: ax(Z ? '2000–09 比持有到期（个百分点）' : '2000–09 vs holding (pp)'),
+            series: PAIR.map((f, q) => ({ name: f.k, type: 'scatter', symbolSize: 11, itemStyle: { color: col(f, tk) }, data: pts.filter(p => p.q === q).map(p => ({ value: [p.x * 100, p.y * 100], p })),
+              label: { show: true, position: 'right', fontSize: 10.5, color: col(f, tk), formatter: (x) => EXS[x.data.p.r.x.k] || '' }, labelLayout: { hideOverlap: true },
+              markLine: q ? undefined : { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'solid', width: 1 }, label: { show: false }, data: [{ xAxis: 0 }, { yAxis: 0 }] } })) });
+          o.tooltip = Object.assign({}, o.tooltip, { trigger: 'item', formatter: (x) => { const p = x.data.p, c2 = col(PAIR[p.q], tk);
+            return U.ttHead(PAIR[p.q].k + ' · ' + p.r.x.d.name) + U.ttRow(c2, Z ? '2010 年后 比持有到期' : 'Since 2010 vs holding', ppS(p.x) + (Z ? ' 个百分点' : ' pp')) + U.ttRow(c2, Z ? '2000–09 比持有到期' : '2000–09 vs holding', ppS(p.y) + (Z ? ' 个百分点' : ' pp'))
+              + U.ttRow(c2, Z ? 'P10：2010 年后 / 2000–09' : 'P10: since 2010 / 2000–09', fmtR(p.pn) + ' / ' + fmtR(p.po)) + U.ttRow(c2, Z ? '持有到期的 P10' : 'P10 when holding', fmtR(p.hpn) + ' / ' + fmtR(p.hpo)); } });
+          ch.setOption(o, true);
+        });
+        { // which rule saved most in the bad decade, and what it cost in the good one
+          const per = [0, 1].map(q => { const rs = EF.filter(r => r.x.k !== 'hold' && r.x.k !== 'best' && r.E[0][q] && r.E[1][q]), ho = holdE(0, q), hn = holdE(1, q);
+            if (!rs.length || !ho || !hn) return null;
+            const bo = rs.reduce((p, r) => (r.E[0][q].geo > p.E[0][q].geo ? r : p), rs[0]);
+            return { ho, hn, bo, dO: bo.E[0][q].geo - ho.geo, dN: bo.E[1][q].geo - hn.geo, beat: rs.filter(r => r.E[1][q].geo > hn.geo + 1e-9).length, nR: rs.length }; });
+          if (per[0] && per[1]) out.appendChild(take(Z
+            ? `持有到期的${an}几何平均：2000–09 年 SOXL* ${fmtR(per[0].ho.geo)}、TQQQ* ${fmtR(per[1].ho.geo)}；${Core.year[REAL0()]} 年后 SOXL ${fmtR(per[0].hn.geo)}、TQQQ ${fmtR(per[1].hn.geo)}。坏年代里最能少亏的是 ${PAIR.map((f, q) => `${f.k}「${per[q].bo.x.d.name}」（${up(per[q].dO)} ${ptsTxt(per[q].dO)}，代价是 ${Core.year[REAL0()]} 年后${up(per[q].dN)} ${ptsTxt(per[q].dN)}）`).join('、')}；${Core.year[REAL0()]} 年后，所选 ${per[0].nR} 种卖法里几何平均高于持有到期的 SOXL 有 ${per[0].beat} 种、TQQQ 有 ${per[1].beat} 种。卖出规则本质上是保险：在长期上涨的年代花钱，在长熊市里省钱——值不值，取决于你多担心 2000–02 年那样的情形重演。`
+            : `Holding to the end had ${st.ann ? 'annualized ' : ''}geometric means of ${fmtR(per[0].ho.geo)} (SOXL*) and ${fmtR(per[1].ho.geo)} (TQQQ*) in 2000–09, and ${fmtR(per[0].hn.geo)} and ${fmtR(per[1].hn.geo)} since ${Core.year[REAL0()]}. The rule that lost least in the bad decade was ${PAIR.map((f, q) => `“${per[q].bo.x.d.name}” for ${f.k} (${ptsTxt(per[q].dO)} ${up(per[q].dO)} than holding, at a cost of ${ptsTxt(per[q].dN)} ${up(per[q].dN)} since ${Core.year[REAL0()]})`).join(' and ')}; since ${Core.year[REAL0()]}, ${per[0].beat} of the ${per[0].nR} rules chosen beat holding for SOXL and ${per[1].beat} for TQQQ. A selling rule is insurance: it costs money in long rises and saves it in long bear markets — whether it is worth it depends on how much you fear a repeat of 2000–02.`));
+        }
+      }
+      // ---- where the money goes after an early sale: T-bills against the 1× index ----
+      if (real.length) {
+        const other = st.dest === 'idx' ? 'cash' : 'idx';
+        const RO = real.map(x => { const alt = [0, 1].map(q => figs(q, study(q, ruleOf(FS[q], x.k), other))); return { x, cash: st.dest === 'cash' ? x.F : alt, idx: st.dest === 'idx' ? x.F : alt }; });
+        out.appendChild(h('h4', { class: 'sh-h4' }, Z ? `提前卖出后的钱放哪里：国库券，还是换成一倍指数一直拿到期末（${an}几何平均，小字为 P10）` : `Where the money goes after an early sale: T-bills, or the 1× index held to the end (${an}geometric mean; P10 in small type)`));
+        const cellD = (fg, other2) => h('td', { class: 'nowrap ' + U.signCls(fg.sm.geo), style: fg.sm.geo > other2.sm.geo + 1e-9 ? { fontWeight: 700 } : null }, fmtR(fg.sm.geo), h('span', { class: 'hint' }, 'P10 ' + fmtR(fg.sm.q(0.1))));
+        out.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data lc-exit', id: 'lc-c6DestT' },
+          h('thead', null, h('tr', null, h('th', { rowspan: 2 }, Z ? '卖法' : 'Way out'), PAIR.map(f => h('th', { colspan: 2, style: { textAlign: 'center', color: col(f, tk) } }, f.k))),
+            h('tr', null, PAIR.map(f => [h('th', null, Z ? '国库券' : 'T-bills'), h('th', null, (Z ? '一倍指数 ' : '1× index ') + f.etf)]).flat())),
+          h('tbody', null, RO.map(r => h('tr', null, nameCell(r.x), [0, 1].map(q => [cellD(r.cash[q], r.idx[q]), cellD(r.idx[q], r.cash[q])]).flat()))))));
+        const cnt = [0, 1].map(q => { const d = RO.map(r => r.idx[q].sm.geo - r.cash[q].sm.geo); return { better: d.filter(x => x > 1e-9).length, avg: d.reduce((p, x) => p + x, 0) / d.length }; });
+        out.appendChild(take(Z
+          ? `换成一倍指数一直拿到期末，SOXL 的 ${RO.length} 种卖法里有 ${cnt[0].better} 种几何平均更高（平均${up(cnt[0].avg)} ${ptsTxt(cnt[0].avg)}），TQQQ 有 ${cnt[1].better} 种（平均${up(cnt[1].avg)} ${ptsTxt(cnt[1].avg)}）。卖出三倍、改拿一倍，等于只降杠杆、不离场：在长期上涨里比放国库券少错过行情，在长熊市里一倍指数也会跌——切到上方“提前卖出后的钱 → 换成一倍指数”，可以看它在不同年代的表现。`
+          : `Holding the 1× index to the end instead, ${cnt[0].better} of the ${RO.length} rules had a higher geometric mean for SOXL (${ptsTxt(cnt[0].avg)} ${up(cnt[0].avg)} on average) and ${cnt[1].better} for TQQQ (${ptsTxt(cnt[1].avg)} ${up(cnt[1].avg)}). Selling the 3× fund for the 1× index only cuts the leverage without leaving the market: it misses less of a long rise than T-bills do, but the 1× index falls in long bear markets too — switch “After an early sale” above to the 1× index to see it decade by decade.`));
+      }
       // ---- the levels: take profit, stop loss, trailing stop ----
       out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '幅度怎么选：止盈、止损、追踪止损的每一档' : 'Choosing the level: every step of a take-profit, a stop-loss and a trailing stop'));
       const sweep = (kind) => EXIT_SWEEP[kind].map(lv => ({ lv, F: [0, 1].map(q => figs(q, study(q, kind === 'tp' ? { type: 'tp', x: lv / 100 } : kind === 'sl' ? { type: 'sl', y: lv / 100 } : { type: 'trail', z: lv / 100, a: R0.trail.a / 100 }))) }));
@@ -1241,24 +1352,25 @@
         const el = h('div', { class: 'chart short', id: 'lc-c6Sw-' + kind }); grid.appendChild(h('div', null, h('div', { class: 'xs muted', style: { fontWeight: 700, marginBottom: '2px' } }, title), el));
         requestAnimationFrame(() => {
           const ch = U.chart(el); if (!ch) return; const L = SWS[kind];
-          const series = PAIR.map((f, q) => [U.lineSeries(f.k + (Z ? ' 中位数' : ' median'), L.map(x => x.F[q].sm.q(0.5)), col(f, tk), { showSymbol: true, sampling: null, markLine: { silent: true, symbol: 'none', data: [{ yAxis: med(H, q) }], lineStyle: { color: col(f, tk), type: [2, 3], width: 1 }, label: { show: false } } }),
+          const series = PAIR.map((f, q) => [U.lineSeries(f.k + (Z ? ' 几何平均' : ' geometric mean'), L.map(x => x.F[q].sm.geo), col(f, tk), { showSymbol: true, sampling: null, markLine: { silent: true, symbol: 'none', data: [{ yAxis: geo(H, q) }], lineStyle: { color: col(f, tk), type: [2, 3], width: 1 }, label: { show: false } } }),
             U.lineSeries(f.k + ' P10', L.map(x => x.F[q].sm.q(0.1)), col(f, tk), { showSymbol: true, sampling: null, lineStyle: { type: 'dashed', width: 1.4, color: col(f, tk) }, symbolSize: 5 })]).flat();
           const o = U.baseOpt(tk, { legend: Object.assign(legendOpt(tk), { type: 'scroll' }), grid: { left: 8, right: 12, top: 34, bottom: 8, containLabel: true }, xAxis: U.catAxis(tk, L.map(x => lab(x.lv)), { axisLabel: { color: tk.ink2, fontSize: 11, interval: 0 } }), yAxis: U.valAxis(tk, { axisLabel: { color: tk.muted, fontSize: 11, formatter: (v) => Math.round(v * 100) + '%' } }), series });
-          o.tooltip.formatter = (ps) => { const x = L[ps[0].dataIndex]; let t = U.ttHead(lab(x.lv)); PAIR.forEach((f, q) => { const fg = x.F[q]; t += U.ttRow(col(f, tk), f.k + (Z ? ' 中位数 / P10' : ' median / P10'), fmtR(fg.sm.q(0.5)) + ' / ' + fmtR(fg.sm.q(0.1))) + U.ttRow(col(f, tk), Z ? '触发 / 卖后又涨' : 'Fired / rose after', U.pct(fg.hit, 0) + ' / ' + (U.isNum(fg.up) ? U.pct(fg.up, 0) : '—')); }); return t + `<div class="muted" style="margin-top:3px">${Z ? '虚线横线：持有到期的中位数' : 'Dotted line: the median when holding to the end'}</div>`; };
+          o.tooltip.formatter = (ps) => { const x = L[ps[0].dataIndex]; let t = U.ttHead(lab(x.lv)); PAIR.forEach((f, q) => { const fg = x.F[q]; t += U.ttRow(col(f, tk), f.k + (Z ? ' 几何平均 / P10' : ' geometric mean / P10'), fmtR(fg.sm.geo) + ' / ' + fmtR(fg.sm.q(0.1))) + U.ttRow(col(f, tk), Z ? '触发 / 卖后又涨' : 'Fired / rose after', U.pct(fg.hit, 0) + ' / ' + (U.isNum(fg.up) ? U.pct(fg.up, 0) : '—')); }); return t + `<div class="muted" style="margin-top:3px">${Z ? '虚线横线：持有到期的几何平均' : 'Dotted line: the geometric mean when holding to the end'}</div>`; };
           ch.setOption(o, true);
         });
       });
-      { // the level with the best median for each fund, and how the take-profit trades frequency for size
-        const bestLv = (kind, q) => SWS[kind].reduce((p, x) => (x.F[q].sm.q(0.5) > p.F[q].sm.q(0.5) ? x : p), SWS[kind][0]);
+      { // the level with the best geometric mean for each fund, and how the take-profit trades frequency for size
+        const bestLv = (kind, q) => SWS[kind].reduce((p, x) => (x.F[q].sm.geo > p.F[q].sm.geo ? x : p), SWS[kind][0]);
+        const vsH = (x, q) => { const d = x.F[q].sm.geo - geo(H, q); return Math.abs(d) < 0.0005 ? (Z ? '，和持有到期几乎一样' : ', about the same as holding') : Z ? `，比持有到期${up(d)} ${ptsTxt(d)}` : `, ${ptsTxt(d)} ${up(d)} than holding`; };
         const t0 = [0, 1].map(q => bestLv('tp', q)), s0 = [0, 1].map(q => bestLv('sl', q)), z0 = [0, 1].map(q => bestLv('trail', q)), lo = SWS.tp[0], hi = SWS.tp[SWS.tp.length - 1];
         out.appendChild(take(Z
-          ? `每条实线是中位数、虚线是 P10，横向虚线是持有到期的中位数。止盈：中位数最高的一档 SOXL 是 +${t0[0].lv}%（${fmtR(t0[0].F[0].sm.q(0.5))}）、TQQQ 是 +${t0[1].lv}%（${fmtR(t0[1].F[1].sm.q(0.5))}）；止盈线从 +${hi.lv}% 降到 +${lo.lv}%，SOXL 期末赚钱的比例从 ${U.pct(hi.F[0].win, 0)} 变成 ${U.pct(lo.F[0].win, 0)}，卖后又涨的比例从 ${U.pct(hi.F[0].up, 0)} 变成 ${U.pct(lo.F[0].up, 0)}——越早止盈，越常赚到小钱，也越常卖飞。止损：中位数最高的一档 SOXL 是 −${s0[0].lv}%、TQQQ 是 −${s0[1].lv}%。追踪止损：SOXL 是 ${z0[0].lv}%、TQQQ 是 ${z0[1].lv}%。找出“最好的一档”本身就是在拟合历史，档位之间差别不大时，宁可选更宽松、更简单的。`
-          : `Solid lines are medians, dashed lines P10, and the dotted line is the median when holding to the end. Take profit: the best median came at +${t0[0].lv}% for SOXL (${fmtR(t0[0].F[0].sm.q(0.5))}) and +${t0[1].lv}% for TQQQ (${fmtR(t0[1].F[1].sm.q(0.5))}); lowering the target from +${hi.lv}% to +${lo.lv}% took the share of SOXL purchases ending with a gain from ${U.pct(hi.F[0].win, 0)} to ${U.pct(lo.F[0].win, 0)}, and the share that rose after the sale from ${U.pct(hi.F[0].up, 0)} to ${U.pct(lo.F[0].up, 0)} — the earlier the profit is taken, the more often a small gain is banked and the more often the rally is missed. Stop loss: the best median at −${s0[0].lv}% for SOXL and −${s0[1].lv}% for TQQQ. Trailing stop: ${z0[0].lv}% and ${z0[1].lv}%. Picking “the best step” is itself fitting the past; when the steps are close, prefer the looser, simpler one.`));
+          ? `每条实线是几何平均、虚线是 P10，横向虚线是持有到期的几何平均。止盈：几何平均最高的一档 SOXL 是 +${t0[0].lv}%（${fmtR(t0[0].F[0].sm.geo)}${vsH(t0[0], 0)}）、TQQQ 是 +${t0[1].lv}%（${fmtR(t0[1].F[1].sm.geo)}${vsH(t0[1], 1)}）；止盈线从 +${hi.lv}% 降到 +${lo.lv}%，SOXL 期末赚钱的比例从 ${U.pct(hi.F[0].win, 0)} 变成 ${U.pct(lo.F[0].win, 0)}，卖后又涨的比例从 ${U.pct(hi.F[0].up, 0)} 变成 ${U.pct(lo.F[0].up, 0)}——越早止盈，越常赚到小钱，也越常卖飞。止损：几何平均最高的一档 SOXL 是 −${s0[0].lv}%（${fmtR(s0[0].F[0].sm.geo)}${vsH(s0[0], 0)}）、TQQQ 是 −${s0[1].lv}%（${fmtR(s0[1].F[1].sm.geo)}${vsH(s0[1], 1)}）。追踪止损：SOXL 是 ${z0[0].lv}%（${fmtR(z0[0].F[0].sm.geo)}）、TQQQ 是 ${z0[1].lv}%（${fmtR(z0[1].F[1].sm.geo)}）。找出“最好的一档”本身就是在拟合历史，档位之间差别不大时，宁可选更宽松、更简单的。`
+          : `Solid lines are geometric means, dashed lines P10, and the dotted line is the geometric mean when holding to the end. Take profit: the best geometric mean came at +${t0[0].lv}% for SOXL (${fmtR(t0[0].F[0].sm.geo)}${vsH(t0[0], 0)}) and +${t0[1].lv}% for TQQQ (${fmtR(t0[1].F[1].sm.geo)}${vsH(t0[1], 1)}); lowering the target from +${hi.lv}% to +${lo.lv}% took the share of SOXL purchases ending with a gain from ${U.pct(hi.F[0].win, 0)} to ${U.pct(lo.F[0].win, 0)}, and the share that rose after the sale from ${U.pct(hi.F[0].up, 0)} to ${U.pct(lo.F[0].up, 0)} — the earlier the profit is taken, the more often a small gain is banked and the more often the rally is missed. Stop loss: the best geometric mean at −${s0[0].lv}% for SOXL (${fmtR(s0[0].F[0].sm.geo)}${vsH(s0[0], 0)}) and −${s0[1].lv}% for TQQQ (${fmtR(s0[1].F[1].sm.geo)}${vsH(s0[1], 1)}). Trailing stop: ${z0[0].lv}% (${fmtR(z0[0].F[0].sm.geo)}) and ${z0[1].lv}% (${fmtR(z0[1].F[1].sm.geo)}). Picking “the best step” is itself fitting the past; when the steps are close, prefer the looser, simpler one.`));
       }
       // ---- take profit × stop loss ----
       out.appendChild(h('h4', { class: 'sh-h4' }, Z ? '止盈 × 止损：每一种组合' : 'Take profit × stop loss: every combination'));
-      out.appendChild(h('div', { class: 'controls' }, U.ctl(Z ? '格子里显示' : 'Each cell shows', U.seg('lc-c6Heat', [['p50', Z ? '中位数' : 'Median'], ['mean', Z ? '平均' : 'Mean'], ['p10', 'P10'], ['win', Z ? '期末赚钱的比例' : 'Ended with a gain']], st.heat, (v) => { st.heat = v; save(); queue(draw); }))));
-      const heatVal = (fg) => (st.heat === 'win' ? fg.win : st.heat === 'mean' ? fg.sm.mean : st.heat === 'p10' ? fg.sm.q(0.1) : fg.sm.q(0.5));
+      out.appendChild(h('div', { class: 'controls' }, U.ctl(Z ? '格子里显示' : 'Each cell shows', U.seg('lc-c6Heat', [['geo', Z ? '几何平均' : 'Geometric mean'], ['p50', Z ? '中位数' : 'Median'], ['mean', Z ? '平均' : 'Mean'], ['p10', 'P10'], ['win', Z ? '期末赚钱的比例' : 'Ended with a gain']], st.heat, (v) => { st.heat = v; save(); queue(draw); }))));
+      const heatVal = (fg) => (st.heat === 'win' ? fg.win : st.heat === 'geo' ? fg.sm.geo : st.heat === 'mean' ? fg.sm.mean : st.heat === 'p10' ? fg.sm.q(0.1) : fg.sm.q(0.5));
       const HM = HEAT_SL.map(sy => HEAT_TP.map(tx => [0, 1].map(q => (tx == null && sy == null ? RES[0].F[q] : figs(q, study(q, { type: 'br', x: tx == null ? null : tx / 100, y: sy == null ? null : sy / 100 }))))));
       const hgrid = h('div', { class: 'grid-2' }); out.appendChild(hgrid);
       PAIR.forEach((f, q) => {
@@ -1270,9 +1382,10 @@
       });
       { const bestCell = (q) => { let bx = null; HEAT_SL.forEach((sy, a) => HEAT_TP.forEach((tx, k2) => { const y = heatVal(HM[a][k2][q]); if (!bx || y > bx.y) bx = { y, tx, sy }; })); return bx; };
         const lab2 = (c2) => (c2.tx == null && c2.sy == null ? (Z ? '不设止盈止损（持有到期）' : 'neither (holding to the end)') : [c2.tx == null ? null : (Z ? `止盈 +${c2.tx}%` : `take profit +${c2.tx}%`), c2.sy == null ? null : (Z ? `止损 −${c2.sy}%` : `stop −${c2.sy}%`)].filter(Boolean).join(' / '));
-        const bc = [0, 1].map(bestCell), what = { p50: Z ? '中位数' : 'median', mean: Z ? '平均' : 'mean', p10: 'P10', win: Z ? '期末赚钱的比例' : 'share ending with a gain' }[st.heat];
-        out.appendChild(take(Z ? `按${what}看，最好的组合：SOXL 是「${lab2(bc[0])}」（${st.heat === 'win' ? U.pct(bc[0].y, 0) : fmtR(bc[0].y)}，持有到期为 ${st.heat === 'win' ? U.pct(heatVal(RES[0].F[0]), 0) : fmtR(heatVal(RES[0].F[0]))}），TQQQ 是「${lab2(bc[1])}」（${st.heat === 'win' ? U.pct(bc[1].y, 0) : fmtR(bc[1].y)}，持有到期为 ${st.heat === 'win' ? U.pct(heatVal(RES[0].F[1]), 0) : fmtR(heatVal(RES[0].F[1]))}）。换成“P10”可以看哪种组合最能保护最坏的情况，换成“平均”可以看大赢家被截断的代价。`
-          : `By ${what}, the best combination was “${lab2(bc[0])}” for SOXL (${st.heat === 'win' ? U.pct(bc[0].y, 0) : fmtR(bc[0].y)}, against ${st.heat === 'win' ? U.pct(heatVal(RES[0].F[0]), 0) : fmtR(heatVal(RES[0].F[0]))} when holding) and “${lab2(bc[1])}” for TQQQ (${st.heat === 'win' ? U.pct(bc[1].y, 0) : fmtR(bc[1].y)}, against ${st.heat === 'win' ? U.pct(heatVal(RES[0].F[1]), 0) : fmtR(heatVal(RES[0].F[1]))}). Switch to P10 to see which combination protects the worst cases best, or to the mean to see the cost of cutting off the big winners.`)); }
+        const bc = [0, 1].map(bestCell), what = { geo: Z ? '几何平均' : 'geometric mean', p50: Z ? '中位数' : 'median', mean: Z ? '平均' : 'mean', p10: 'P10', win: Z ? '期末赚钱的比例' : 'share ending with a gain' }[st.heat];
+        const valH = (y) => (st.heat === 'win' ? U.pct(y, 0) : fmtR(y)), isHold = (c2) => c2.tx == null && c2.sy == null;
+        out.appendChild(take(Z ? `按${what}看，${PAIR.map((f, q) => (isHold(bc[q]) ? `${f.k} 没有一种止盈止损组合好过持有到期（${valH(heatVal(RES[0].F[q]))}）` : `${f.k} 最好的组合是「${lab2(bc[q])}」（${valH(bc[q].y)}，持有到期为 ${valH(heatVal(RES[0].F[q]))}）`)).join('；')}。换成“P10”可以看哪种组合最能保护最坏的情况，换成“平均”可以看大赢家被截断的代价。`
+          : `By ${what}, ${PAIR.map((f, q) => (isHold(bc[q]) ? `no take-profit or stop combination beat holding to the end for ${f.k} (${valH(heatVal(RES[0].F[q]))})` : `the best combination for ${f.k} was “${lab2(bc[q])}” (${valH(bc[q].y)}, against ${valH(heatVal(RES[0].F[q]))} when holding)`)).join('; ')}. Switch to P10 to see which combination protects the worst cases best, or to the mean to see the cost of cutting off the big winners.`)); }
       // ---- the purchases one by one, for one rule ----
       const pickKeys = keys.filter(k => k !== 'hold'), pk = pickKeys.includes(st.pick) ? st.pick : pickKeys[0];
       const listFor = (q) => {
@@ -1289,8 +1402,8 @@
         h('div', { class: 'controls', style: { margin: '6px 0' } }, U.ctl(Z ? '卖法' : 'Way out', U.seg('lc-c6Pick', pickKeys.map(k => [k, exitDoc(k, R0[k]).name]), pk, (v) => { st.pick = v; save(); queue(() => { draw(); const d = document.getElementById('lc-c6List'); if (d) d.open = true; }); }))),
         ...PAIR.map((f, q) => h('div', { class: 'stack', style: { gap: '4px' } }, h('div', { class: 'xs', style: { fontWeight: 700, color: col(f, tk) } }, f.k + (st.entry === 'any' ? (Z ? '（任意一天买入时只列出每月第一个交易日）' : ' (for purchases on any day, the first session of each month only)') : '')), listFor(q)))));
       out.appendChild(h('p', { class: 'note' }, Z
-        ? `每一笔买入最多持有 ${hzLab(m)}（日历月），持有期必须在数据终点前结束；买入和卖出各付 0.05% 成本，提前卖出后的钱按国库券利率计息到期限结束。价格类规则按收盘价判断并在当天收盘成交，信号类规则在信号出现后的下一个交易日收盘卖出；均线看各自的标的指数（SOXL 看 SOXX，区间从 2010 年以前开始时为 SOXX*；TQQQ 看 QQQ）。按 C4 的条件买入时，买入日、取样和权重都和 C4 相同。年化 =（1 + 期末总收益）^(12/m) − 1。“事后最优”只作为上限参照。样本高度重叠（相邻几天买入的结果很相似），独立的下跌轮数才是有效样本量。历史统计不是预测。`
-        : `Every purchase is held at most ${hzLab(m)} (calendar months), ending by the data end; purchases and sales each pay 0.05%, and after an early sale the money earns the T-bill rate until the period ends. Price rules are judged on the close and filled at that close; signal rules sell at the close after the signal. The moving average uses each fund's index (SOXL: SOXX, SOXX* when the range starts before 2010; TQQQ: QQQ). On C4's conditions, the purchase days, sampling and weights are C4's. Annualized = (1 + total return at the end)^(12/m) − 1. The hindsight best is only a ceiling. Samples overlap heavily (purchases a few days apart end alike); the number of separate falls is the effective sample size. Past statistics are not a forecast.`));
+        ? `每一笔买入最多持有 ${hzLab(m)}（日历月），持有期必须在数据终点前结束；买入和卖出各付 0.05% 成本，提前卖出后的钱${st.dest === 'idx' ? '换成一倍指数拿到期限结束（买入、期末卖出各再付 0.05%）' : '按国库券利率计息到期限结束'}。价格类规则按收盘价判断并在当天收盘成交，信号类规则在信号出现后的下一个交易日收盘卖出；均线看各自的标的指数（SOXL 看 SOXX，区间从 2010 年以前开始时为 SOXX*；TQQQ 看 QQQ）。按 C4 的条件买入时，买入日、取样和权重都和 C4 相同。年化 =（1 + 期末总收益）^(12/m) − 1。“事后最优”只作为上限参照。样本高度重叠（相邻几天买入的结果很相似），独立的下跌轮数才是有效样本量，所以表中的 90% 区间按独立下跌或时间块整块重抽。几何平均 = exp(平均 ln(1 + r)) − 1。历史统计不是预测。`
+        : `Every purchase is held at most ${hzLab(m)} (calendar months), ending by the data end; purchases and sales each pay 0.05%, and after an early sale the money ${st.dest === 'idx' ? 'buys the 1× index and holds it to the end (another 0.05% on that purchase and on the final sale)' : 'earns the T-bill rate until the period ends'}. Price rules are judged on the close and filled at that close; signal rules sell at the close after the signal. The moving average uses each fund's index (SOXL: SOXX, SOXX* when the range starts before 2010; TQQQ: QQQ). On C4's conditions, the purchase days, sampling and weights are C4's. Annualized = (1 + total return at the end)^(12/m) − 1. The hindsight best is only a ceiling. Samples overlap heavily (purchases a few days apart end alike); the number of separate falls is the effective sample size, which is why the 90% intervals resample whole falls or blocks of time. Geometric mean = exp(mean of ln(1 + r)) − 1. Past statistics are not a forecast.`));
     };
     queue(draw);
     return sec;
