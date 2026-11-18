@@ -144,6 +144,21 @@ for (const lang of ['en', 'zh']) {
     await ctx.close();
   }
 }
+// where Google is unreachable its font requests hang: the page must still render (the fonts load without blocking)
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, () => { /* never answer */ });
+  await ctx.route(/api\.github\.com/, (r) => r.abort());
+  const page = await ctx.newPage(), errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.goto(base + '#overview', { waitUntil: 'commit' }).catch(() => {});
+  let len = 0; for (let k = 0; k < 40 && len < 500; k++) { await page.waitForTimeout(250); len = await page.evaluate(() => (document.getElementById('view-overview') || {}).innerText.length || 0).catch(() => 0); }
+  const problems = [];
+  if (len < 500) problems.push('the overview stays blank while the font requests hang');
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('fonts hang', problems);
+  await ctx.close();
+}
 // provisional data: a banner above every tab, and the SOXL page says "intraday" instead of "close"
 for (const [lang, live, must] of [
   ['zh', { et: '13:45', closed: false }, ['盘中数据：', '美东时间 13:45', '盘中（美东 13:45）', '最新价（盘中）']],
