@@ -1,6 +1,6 @@
 /* ============================================================
-   Goal planner — the chance of reaching a savings target with the
-   High-Sharpe 2.0 / 1.0 plans, SPY or QQQ; the monthly saving needed
+   Goal planner — the chance of reaching a savings target with SPY or
+   QQQ held for the long run; the monthly saving needed
    for 50 / 75 / 90% confidence; a yuan view; and the withdrawal phase
    (how much can safely be spent each year once the money is there).
    Method: block bootstrap of historical monthly returns (12-month
@@ -8,20 +8,18 @@
    ============================================================ */
 (function (root) {
   'use strict';
-  const { U, I18N, Core, App, Engine } = root;
+  const { U, I18N, Core, App } = root;
   const h = U.h; const zh = () => I18N.lang === 'zh';
   const ZE = (a, c) => (zh() ? a : c);
   const b = (s) => '<b>' + U.esc(s) + '</b>';
 
-  const DEF = { v: 1, cur: 'USD', init: 100000, monthly: 3000, growth: 5, age: 23, ageT: 35, target: 2000000, real: false, sample: 'common', drag: 0, sel: 'x2', wdCap: 0, wdYears: 50, wdStep: 2.5, wdSel: 'x2' };
+  const DEF = { v: 2, cur: 'USD', init: 100000, monthly: 3000, growth: 5, age: 23, ageT: 35, target: 2000000, real: false, sample: 'common', drag: 0, sel: 'SPY', wdCap: 0, wdYears: 50, wdStep: 2.5, wdSel: 'SPY' };
   let GS = (() => { const x = U.store.get('goal', null); return x && x.v === DEF.v ? Object.assign({}, DEF, x) : Object.assign({}, DEF); })();
   const save = () => U.store.set('goal', GS);
   const PATHS = 4000, BLOCK = 12;
   const V = { jobs: 0, el: null, parts: {} };
 
   const STRATS = [
-    { key: 'x2', short: '2.0', name: () => ZE('高夏普 2.0', 'High-Sharpe 2.0'), color: (tk) => tk.s[1] },
-    { key: 'bal', short: '1.0', name: () => ZE('高夏普 1.0', 'High-Sharpe 1.0'), color: (tk) => tk.ink2 },
     { key: 'SPY', short: 'SPY', name: () => ZE('SPY 买入持有', 'SPY buy & hold'), color: (tk) => U.assetColor('SPY', tk) },
     { key: 'QQQ', short: 'QQQ', name: () => ZE('QQQ 买入持有', 'QQQ buy & hold'), color: (tk) => U.assetColor('QQQ', tk) },
   ];
@@ -36,14 +34,10 @@
     if (NAV[key]) return NAV[key];
     let out;
     if (key === 'SPY' || key === 'QQQ') { const S = Core.S[key]; out = { nav: S.v, s: S.s, e: S.e }; }
-    else if (key === 'SPXF') { // S&P 500 total return less SPY's 0.0945% expense ratio, for the long-history sample
+    else { // 'SPXF' // S&P 500 total return less SPY's 0.0945% expense ratio, for the long-history sample
       const S = Core.S.SPX; const v = new Float64Array(Core.N); const fee = 1 - 0.000945 / 252; v[0] = 1;
       for (let i = 1; i < Core.N; i++) v[i] = v[i - 1] * (S.v[i] / S.v[i - 1]) * fee;
       out = { nav: v, s: 0, e: Core.N - 1 };
-    } else {
-      const SV = App.views.sharpe; const spec = SV.specOf(SV.presets[key]); const g = Engine.stratRange(spec);
-      const r = Engine.run(spec, { i0: g.s, i1: g.e, fund: { initial: 1, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5, cashYield: true });
-      out = r.error ? null : { nav: r.navFull, s: r.i0, e: r.i1 };
     }
     NAV[key] = out; return out;
   }
@@ -151,7 +145,7 @@
     const opts = h('div', { class: 'controls' },
       U.ctl(ZE('货币', 'Currency'), U.seg('gCur', [['USD', ZE('美元', 'US dollars')], ['CNY', ZE('人民币', 'Yuan')]], GS.cur, (v) => conv(v))),
       !rmb ? U.ctl(ZE('金额口径', 'Amounts in'), U.seg('gReal', [['nom', ZE('名义金额', 'Nominal')], ['real', ZE('今天的购买力', 'Today\'s dollars')]], GS.real ? 'real' : 'nom', (v) => { GS.real = v === 'real'; if (GS.real && GS.wdStep === 2.5) GS.wdStep = 0; if (!GS.real && GS.wdStep === 0) GS.wdStep = 2.5; save(); App.renderView('goal'); })) : null,
-      U.ctl(ZE('历史样本', 'History sampled'), U.seg('gSample', [['common', ZE('2005 年起（四者共同区间）', 'Since 2005 (shared span)')], ['own', ZE('各自最长历史', 'Each one\'s longest')]], GS.sample, (v) => { GS.sample = v; save(); V.refresh(); })),
+      U.ctl(ZE('历史样本', 'History sampled'), U.seg('gSample', [['common', ZE(`${Core.year[Core.S.QQQ.s]} 年起（两者共同区间）`, `Since ${Core.year[Core.S.QQQ.s]} (shared span)`)], ['own', ZE('各自最长历史', 'Each one\'s longest')]], GS.sample, (v) => { GS.sample = v; save(); V.refresh(); })),
       U.ctl(ZE('未来收益下调（每年）', 'Lower future returns (per year)'), U.seg('gDrag', [[0, ZE('不调', 'None')], [1, '−1pp'], [2, '−2pp'], [3, '−3pp']], GS.drag, (v) => { GS.drag = +v; save(); V.refresh(); })));
     return h('div', { class: 'card stack' }, h('div', { class: 'panel-title' }, ZE('你的计划', 'Your plan')), grid, opts,
       h('p', { class: 'note' }, rmb ? ZE('人民币视角：先算美元收益，再乘以同一个月美元兑人民币的涨跌（只用 1994 年汇率并轨以后的数据）；金额为名义人民币，不扣中国通胀。', 'Yuan view: dollar returns times the same month\'s change in the yuan exchange rate (only data after the 1994 unification); nominal yuan, not adjusted for Chinese inflation.') : ZE('“今天的购买力”按美国 CPI 扣除通胀；“每年递增”指每月存款每年提高的比例。', '“Today\'s dollars” deflates by US CPI; the step-up raises the monthly saving each year.')));
@@ -183,8 +177,8 @@
       h('div', { class: 'eyebrow' }, ZE(`目标：${yrsH()} 年后（${GS.ageT} 岁）有 ${money(GS.target)}`, `Goal: ${money(GS.target)} in ${yrsH()} years (age ${GS.ageT})`) + (GS.cur === 'USD' && GS.real ? ZE(' · 今天的购买力', ' · today\'s dollars') : '')),
       row,
       h('p', { class: 'note', html: ZE(
-        `按你的存钱计划（现有 ${b(money(GS.init))}，每月 ${b(money(GS.monthly))}，每年多存 ${U.pct(GS.growth / 100, 1)}），需要的固定年化收益为 ${b(nrTxt)}。四种方案里达到概率最高的是 ${b(STRATS.find(s => s.key === best.key).name())}（${U.pct(best.p, 0)}）。点任意一格可在下方查看它的财富路径。`,
-        `With your plan (${b(money(GS.init))} now, ${b(money(GS.monthly))} a month, stepped up ${U.pct(GS.growth / 100, 1)} a year) the constant annual return needed is ${b(nrTxt)}. The best chance among the four is ${b(STRATS.find(s => s.key === best.key).name())} (${U.pct(best.p, 0)}). Tap a box to see its wealth paths below.`) }));
+        `按你的存钱计划（现有 ${b(money(GS.init))}，每月 ${b(money(GS.monthly))}，每年多存 ${U.pct(GS.growth / 100, 1)}），需要的固定年化收益为 ${b(nrTxt)}。两种持有方式里达到概率更高的是 ${b(STRATS.find(s => s.key === best.key).name())}（${U.pct(best.p, 0)}）。点任意一格可在下方查看它的财富路径。`,
+        `With your plan (${b(money(GS.init))} now, ${b(money(GS.monthly))} a month, stepped up ${U.pct(GS.growth / 100, 1)} a year) the constant annual return needed is ${b(nrTxt)}. The better chance of the two is ${b(STRATS.find(s => s.key === best.key).name())} (${U.pct(best.p, 0)}). Tap a box to see its wealth paths below.`) }));
   }
 
   function refRowA(r) {
@@ -196,11 +190,12 @@
       h('thead', null, h('tr', null, h('th', null, ZE('方案', 'Plan')), h('th', null, ZE('达到目标的概率', 'Chance of reaching it')), h('th', null, ZE('结果中位数', 'Median outcome')), h('th', null, ZE('较差情形（10%）', 'Poor case (10%)')), h('th', null, ZE('较好情形（90%）', 'Good case (90%)')), h('th', null, ZE('样本年化 / 波动', 'Sample CAGR / vol')), h('th', null, ZE('历史样本', 'Months sampled')))),
       h('tbody', null, C.res.map((r, k) => h('tr', { class: r.key === GS.sel ? 'hl' : '' }, tdS(STRATS[k].color(tk), STRATS[k].name()), h('td', { style: { fontWeight: 700 } }, U.pct(r.p, 0)), h('td', null, money(r.med)), h('td', null, money(r.p10)), h('td', null, money(r.p90)), h('td', null, U.pct(r.cagr, 1) + ' / ' + U.pct(r.vol, 0)), h('td', { class: 'nowrap' }, r.from + ' → ' + r.to + (r.src === 'SPXF' ? ZE('（标普500）', ' (S&P 500)') : '')))).concat(GS.sample === 'common' ? [refRowA(C.ref)] : [])))));
     const tot = C.res[0].acc.contrib[C.res[0].acc.Hy0];
-    const x2 = C.res.find(r => r.key === 'x2'), spy = C.res.find(r => r.key === 'SPY'), qqq = C.res.find(r => r.key === 'QQQ');
-    const own = GS.sample === 'own';
+    const spy = C.res.find(r => r.key === 'SPY'), qqq = C.res.find(r => r.key === 'QQQ');
+    const own = GS.sample === 'own', wide = qqq.p90 >= spy.p90 && qqq.p10 <= spy.p10;
+    const hi = qqq.p >= spy.p ? [qqq, spy, 'QQQ', 'SPY'] : [spy, qqq, 'SPY', 'QQQ'];
     host.appendChild(take(ZE(
-      `${yrsH()} 年里你一共会投入 ${b(money(tot))}。${x2.p >= spy.p ? `2.0 达到目标的概率（${U.pct(x2.p, 0)}）高于 SPY（${U.pct(spy.p, 0)}），主要因为它在坏年份跌得少，较差情形（${money(x2.p10)}）明显好于 SPY（${money(spy.p10)}）。` : `SPY 达到目标的概率（${U.pct(spy.p, 0)}）高于 2.0（${U.pct(x2.p, 0)}）：目标需要较高的收益，而 2.0 的长处是少亏，不是多赚（高夏普页的“2.0 + 1.3 倍融资”就是为这种情况准备的，但要承担融资风险）。`}QQQ 的较好情形最好（${money(qqq.p90)}），但较差情形也最差（${money(qqq.p10)}）——波动越大，结果越分散。${own ? `注意“各自最长历史”并不公平：2.0 和 1.0 只有 2005 / 2002 年以后的数据，没经历过 1970 年代滞胀和 2000 年科网泡沫，而 SPY 用的是 ${spy.from} 起的标普500。` : `四种方案用的是同一段历史（${x2.from} 起，含 2008 年金融危机，但不含 2000 年科网泡沫）；作为参照，如果用标普500 自 ${C.ref.from} 起的全部历史，买入持有达到目标的概率是 ${b(U.pct(C.ref.p, 0))}。`}`,
-      `Over ${yrsH()} years you will put in ${b(money(tot))}. ${x2.p >= spy.p ? `2.0 has a higher chance (${U.pct(x2.p, 0)}) than SPY (${U.pct(spy.p, 0)}), mainly because it falls less in bad years: its poor case (${money(x2.p10)}) is well above SPY's (${money(spy.p10)}).` : `SPY has a higher chance (${U.pct(spy.p, 0)}) than 2.0 (${U.pct(x2.p, 0)}): the target needs a high return, and 2.0's strength is losing less, not earning more (the High-Sharpe page's “2.0 + 1.3× margin” exists for this case, at the cost of margin risk).`} QQQ has the best good case (${money(qqq.p90)}) but also the worst poor case (${money(qqq.p10)}) — more volatility, more spread. ${own ? `Note that “each one's longest” is not a fair race: 2.0 and 1.0 only have data since 2005 / 2002 and never saw the 1970s or the dot-com bust, while SPY uses the S&P 500 from ${spy.from}.` : `All four use the same history (from ${x2.from}, including 2008 but not the dot-com bust); for reference, the S&P 500's full history from ${C.ref.from} gives buy-and-hold a ${b(U.pct(C.ref.p, 0))} chance.`}`)));
+      `${yrsH()} 年里你一共会投入 ${b(money(tot))}。${hi[2]} 达到目标的概率（${b(U.pct(hi[0].p, 0))}）高于 ${hi[3]}（${U.pct(hi[1].p, 0)}）。${wide ? `QQQ 的较好情形更好（${money(qqq.p90)}，SPY ${money(spy.p90)}），较差情形也更差（${money(qqq.p10)}，SPY ${money(spy.p10)}）——波动越大，结果越分散。` : `较差情形 SPY ${money(spy.p10)}、QQQ ${money(qqq.p10)}；较好情形 SPY ${money(spy.p90)}、QQQ ${money(qqq.p90)}。`}${own ? `注意“各自最长历史”并不公平：QQQ 只有 ${qqq.from} 以后的数据，没经历过 1970 年代滞胀，而 SPY 用的是 ${spy.from} 起的标普500。` : `两者用的是同一段历史（${spy.from} 起，含 2000 年科网泡沫和 2008 年金融危机）；作为参照，如果用标普500 自 ${C.ref.from} 起的全部历史，买入持有达到目标的概率是 ${b(U.pct(C.ref.p, 0))}。`}`,
+      `Over ${yrsH()} years you will put in ${b(money(tot))}. ${hi[2]} has the higher chance (${b(U.pct(hi[0].p, 0))}, against ${U.pct(hi[1].p, 0)} for ${hi[3]}). ${wide ? `QQQ has the better good case (${money(qqq.p90)} against ${money(spy.p90)}) and the worse poor case (${money(qqq.p10)} against ${money(spy.p10)}) — more volatility, more spread.` : `Poor case: SPY ${money(spy.p10)}, QQQ ${money(qqq.p10)}; good case: SPY ${money(spy.p90)}, QQQ ${money(qqq.p90)}.`} ${own ? `Note that “each one's longest” is not a fair race: QQQ only has data since ${qqq.from} and never saw the 1970s, while SPY uses the S&P 500 from ${spy.from}.` : `Both use the same history (from ${spy.from}, including the dot-com bust and 2008); for reference, the S&P 500's full history from ${C.ref.from} gives buy-and-hold a ${b(U.pct(C.ref.p, 0))} chance.`}`)));
     return host;
   }
 
@@ -252,14 +247,14 @@
         xAxis: U.catAxis(tk, xs.map(q => Math.round(q * 100) + '%'), { boundaryGap: false, name: ZE('把握', 'confidence'), nameTextStyle: { color: tk.muted, fontSize: 11 } }),
         yAxis: U.valAxis(tk, { scale: false, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => money(v) } }),
         tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (ps) => U.ttHead(ZE('要有 ', '') + xs[ps[0].dataIndex] * 100 + ZE('% 把握，每月需存', '% confidence: monthly saving needed')) + ps.filter(p => p.seriesIndex < C.res.length).map(p => U.ttRow(p.color, p.seriesName, money(p.value))).join('') },
-        series: C.res.map((r, k) => U.lineSeries(STRATS[k].name(), xs.map(q => { const m = quant(r.need, q); return isFinite(m) ? m : null; }), STRATS[k].color(tk), { sampling: null, showSymbol: true, symbolSize: 5, lineStyle: { width: 2, color: STRATS[k].color(tk), type: STRATS[k].key === 'bal' ? 'dashed' : 'solid' } }))
+        series: C.res.map((r, k) => U.lineSeries(STRATS[k].name(), xs.map(q => { const m = quant(r.need, q); return isFinite(m) ? m : null; }), STRATS[k].color(tk), { sampling: null, showSymbol: true, symbolSize: 5, lineStyle: { width: 2, color: STRATS[k].color(tk), type: 'solid' } }))
           .concat([{ name: ZE('你现在每月存', 'Your monthly saving'), type: 'line', data: xs.map(() => GS.monthly), showSymbol: false, silent: true, lineStyle: { width: 1.2, color: tk.muted, type: 'dotted' }, itemStyle: { color: tk.muted } }]) }), true);
     });
-    const x2 = C.res.find(r => r.key === 'x2'), spy = C.res.find(r => r.key === 'SPY');
-    const m75x = quant(x2.need, 0.75), m90x = quant(x2.need, 0.9), m75s = quant(spy.need, 0.75), m90s = quant(spy.need, 0.9), m50x = quant(x2.need, 0.5);
+    const spy = C.res.find(r => r.key === 'SPY'), qqq = C.res.find(r => r.key === 'QQQ');
+    const m50s = quant(spy.need, 0.5), m75s = quant(spy.need, 0.75), m90s = quant(spy.need, 0.9), m75q = quant(qqq.need, 0.75), m90q = quant(qqq.need, 0.9);
     host.appendChild(take(ZE(
-      `这张表回答“每月要存多少”：用 2.0，想有一半把握每月约 ${b(money(m50x))}，75% 把握约 ${b(money(m75x))}，90% 把握约 ${b(money(m90x))}（第一年的金额，之后每年多存 ${U.pct(GS.growth / 100, 1)}）；用 SPY 分别约 ${money(m75s)} 和 ${money(m90s)}（75% / 90%）。把握从 50% 提到 90%，所需月存款要多出约 ${U.pct(m90x / m50x - 1, 0)}——这就是“安全边际”的价格。`,
-      `This table answers “how much a month?”: with 2.0, about ${b(money(m50x))} for even odds, ${b(money(m75x))} for 75% and ${b(money(m90x))} for 90% (first-year amounts, stepped up ${U.pct(GS.growth / 100, 1)} a year); with SPY about ${money(m75s)} and ${money(m90s)} (75% / 90%). Going from 50% to 90% confidence takes about ${U.pct(m90x / m50x - 1, 0)} more monthly saving — the price of a safety margin.`)));
+      `这张表回答“每月要存多少”：用 SPY，想有一半把握每月约 ${b(money(m50s))}，75% 把握约 ${b(money(m75s))}，90% 把握约 ${b(money(m90s))}（第一年的金额，之后每年多存 ${U.pct(GS.growth / 100, 1)}）；用 QQQ 分别约 ${money(m75q)} 和 ${money(m90q)}（75% / 90%）。把握从 50% 提到 90%，所需月存款要多出约 ${U.pct(m90s / m50s - 1, 0)}——这就是“安全边际”的价格。`,
+      `This table answers “how much a month?”: with SPY, about ${b(money(m50s))} for even odds, ${b(money(m75s))} for 75% and ${b(money(m90s))} for 90% (first-year amounts, stepped up ${U.pct(GS.growth / 100, 1)} a year); with QQQ about ${money(m75q)} and ${money(m90q)} (75% / 90%). Going from 50% to 90% confidence takes about ${U.pct(m90s / m50s - 1, 0)} more monthly saving — the price of a safety margin.`)));
     return host;
   }
 
@@ -280,7 +275,7 @@
         xAxis: U.catAxis(tk, rates.map(x => +(x * 100).toFixed(2) + '%'), { boundaryGap: false, name: ZE('年提取率', 'annual rate'), nameTextStyle: { color: tk.muted, fontSize: 11 } }),
         yAxis: U.valAxis(tk, { scale: false, min: 0, max: 1, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => Math.round(v * 100) + '%' } }),
         tooltip: { trigger: 'axis', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (ps) => { const x = rates[ps[0].dataIndex]; return U.ttHead(ZE(`每年提取 ${U.pct(x, 2)}（${money(x * cap)}）`, `Withdraw ${U.pct(x, 2)} a year (${money(x * cap)})`)) + ps.map(p => U.ttRow(p.color, p.seriesName, U.pct(p.value, 0))).join(''); } },
-        series: C.res.map((r, k) => U.lineSeries(STRATS[k].name(), rates.map(x => share(r.wd.maxRate, v => v >= x)), STRATS[k].color(tk), { sampling: null, lineStyle: { width: 2, color: STRATS[k].color(tk), type: STRATS[k].key === 'bal' ? 'dashed' : 'solid' },
+        series: C.res.map((r, k) => U.lineSeries(STRATS[k].name(), rates.map(x => share(r.wd.maxRate, v => v >= x)), STRATS[k].color(tk), { sampling: null, lineStyle: { width: 2, color: STRATS[k].color(tk), type: 'solid' },
           markLine: k === 0 ? { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 10.5, formatter: '90%', position: 'insideEndTop' }, data: [{ yAxis: 0.9 }] } : undefined })) }), true);
     });
     const safe = (r, q) => quant(r.wd.maxRate, 1 - q);
@@ -288,25 +283,25 @@
     host.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', null, h('tr', null, h('th', null, ZE('方案', 'Plan')), h('th', null, ZE('90% 把握的提取率', 'Rate with 90% success')), h('th', null, ZE('第一年可花', 'First-year spending')), h('th', null, ZE('75% 把握的提取率', 'Rate with 75% success')), h('th', null, ZE('按 4% 提取的成功率', 'Success at 4%')), h('th', null, ZE('按 4% 提取，最差 10% 情形能撑', 'At 4%, the worst 10% last')))),
       h('tbody', null, C.res.map((r, k) => wdRow(r, tdS(STRATS[k].color(tk), STRATS[k].name()), r.key === GS.sel ? 'hl' : '')).concat(GS.sample === 'common' ? [wdRow(C.ref, h('td', null, ZE('参照：标普500 最长历史', 'Reference: S&P 500, full history')), 'base-row')] : [])))));
-    const x2 = C.res.find(r => r.key === 'x2'), spy = C.res.find(r => r.key === 'SPY'), qqq = C.res.find(r => r.key === 'QQQ');
-    const s2 = safe(x2, 0.9), ss = safe(spy, 0.9), sq = safe(qqq, 0.9), sr = safe(C.ref, 0.9);
+    const spy = C.res.find(r => r.key === 'SPY'), qqq = C.res.find(r => r.key === 'QQQ');
+    const ss = safe(spy, 0.9), sq = safe(qqq, 0.9), sr = safe(C.ref, 0.9);
     host.appendChild(take(ZE(
-      `有 ${money(cap)}、要用 ${Math.round(GS.wdYears)} 年时，想有 90% 的把握不花光：2.0 每年大约能取 ${b(U.pct(s2, 1))}（${b(money(s2 * cap))}），SPY 约 ${U.pct(ss, 1)}（${money(ss * cap)}），QQQ 约 ${U.pct(sq, 1)}。提取期里最怕的是“刚开始取钱就碰上大跌”（顺序风险），所以波动小的组合在这里的优势比攒钱阶段更明显。常说的“4% 规则”来自 30 年提取期的美国历史；提取期越长，安全提取率越低。${GS.sample === 'common' ? `还要注意 ${x2.from} 以来的收益偏高，算出的提取率也偏乐观：同样的设置下，用标普500 自 ${C.ref.from} 起的全部历史，90% 把握的提取率只有 ${b(U.pct(sr, 1))}。` : ''}`,
-      `With ${money(cap)} that must last ${Math.round(GS.wdYears)} years, for 90% confidence of not running out: 2.0 supports about ${b(U.pct(s2, 1))} a year (${b(money(s2 * cap))}), SPY about ${U.pct(ss, 1)} (${money(ss * cap)}), QQQ about ${U.pct(sq, 1)}. The big danger in this phase is a crash right after withdrawals begin (sequence risk), so a smoother portfolio helps more here than while saving. The familiar “4% rule” comes from 30-year US withdrawal periods; the longer the horizon, the lower the safe rate.${GS.sample === 'common' ? ` Returns since ${x2.from} were unusually good, so these rates lean optimistic: with the same settings, the S&P 500's full history from ${C.ref.from} supports only ${b(U.pct(sr, 1))} at 90% confidence.` : ''}`)));
+      `有 ${money(cap)}、要用 ${Math.round(GS.wdYears)} 年时，想有 90% 的把握不花光：SPY 每年大约能取 ${b(U.pct(ss, 1))}（${b(money(ss * cap))}），QQQ 约 ${U.pct(sq, 1)}（${money(sq * cap)}）。提取期里最怕的是“刚开始取钱就碰上大跌”（顺序风险），所以波动小的持有方式在这里的优势比攒钱阶段更明显。常说的“4% 规则”来自 30 年提取期的美国历史；提取期越长，安全提取率越低。${GS.sample === 'common' ? `作为参照，同样的设置下用标普500 自 ${C.ref.from} 起的全部历史，90% 把握的提取率是 ${b(U.pct(sr, 1))}。` : ''}`,
+      `With ${money(cap)} that must last ${Math.round(GS.wdYears)} years, for 90% confidence of not running out: SPY supports about ${b(U.pct(ss, 1))} a year (${b(money(ss * cap))}), QQQ about ${U.pct(sq, 1)} (${money(sq * cap)}). The big danger in this phase is a crash right after withdrawals begin (sequence risk), so a smoother holding helps more here than while saving. The familiar “4% rule” comes from 30-year US withdrawal periods; the longer the horizon, the lower the safe rate.${GS.sample === 'common' ? ` For reference, with the same settings the S&P 500's full history from ${C.ref.from} supports ${b(U.pct(sr, 1))} at 90% confidence.` : ''}`)));
     return host;
   }
 
   function notes() {
     const items = zh() ? [
-      ['方法', `把每种方案过去的月度收益按 12 个月一块随机拼接成 ${PATHS.toLocaleString('en-US')} 条未来路径（保留一年内的涨跌节奏），四种方案用同一组随机抽样，差异只来自收益本身。2.0、1.0 与高夏普页的规则和成本完全相同（每笔 5 个基点、信号晚一天执行、现金拿国库券利息）；SPY、QQQ 为全收益买入持有。`],
+      ['方法', `把每种方案过去的月度收益按 12 个月一块随机拼接成 ${PATHS.toLocaleString('en-US')} 条未来路径（保留一年内的涨跌节奏），两种持有方式用同一组随机抽样，差异只来自收益本身。SPY、QQQ 都是全收益（股息再投资）买入持有。`],
       ['“需要每月存多少”怎么算', '每条路径的期末财富 = 现有资金的增长 + 每月存款 × 一个“存款增长系数”，两者都可以精确算出，所以每条路径恰好达标所需的月存款可以直接求出；“75% 把握”就是这些数里第 75 百分位的那个值。'],
       ['人民币视角', '美元收益乘以同月美元兑人民币汇率的变化（FRED H.10，1981 年起；只用 1994 年并轨以后）。2005 年以来人民币对美元平均每年升值约 1%，这会略微拉低人民币口径的收益。不含换汇成本与资本管制等现实约束。'],
-      ['别把概率当承诺', '这是用历史重新洗牌，不是预测：2005 年以来恰好是美国股票、长期国债和黄金都表现不错的年代。F、J 两部分（高夏普页）提示 2.0 的回测夏普偏高，可以用“未来收益下调”看结论有多敏感。未计税费，不是投资建议。'],
+      ['别把概率当承诺', '这是用历史重新洗牌，不是预测：1999 年以来恰好是美国大盘股、尤其是科技股表现很好的年代。可以用“未来收益下调”看结论有多敏感。未计税费，不是投资建议。'],
     ] : [
-      ['Method', `Each plan's past monthly returns are stitched together in random 12-month blocks into ${PATHS.toLocaleString('en-US')} future paths (keeping within-year rhythm); all four plans share the same random draws, so differences come only from the returns. 2.0 and 1.0 use exactly the High-Sharpe page's rules and costs (5 bp a trade, signals applied a day late, T-bill interest on cash); SPY and QQQ are total-return buy-and-hold.`],
+      ['Method', `Each plan's past monthly returns are stitched together in random 12-month blocks into ${PATHS.toLocaleString('en-US')} future paths (keeping within-year rhythm); both holdings share the same random draws, so differences come only from the returns. SPY and QQQ are total-return (dividends reinvested) buy-and-hold.`],
       ['How “monthly saving needed” works', 'Each path\'s ending wealth = growth of today\'s savings + monthly saving × a “saving growth factor”; both are exact, so the monthly saving that just reaches the target on each path follows directly, and “75% confidence” is the 75th percentile of those amounts.'],
       ['Yuan view', 'Dollar returns times the same month\'s change in USD/CNY (FRED H.10 from 1981; only after the 1994 unification is used). Since 2005 the yuan has gained about 1% a year against the dollar on average, which slightly lowers yuan returns. Conversion costs and capital controls are ignored.'],
-      ['Probabilities are not promises', 'This reshuffles history; it does not forecast it — and since 2005 US stocks, long Treasuries and gold all did well. Sections F and J of the High-Sharpe page suggest 2.0\'s backtest Sharpe is too high; use “lower future returns” to test the sensitivity. Taxes and fees are ignored; not investment advice.'],
+      ['Probabilities are not promises', 'This reshuffles history; it does not forecast it — and since 1999 US large caps, tech above all, did very well. Use “lower future returns” to test the sensitivity. Taxes and fees are ignored; not investment advice.'],
     ];
     return h('div', { class: 'findings' }, items.map(([a, c]) => h('div', { class: 'finding' }, h('h4', null, a), h('p', null, c))));
   }
@@ -315,7 +310,7 @@
     V.el = el; V.jobs++; const gen = V.jobs;
     const tk = U.tokens();
     el.appendChild(h('div', { class: 'section-head' }, h('div', { class: 'eyebrow' }, I18N.t('asOf', { d: Core.asOf })), h('h2', null, ZE('目标规划：有多大把握攒够？', 'Goal planner: how likely is the target?')),
-      h('p', { class: 'lede' }, ZE('输入现有资金、每月能存多少、每年多存多少、想在几岁达到多少，看用 2.0、1.0、SPY、QQQ 各自达到目标的概率，以及想有 50%、75%、90% 把握每月要存多少；可以切换成人民币；最后一部分估算攒够之后每年能安心花多少。', 'Enter your savings, monthly saving, annual step-up and the target by a given age to see the chance of reaching it with 2.0, 1.0, SPY or QQQ, and the monthly saving needed for 50%, 75% or 90% confidence; switch to yuan if you like. The last part estimates how much you could safely spend each year once you get there.'))));
+      h('p', { class: 'lede' }, ZE('输入现有资金、每月能存多少、每年多存多少、想在几岁达到多少，看长期持有 SPY 或 QQQ 各自达到目标的概率，以及想有 50%、75%、90% 把握每月要存多少；可以切换成人民币；最后一部分估算攒够之后每年能安心花多少。', 'Enter your savings, monthly saving, annual step-up and the target by a given age to see the chance of reaching it by holding SPY or QQQ, and the monthly saving needed for 50%, 75% or 90% confidence; switch to yuan if you like. The last part estimates how much you could safely spend each year once you get there.'))));
     el.appendChild(inputs());
     const out = h('div', { class: 'stack' }, h('div', { class: 'empty' }, I18N.t('loading'))); el.appendChild(out);
     setTimeout(() => {

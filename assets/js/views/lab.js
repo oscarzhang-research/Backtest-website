@@ -12,7 +12,7 @@
   const MASSETS = ['SPY', 'SPX', 'QQQ', 'SMH', 'SOXX', 'VGT', 'SOXL', 'SOXLX', 'TQQQ', 'TQQQX', 'TLT', 'IEF', 'GLD'].concat(STOCKS);
   const TYPES1 = ['immediate', 'dca', 'tranche', 'timing_low', 'timing_high', 'cycle_low', 'cycle_high', 'dip', 'ddladder', 'smart', 'va', 'trend', 'stop', 'constmix', 'voltarget', 'dualma', 'rsi_mr', 'donchian', 'seasonal', 'grid', 'dca_tp', 'absmom', 'custom', 'hold_cash'];
   const TYPESC = ['combo'];
-  const TYPESM = ['smc', 'riskparity', 'rotation', 'minvar', 'meanvar', 'fixed'];
+  const TYPESM = ['riskparity', 'rotation', 'minvar', 'meanvar', 'fixed'];
   const TYPES = TYPES1.concat(TYPESC, TYPESM);
   const PART_TYPES = TYPES1.filter(x => ['timing_low', 'timing_high', 'cycle_low', 'cycle_high', 'custom'].indexOf(x) < 0);
   const SIGTYPES = new Set(['dip', 'ddladder', 'smart', 'trend', 'stop', 'custom', 'dualma', 'rsi_mr', 'donchian', 'absmom', 'combo']);
@@ -53,19 +53,11 @@
       case 'quant': return { asset: 'QQQ', start: '2002-08-01', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1,
         strategies: [S('immediate'), S('voltarget', { target: 20, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }), S('rsi_mr', { n: 2, lo: 10, hi: 70, filter: 200 }), S('donchian', { n: 55, m: 20 }), S('seasonal', { from: 11, to: 4 }), S('grid', { step: 10, slice: 10, init: 50 }), S('absmom', { n: 12 })] };
       case 'multi': return { asset: 'QQQ', start: '2002-08-01', end: null, fund: { initial: 500000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
-        strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 34, QQQ: 33, SOXX: 33 }, sched: 'M' }), S('rotation', { n: 6, top: 1, abs: true }), S('rotation', { n: 6, top: 2, abs: true }), S('riskparity', { L: 60, n: 200, T: 0, sched: 'M' }), S('minvar', { L: 120 }), S('smc', { T: 20, n: 200, soft: 50, L: 20, band: 10, sched: 'D', cap: 100 })] };
+        strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 34, QQQ: 33, SOXX: 33 }, sched: 'M' }), S('rotation', { n: 6, top: 1, abs: true }), S('rotation', { n: 6, top: 2, abs: true }), S('riskparity', { L: 60, n: 200, T: 0, sched: 'M' }), S('minvar', { L: 120 })] };
       case 'soxl': return { asset: 'SOXL', start: '2010-03-12', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate', {}, { asset: { key: 'SOXX' } }), S('immediate'), S('constmix', { w: 33, freq: 'Q', t: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { sig: 'SOXX' }), S('voltarget', { target: 40, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }, { sig: 'SOXX' }), S('dca', { freq: 'M' }), S('dca_tp', { tp: 100, sell: 30, redeploy: 12 })] };
       case 'tqqq': return { asset: 'TQQQ', start: '2010-02-12', end: null, fund: { initial: 100000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate', {}, { asset: { key: 'QQQ' } }), S('immediate'), S('constmix', { w: 33, freq: 'Q', t: 0 }), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }, { sig: 'QQQ' }), S('voltarget', { target: 40, n: 20, freq: 'W', band: 5, cap: 100 }), S('dualma', { fast: 50, slow: 200, mode: 'exit' }, { sig: 'QQQ' }), S('dca', { freq: 'M' }), S('dca_tp', { tp: 100, sell: 30, redeploy: 12 })] };
-      case 'sharpe50': { const zh = I18N.lang === 'zh'; const X5 = ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD']; const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
-        return { asset: 'SPY', start: '2002-08-01', end: null, fund: { initial: 500000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5,
-          strategies: [S('immediate', {}, { asset: { key: 'SPY' } }), S('immediate', {}, { asset: { key: 'QQQ' } }), S('fixed', { w: { SPY: 60, IEF: 40 }, sched: 'Q' }, { universe: ['SPY', 'IEF'], name: zh ? '股债 60/40（SPY/IEF）' : '60/40 (SPY/IEF)' }),
-            S('smc', Object.assign({ T: 20 }, base), { name: zh ? '高夏普 1.0 平衡' : 'High-Sharpe 1.0 balanced' }),
-            S('smc', Object.assign({ T: 25 }, base), { universe: ['SPY', 'QQQ', 'SOXX', 'SOXLX'], name: zh ? '高夏普 1.0 进取（含 SOXL）' : 'High-Sharpe 1.0 aggressive (+SOXL)' }),
-            S('smc', Object.assign({ vt: false }, base), { universe: X5, name: zh ? '高夏普 2.0（推荐）' : 'High-Sharpe 2.0 (default)' }),
-            S('smc', Object.assign({ T: 10 }, base), { universe: X5, name: zh ? '高夏普 2.0 稳健' : 'High-Sharpe 2.0 steady' }),
-            S('smc', Object.assign({ vt: false, borrow: 1 }, base, { cap: 130 }), { universe: X5, name: zh ? '高夏普 2.0 + 1.3 倍融资' : 'High-Sharpe 2.0 + 1.3× margin' })] }; }
       case 'combo': return { asset: 'QQQ', start: '2002-08-01', end: null, fund: { initial: 100000, amount: 1000, freq: 'M', growth: 0 }, lag: 1, costBps: 5,
         strategies: [S('immediate'), S('trend', { n: 200, mode: 'exit', band: 0, check: 'D' }),
           S('combo', { how: 'split', parts: [{ type: 'immediate', w: 50 }, { type: 'ddladder', params: { ref: 'ath', tiers: [{ x: 10, pct: 30 }, { x: 20, pct: 50 }, { x: 30, pct: 100 }], base: 0, wait: 0 }, w: 50 }] }, { name: I18N.lang === 'zh' ? '一半立即 + 一半跌幅阶梯' : 'Half now + half on a dip ladder' }),
@@ -97,7 +89,7 @@
     return Object.assign({ v: VERSION, scenario: sc || 'salary', cashYield: true, costBps: s.costBps || 0, align: true, chart: 'equity', logScale: false, tradeFor: null,
       robust: { horizon: 10, step: 3, metric: 'irr' }, mc: { key: 'SPX', years: 20, initial: 10000, monthly: 1000, growth: 0, paths: 2000, sample: 'full', real: false, block: 12 } }, s);
   }
-  let LS = (function () { const x = U.store.get('lab', null); if (x && x.v === VERSION && Array.isArray(x.strategies)) { x.strategies.forEach(s => { const n = +String(s.id).slice(1); if (n >= uid) uid = n + 1; }); return x; } return freshState('salary'); })();
+  let LS = (function () { const x = U.store.get('lab', null); if (x && x.v === VERSION && Array.isArray(x.strategies)) { x.strategies = x.strategies.filter(s => s && TYPES.includes(s.type)); if (x.scenario === 'sharpe50') x.scenario = 'multi'; x.strategies.forEach(s => { const n = +String(s.id).slice(1); if (n >= uid) uid = n + 1; }); return x; } return freshState('salary'); })();
   const save = () => U.store.set('lab', LS);
 
   const V = { parts: {}, results: null };
@@ -139,8 +131,6 @@
       case 'minvar': n = zh ? '最小方差' : 'Min variance'; break;
       case 'meanvar': n = zh ? '最大夏普(均值方差)' : 'Max Sharpe (MV)'; break;
       case 'rotation': n = (zh ? '动量轮动 ' : 'Rotation ') + (p.n || 6) + (zh ? '个月·前' : 'm top-') + (p.top || 1) + (p.abs === false ? '' : (zh ? '+绝对' : ' +abs')); break;
-      case 'smc': { const cross = (s.universe || []).some(k => k === 'TLT' || k === 'IEF' || k === 'GLD');
-        n = (zh ? '高夏普' : 'High-Sharpe') + (cross ? ' 2.0' : '') + (p.vt === false ? (zh ? ' · 无波动目标' : ' · no vol target') : ' ' + (p.T == null ? 20 : p.T) + '%') + ((p.cap || 100) !== 100 ? (zh ? ' · 仓位 ' : ' · exposure ') + p.cap + '%' : '') + (p.below != null && p.below !== 50 ? (zh ? ' · 跌破均线 ' : ' · below MA ') + p.below + '%' : ''); break; }
       default: n = s.type;
     }
     if (isMulti(s.type)) return (s.universe || []).map(k => U.assetName(k, true)).join('/') + ' · ' + n;
@@ -532,29 +522,6 @@
         box.appendChild(num('n', t('pp.momN'), 6, { min: 1, max: 24, step: 1 }));
         box.appendChild(num('top', t('pp.top'), 1, { min: 1, max: 8, step: 1 }));
         box.appendChild(U.ctl(t('pp.abs'), checkbox('p-' + s.id + '-abs', p.abs !== false, (v) => { p.abs = v; onCh(); })));
-        break;
-      case 'smc':
-        if (p.below == null && p.soft != null) p.below = p.soft;
-        box.appendChild(sel('weighting', t('pp.weighting'), [['iv', t('pp.wIV')], ['equal', t('pp.wEq')], ['fixed', t('pp.wFixed')]], 'iv'));
-        if (p.weighting === 'fixed') {
-          p.w = p.w || {};
-          const grid = h('div', { class: 'full', style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '6px' } });
-          for (const k of (s.universe || [])) grid.appendChild(U.ctl(U.assetName(k, true) + ' %', U.numInput('sw-' + s.id + k, p.w[k] == null ? Math.round(100 / Math.max(1, s.universe.length)) : p.w[k], (v) => { p.w[k] = Math.max(0, v); onCh(); }, { min: 0, max: 100, step: 5, style: 'width:100%' })));
-          box.appendChild(grid);
-        }
-        box.appendChild(U.ctl(t('pp.vt'), checkbox('p-' + s.id + '-vt', p.vt !== false, (v) => { p.vt = v; onCh(true); })));
-        if (p.vt !== false) box.appendChild(num('T', t('pp.Tsmc'), 20, { min: 3, max: 60, step: 1 }));
-        box.appendChild(sel('trend', t('pp.trendType'), [['sma', t('pp.trendSma')], ['ens', t('pp.trendEns')]], 'sma'));
-        if (p.trend !== 'ens') box.appendChild(num('n', t('pp.ma'), 200, { min: 20, max: 400, step: 10 }));
-        box.appendChild(num('below', t('pp.below'), 50, { min: 0, max: 200, step: 10 }));
-        box.appendChild(num('L', t('pp.L'), 20, { min: 5, max: 260, step: 5 }));
-        box.appendChild(num('cap', t('pp.capTot'), 100, { min: 10, max: 200, step: 10 }));
-        box.appendChild(num('band', t('pp.bandPct'), 10, { min: 0, max: 50, step: 1 }));
-        box.appendChild(sel('sched', t('pp.sched'), [['D', t('f.D')], ['W', t('f.W')], ['M', t('f.M')]], 'D'));
-        box.appendChild(num('ddX', t('pp.ddX'), 0, { min: 0, max: 80, step: 5 }));
-        if ((p.ddX || 0) > 0) box.appendChild(num('ddMult', t('pp.ddMult'), 150, { min: 0, max: 300, step: 10 }));
-        box.appendChild(num('vix', t('pp.vix'), 0, { min: 0, max: 80, step: 5 }));
-        if ((p.vix || 0) > 0) box.appendChild(num('vixMult', t('pp.vixMult'), 50, { min: 0, max: 100, step: 10 }));
         break;
       case 'ddladder':
         box.appendChild(sel('ref', t('pp.ref'), [['ath', t('pp.refATH')], ['52w', t('pp.ref52')]], 'ath'));
@@ -1081,7 +1048,7 @@
   V.render = function (el) {
     const tk = U.tokens();
     el.appendChild(h('div', { class: 'section-head' }, h('div', { class: 'eyebrow' }, t('asOf', { d: Core.asOf })), h('h2', null, t('lab.title')), h('p', { class: 'lede' }, t('lab.lede'))));
-    const scSel = U.select('labScenario', ['salary', 'lump', 'five', 'schwab', 'smartdca', 'leverage', 'blend', 'cycles', 'quant', 'ladder', 'combo', 'multi', 'soxl', 'tqqq', 'sharpe50', 'memory'].map(k => [k, t('sc.' + k)]), LS.scenario, (v) => { const keep = { chart: LS.chart, logScale: LS.logScale, robust: LS.robust, mc: LS.mc, cashYield: LS.cashYield, costBps: LS.costBps, align: LS.align, oos: LS.oos }; const fs2 = freshState(v); if (['multi', 'soxl', 'tqqq', 'sharpe50', 'combo', 'ladder', 'memory'].indexOf(v) >= 0) keep.costBps = fs2.costBps; LS = Object.assign(fs2, keep); save(); App.renderView('lab'); });
+    const scSel = U.select('labScenario', ['salary', 'lump', 'five', 'schwab', 'smartdca', 'leverage', 'blend', 'cycles', 'quant', 'ladder', 'combo', 'multi', 'soxl', 'tqqq', 'memory'].map(k => [k, t('sc.' + k)]), LS.scenario, (v) => { const keep = { chart: LS.chart, logScale: LS.logScale, robust: LS.robust, mc: LS.mc, cashYield: LS.cashYield, costBps: LS.costBps, align: LS.align, oos: LS.oos }; const fs2 = freshState(v); if (['multi', 'soxl', 'tqqq', 'sharpe50', 'combo', 'ladder', 'memory'].indexOf(v) >= 0) keep.costBps = fs2.costBps; LS = Object.assign(fs2, keep); save(); App.renderView('lab'); });
     const assetSel = U.select('labAsset', ASSETS.filter(k => k !== 'CASH').map(k => [k, U.assetName(k, true) + ' · ' + Core.iso(Core.S[k].s).slice(0, 4) + '+']), LS.asset, (v) => { LS.asset = v; save(); V.renderStrategies(); V.schedule(); });
     const startIn = U.dateInput('labStart', LS.start, Core.iso(0), Core.asOf, (v) => { LS.start = v; save(); V.schedule(); });
     const endIn = U.dateInput('labEnd', LS.end || Core.asOf, Core.iso(0), Core.asOf, (v) => { LS.end = v === Core.asOf ? null : v; save(); V.schedule(); });

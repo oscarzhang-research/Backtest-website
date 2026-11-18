@@ -27,6 +27,7 @@ on:
 permissions:
   contents: write   # commit the updated data
   actions: write    # start the Pages deployment (pushes made with this token do not trigger workflows)
+  issues: write     # open an alert issue while scheduled updates fail, close it when one succeeds
 
 concurrency:
   group: update-data
@@ -46,26 +47,37 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # each step keeps its output in $RUNNER_TEMP/<id>.log, for the alert issue below
       - name: Download new sessions and update data/market-data.js
-        run: node scripts/update-data.js --summary "$GITHUB_STEP_SUMMARY" --commit-message "$RUNNER_TEMP/commit-message.txt"
+        id: download
+        run: |
+          set -o pipefail
+          node scripts/update-data.js --summary "$GITHUB_STEP_SUMMARY" --commit-message "$RUNNER_TEMP/commit-message.txt" 2>&1 | tee "$RUNNER_TEMP/download.log"
 
       - name: Intraday mode, as the Pages deployment runs it (check only)
         if: github.event_name == 'pull_request'
         run: node scripts/update-data.js --live --out "$RUNNER_TEMP/live-data.js" --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Unit tests on the updated data
-        run: npm test
+        id: unit
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/unit.log"
 
       - name: Browser smoke test on the updated data
+        id: smoke
         run: |
-          npx playwright install --with-deps chromium
-          npm run test:e2e
+          set -o pipefail
+          npx playwright install --with-deps chromium 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+          npm run test:e2e 2>&1 | tee -a "$RUNNER_TEMP/smoke.log"
 
       - name: Commit and redeploy the site
+        id: commit
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.check_only)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          exec > >(tee "$RUNNER_TEMP/commit.log") 2>&1
           if git diff --quiet -- data/market-data.js; then echo "No new data."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -74,3 +86,23 @@ jobs:
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
           if [ "$GITHUB_REF_NAME" = "main" ]; then gh workflow run pages.yml --ref main; fi
+
+      # Alerts: one issue stays open (and e-mails the owner) while scheduled or manual updates fail; the next
+      # successful update closes it. Pull-request check runs never alert.
+      - name: Open or update the alert issue
+        if: failure() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+          FAILED: ${{ steps.download.outcome == 'failure' && 'download' || steps.unit.outcome == 'failure' && 'unit' || steps.smoke.outcome == 'failure' && 'smoke' || steps.commit.outcome == 'failure' && 'commit' || 'setup' }}
+        run: bash scripts/update-alert.sh fail
+
+      - name: Close the alert issue
+        if: success() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/update-alert.sh ok

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The Long Run — a century of market data and backtests</title>
-<meta name="description" content="Interactive research on the S&amp;P 500 since 1927, the Nasdaq-100, semiconductor ETFs (SMH, SOXX, SOXL), VGT and ten chip stocks: performance comparisons, a backtest lab with 30+ strategies, a High-Sharpe portfolio study, a goal planner and in-depth research.">
+<meta name="description" content="Interactive research on the S&amp;P 500 since 1927, the Nasdaq-100, semiconductor ETFs (SMH, SOXX, SOXL), VGT and ten chip stocks: performance comparisons, a backtest lab with 30+ strategies, deep dives on the 3× ETFs SOXL and TQQQ, a goal planner and in-depth research.">
 <meta name="theme-color" content="#0b1320">
 <meta property="og:type" content="website">
 <meta property="og:title" content="The Long Run — a century of market data and backtests">
@@ -33,7 +33,6 @@
       <button class="tab" role="tab" data-view="overview" data-i18n="nav.overview">Overview</button>
       <button class="tab" role="tab" data-view="compare" data-i18n="nav.compare">Compare</button>
       <button class="tab" role="tab" data-view="lab" data-i18n="nav.lab">Backtest Lab</button>
-      <button class="tab" role="tab" data-view="sharpe" data-i18n="nav.sharpe">High-Sharpe Plan</button>
       <button class="tab" role="tab" data-view="goal" data-i18n="nav.goal">Goal Planner</button>
       <button class="tab" role="tab" data-view="soxl" data-i18n="nav.soxl">SOXL Deep Dive</button>
       <button class="tab" role="tab" data-view="tqqq" data-i18n="nav.tqqq">TQQQ Deep Dive</button>
@@ -46,11 +45,11 @@
   </div>
 </header>
 <main id="main">
+  <div class="stalebar" id="staleBar" role="alert" hidden></div>
   <div class="livebar" id="liveBar" role="status" hidden></div>
   <section class="view" id="view-overview" role="tabpanel"><div class="empty">Loading…</div></section>
   <section class="view" id="view-compare" role="tabpanel" hidden></section>
   <section class="view" id="view-lab" role="tabpanel" hidden></section>
-  <section class="view" id="view-sharpe" role="tabpanel" hidden></section>
   <section class="view" id="view-goal" role="tabpanel" hidden></section>
   <section class="view" id="view-soxl" role="tabpanel" hidden></section>
   <section class="view" id="view-tqqq" role="tabpanel" hidden></section>
@@ -88,7 +87,6 @@
 <script src="assets/js/views/overview.js"></script>
 <script src="assets/js/views/compare.js"></script>
 <script src="assets/js/views/lab.js"></script>
-<script src="assets/js/views/sharpe.js"></script>
 <script src="assets/js/views/goal.js"></script>
 <script src="assets/js/views/lev.js"></script>
 <script src="assets/js/views/levcmp.js"></script>

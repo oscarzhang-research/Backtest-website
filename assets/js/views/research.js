@@ -379,18 +379,12 @@
   function inflation(host) {
     const tk = U.tokens(); const LR = root.LR; const ctl = h('div', { class: 'controls' }); const out = h('div', { class: 'stack' });
     const D = LR.data();
-    // the High-Sharpe 2.0 rules on the long-run monthly data (same proxy as the High-Sharpe page, section F)
-    const extra = {}; const SV = App.views.sharpe;
-    if (D && SV && SV.lrSpecOf) {
-      const res = LR.run(SV.lrSpecOf(SV.presets.x2), LR.keyOf('1973-01'), D.K1);
-      if (!res.error) { const a = new Float64Array(D.n).fill(NaN); for (let j = 1; j < res.n; j++) a[res.i0 + j] = res.nav[j] / res.nav[j - 1] - 1; extra.X2 = a; }
-    }
-    const G = LR.regimes({ extra });
+    const G = D ? LR.regimes() : null;
     const title = { zh: '通胀环境：物价上涨时什么扛得住？', en: 'Inflation regimes: what held up when prices rose?' };
     if (!G) { host.appendChild(study('r-infl', 'R11', title, null, h('div', { class: 'empty' }, zh() ? '缺少长期数据。' : 'Long-run data missing.'))); return; }
     const gl = (g) => zh() ? g.zh : g.label;
     // [key, legend name, table header, colour]
-    const COLS = [['EQ', { zh: '股票（标普500）', en: 'Stocks (S&P 500)' }, { zh: '股票', en: 'Stocks' }, tk.s[6]], ['BL', { zh: '长期国债', en: 'Long Treasuries' }, { zh: '长期国债', en: 'Long bonds' }, tk.s[8]], ['B10', { zh: '10 年期国债', en: '10-year Treasuries' }, { zh: '10 年期国债', en: '10-yr bonds' }, tk.s[5]], ['GOLD', { zh: '黄金', en: 'Gold' }, { zh: '黄金', en: 'Gold' }, U.assetColor('GLD', tk)], ['CASH', { zh: '国库券', en: 'T-bills' }, { zh: '国库券', en: 'T-bills' }, tk.s[0]], ['P6040', '60/40', '60/40', tk.s[7]], ['X2', { zh: '高夏普 2.0（长期代理）', en: 'High-Sharpe 2.0 (long-run proxy)' }, { zh: '2.0 代理', en: '2.0 proxy' }, tk.s[1]]].filter(c => G.cols.includes(c[0]));
+    const COLS = [['EQ', { zh: '股票（标普500）', en: 'Stocks (S&P 500)' }, { zh: '股票', en: 'Stocks' }, tk.s[6]], ['BL', { zh: '长期国债', en: 'Long Treasuries' }, { zh: '长期国债', en: 'Long bonds' }, tk.s[8]], ['B10', { zh: '10 年期国债', en: '10-year Treasuries' }, { zh: '10 年期国债', en: '10-yr bonds' }, tk.s[5]], ['GOLD', { zh: '黄金', en: 'Gold' }, { zh: '黄金', en: 'Gold' }, U.assetColor('GLD', tk)], ['CASH', { zh: '国库券', en: 'T-bills' }, { zh: '国库券', en: 'T-bills' }, tk.s[0]], ['P6040', '60/40', '60/40', tk.s[7]]].filter(c => G.cols.includes(c[0]));
     const inChart = COLS.filter(c => c[0] !== 'B10');
     const draw = () => {
       U.disposeIn(out); U.clear(out);
@@ -415,19 +409,18 @@
           h('td', null, U.num(g.corrBL, 2))))))));
       const q = G.quad; const hiUp = q[0], hiDn = q[1]; const lv = G.level; const top = lv[lv.length - 1], bot = lv[0];
       const nowG = (RS.inflBy === 'level' ? G.level : G.quad).find(g => g.key === curKey);
-      const x2 = G.cols.includes('X2');
       const hiMonths = G.months.filter(m => m.y >= G.cut); const early = hiMonths.length ? hiMonths.filter(m => m.k <= LR.keyOf('1991-12')).length / hiMonths.length : NaN;
       const y0 = LR.label(G.start).slice(0, 4);
       out.appendChild(take(zh()
-        ? `${y0} 年以来，在月初通胀${b(hiUp.zh)}的月份（${hiUp.n} 个月），股票扣除通胀后年化 ${b(U.pct(hiUp.real.EQ, 1))}，长期国债 ${U.pct(hiUp.real.BL, 1)}，60/40 组合 ${U.pct(hiUp.real.P6040, 1)}，黄金 ${b(U.pct(hiUp.real.GOLD, 1))}${x2 ? `；高夏普 2.0 规则（长期代理）${U.pct(hiUp.real.X2, 1)}` : ''}。高通胀一旦开始回落，局面就反了过来：股票 ${U.pct(hiDn.real.EQ, 1)}，长期国债 ${b(U.pct(hiDn.real.BL, 1))}，黄金 ${U.pct(hiDn.real.GOLD, 1)}。` +
-          `股债相关性也随通胀升高：从“${bot.zh}”月份的 ${U.num(bot.corrBL, 2)} 升到“${top.zh}”月份的 ${b(U.num(top.corrBL, 2))}——通胀高的时候，债券恰恰最难对冲股票，这也是高夏普 2.0 规则在 2000 年以前跑输股票的原因之一（高夏普页 F3）。` +
+        ? `${y0} 年以来，在月初通胀${b(hiUp.zh)}的月份（${hiUp.n} 个月），股票扣除通胀后年化 ${b(U.pct(hiUp.real.EQ, 1))}，长期国债 ${U.pct(hiUp.real.BL, 1)}，60/40 组合 ${U.pct(hiUp.real.P6040, 1)}，黄金 ${b(U.pct(hiUp.real.GOLD, 1))}。高通胀一旦开始回落，局面就反了过来：股票 ${U.pct(hiDn.real.EQ, 1)}，长期国债 ${b(U.pct(hiDn.real.BL, 1))}，黄金 ${U.pct(hiDn.real.GOLD, 1)}。` +
+          `股债相关性也随通胀升高：从“${bot.zh}”月份的 ${U.num(bot.corrBL, 2)} 升到“${top.zh}”月份的 ${b(U.num(top.corrBL, 2))}——通胀高的时候，债券恰恰最难对冲股票，股债组合在这类年份的分散效果最差。` +
           `当前：${LR.label(G.now.k)} 的 CPI 通胀为 ${b(U.pct(G.now.y, 1))}（一年前为 ${U.pct(G.now.prev, 1)}），属于“${nowG.zh}”。请把这些数字当作对过去的描述，而不是预测：通胀高于 ${U.pct(G.cut, 0)} 的月份来自少数几段长期区间——其中 ${U.pct(early, 0)} 落在 ${y0}–91 年——下一轮通胀可能完全不同。`
-        : `Since ${y0}, in months that began with inflation ${b(hiUp.label.toLowerCase())} (${hiUp.n} months), stocks returned ${b(U.pct(hiUp.real.EQ, 1))} a year after inflation, long Treasuries ${U.pct(hiUp.real.BL, 1)}, a 60/40 mix ${U.pct(hiUp.real.P6040, 1)} and gold ${b(U.pct(hiUp.real.GOLD, 1))}${x2 ? `; the High-Sharpe 2.0 rules (long-run proxy) ${U.pct(hiUp.real.X2, 1)}` : ''}. Once high inflation started to fall, the picture flipped: stocks ${U.pct(hiDn.real.EQ, 1)}, long Treasuries ${b(U.pct(hiDn.real.BL, 1))}, gold ${U.pct(hiDn.real.GOLD, 1)}. ` +
-          `The stock–bond correlation also rises with inflation, from ${U.num(bot.corrBL, 2)} in the “${bot.label}” months to ${b(U.num(top.corrBL, 2))} in the “${top.label}” months: bonds hedge stocks worst exactly when inflation is high — one reason the High-Sharpe 2.0 rules lagged equities before 2000 (High-Sharpe page, F3). ` +
+        : `Since ${y0}, in months that began with inflation ${b(hiUp.label.toLowerCase())} (${hiUp.n} months), stocks returned ${b(U.pct(hiUp.real.EQ, 1))} a year after inflation, long Treasuries ${U.pct(hiUp.real.BL, 1)}, a 60/40 mix ${U.pct(hiUp.real.P6040, 1)} and gold ${b(U.pct(hiUp.real.GOLD, 1))}. Once high inflation started to fall, the picture flipped: stocks ${U.pct(hiDn.real.EQ, 1)}, long Treasuries ${b(U.pct(hiDn.real.BL, 1))}, gold ${U.pct(hiDn.real.GOLD, 1)}. ` +
+          `The stock–bond correlation also rises with inflation, from ${U.num(bot.corrBL, 2)} in the “${bot.label}” months to ${b(U.num(top.corrBL, 2))} in the “${top.label}” months: bonds hedge stocks worst exactly when inflation is high, so stock–bond mixes diversify least in those years. ` +
           `Today: CPI inflation was ${b(U.pct(G.now.y, 1))} in ${LR.label(G.now.k)} (${U.pct(G.now.prev, 1)} a year earlier), i.e. “${nowG.label.toLowerCase()}”. Read this as a description of the past, not a forecast: the months above ${U.pct(G.cut, 0)} come from a few long spells — ${U.pct(early, 0)} of them fall in ${y0}–91 — so the next inflationary episode could look quite different.`));
       out.appendChild(h('p', { class: 'note' }, zh()
-        ? `月份范围 ${LR.label(G.start)} → ${LR.label(G.end)}。每个月按其开始前已经公布的 CPI-U 同比通胀率分类（BLS 大约在次月中旬公布当月 CPI，所以用的是两个月前的读数），并看这一通胀率是否高于一年前。收益用同月 CPI 的变化扣除通胀，并按几何方式年化。资产与高夏普 50 年测试相同：标普500 全收益；长期和 10 年期国债在 2002-09 以前由 10 年期收益率合成，之后用 TLT / IEF；黄金 2005 年以前用世界银行金价，之后用 GLD；国库券；均为月平均价格。60/40 = 标普500 / 10 年期国债，每月再平衡。“段”= 连续月份构成的独立区段。`
-        : `Months ${LR.label(G.start)} → ${LR.label(G.end)}. Each month is classified by the CPI-U year-over-year inflation rate already published before it began (BLS publishes a month's CPI around the middle of the next month, so the reading is two months old) and by whether that rate was higher than a year earlier. Returns are deflated by the same month's CPI change and annualized geometrically. Assets as in the High-Sharpe 50-year test: S&P 500 total return, long and 10-year Treasuries synthesized from 10-year yields until 2002-09 and then TLT / IEF, World Bank gold until 2005 and then GLD, T-bills; monthly average prices. 60/40 = S&P 500 / 10-year Treasuries, rebalanced monthly. “Spells” = separate runs of consecutive months.`));
+        ? `月份范围 ${LR.label(G.start)} → ${LR.label(G.end)}。每个月按其开始前已经公布的 CPI-U 同比通胀率分类（BLS 大约在次月中旬公布当月 CPI，所以用的是两个月前的读数），并看这一通胀率是否高于一年前。收益用同月 CPI 的变化扣除通胀，并按几何方式年化。资产：标普500 全收益；长期和 10 年期国债在 2002-09 以前由 10 年期收益率合成，之后用 TLT / IEF；黄金 2005 年以前用世界银行金价，之后用 GLD；国库券；均为月平均价格。60/40 = 标普500 / 10 年期国债，每月再平衡。“段”= 连续月份构成的独立区段。`
+        : `Months ${LR.label(G.start)} → ${LR.label(G.end)}. Each month is classified by the CPI-U year-over-year inflation rate already published before it began (BLS publishes a month's CPI around the middle of the next month, so the reading is two months old) and by whether that rate was higher than a year earlier. Returns are deflated by the same month's CPI change and annualized geometrically. Assets: S&P 500 total return, long and 10-year Treasuries synthesized from 10-year yields until 2002-09 and then TLT / IEF, World Bank gold until 2005 and then GLD, T-bills; monthly average prices. 60/40 = S&P 500 / 10-year Treasuries, rebalanced monthly. “Spells” = separate runs of consecutive months.`));
     };
     ctl.appendChild(U.ctl(zh() ? '分组方式' : 'Group by', U.seg('rsInfl', [['quad', zh() ? '水平与方向' : 'Level and direction'], ['level', zh() ? '只看水平' : 'Level only']], RS.inflBy, (v) => { RS.inflBy = v; save(); draw(); })));
     host.appendChild(study('r-infl', 'R11', title, { zh: '1973 年以来的实际收益，按每月开始前已知的通胀率分组', en: 'Real returns since 1973, grouped by the inflation rate known before each month began' }, ctl, out));

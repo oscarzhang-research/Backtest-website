@@ -434,10 +434,11 @@
 
   // =================== v3 additions: SOXL, more strategies, high-Sharpe strategy ===================
   add('brandSub', '标普500 · 纳指100 · SMH · SOXX · VGT · SOXL', 'S&P 500 · Nasdaq-100 · SMH · SOXX · VGT · SOXL');
-  add('nav.sharpe', '高夏普策略', 'High-Sharpe Plan');
   add('nav.soxl', 'SOXL 专题', 'SOXL Deep Dive');
   add('nav.tqqq', 'TQQQ 专题', 'TQQQ Deep Dive');
   add('nav.levcmp', 'SOXL vs TQQQ', 'SOXL vs TQQQ');
+  add('stale.msg', '数据停在 {d}，之后已经有 {n} 个交易日没有进来（从 {f} 起）——每天的自动更新可能出了问题，本站所有结果暂时都不含这几天。如果这几天美股休市，可以忽略这条提示。', 'The data stop at {d}: {n} trading day(s) since then are missing (from {f}). The daily update may have failed, so every result on this site leaves them out for now. If US markets were closed on those days, ignore this.');
+  add('stale.link', '查看数据健康 →', 'Data health →');
   add('nav.goal', '目标规划', 'Goal Planner');
   add('nav.chips', '芯片个股', 'Chip Stocks');
   add('a.MU', '美光科技 MU', 'Micron (MU)');
@@ -511,7 +512,6 @@
     ['minvar', '多资产：最小方差', 'Multi: minimum variance', '用最近 L 日的协方差矩阵求“只做多、满仓”下波动最小的权重，每月更新。', 'Uses the last L days’ covariance matrix to find the long-only, fully-invested mix with the lowest variance; updated monthly.'],
     ['meanvar', '多资产：最大夏普（均值-方差）', 'Multi: max Sharpe (mean-variance)', '用最近 L 日的平均收益和协方差求“历史夏普最高”的只做多组合，每月更新；没有正超额收益时全部放国库券。教科书方法，但对收益估计极其敏感。', 'Uses the last L days’ mean returns and covariance to pick the long-only mix with the highest trailing Sharpe, monthly; all T-bills when nothing beats cash. Textbook, but extremely sensitive to return estimates.'],
     ['rotation', '多资产：动量轮动', 'Multi: momentum rotation', '每月末按过去 N 个月涨幅排名，持有前 K 名（等权）；开启“绝对动量”时，涨幅不及国库券的名额改持国库券（双动量）。', 'At each month-end ranks ETFs by N-month return and holds the top K equally; with absolute momentum on, any slot whose return trails T-bills goes to T-bills (dual momentum).'],
-    ['smc', '多资产：高夏普核心（本站方案）', 'Multi: High-Sharpe core (this site’s plan)', '逆波动分配风险 × 组合波动目标 × 均线过滤：①按 L 日波动倒数（或等权/自定义比例）分配权重；②可选：把组合整体缩放到目标波动，总仓位上限可超过 100%（融资）；关闭波动目标时总仓位固定为该百分比；③跌破 N 日均线（或 5 条均线投票）的 ETF 按设定比例减仓或加仓（杠杆 ETF 直接清零，用其基础指数判断）；④可叠加回撤加仓、VIX 过滤、动量倾斜；⑤偏离超过缓冲带才调仓。宇宙里加入 TLT/IEF、GLD 即为“2.0 跨资产”版本。详见“高夏普策略”页。', 'Inverse-vol risk budget × portfolio vol target × trend filter: (1) weights ∝ 1/L-day vol (or equal / custom); (2) optionally scale the mix to a target volatility, with an exposure cap that may exceed 100% (margin); with the vol target off the exposure is fixed at that percentage; (3) an ETF below its N-day average (or a 5-MA vote) is trimmed or added to by the chosen percentage (leveraged ETFs go to zero, judged on their underlying index); (4) optional dip add, VIX filter and momentum tilt; (5) traded only beyond the band. Adding TLT/IEF and GLD to the universe gives the “2.0 cross-asset” version. See the High-Sharpe Plan page.'],
   ];
   for (const [k, zn, en, zd, ed] of ST3) { add('st.' + k, zn, en); add('std.' + k, zd, ed); }
   add('pp.target', '目标年化波动(%)', 'Target vol (%)');
@@ -539,7 +539,6 @@
   add('pp.L', '波动/协方差回看(日)', 'Vol/cov lookback (days)');
   add('pp.trendN', '均线过滤(日,0=不用)', 'MA filter (days, 0 = off)');
   add('pp.T', '组合目标波动(%,0=不用)', 'Portfolio vol target (%, 0 = off)');
-  add('pp.Tsmc', '组合目标波动(%)', 'Portfolio vol target (%)');
   add('pp.soft', '跌破均线保留(%)', 'Kept below MA (%)');
   add('pp.sched', '检查频率', 'Check');
   add('pp.top', '持有前 K 名', 'Hold top K');
@@ -558,10 +557,9 @@
   add('lab.groupMulti', '多资产策略', 'Multi-asset rules');
   const SC2 = [
     ['quant', '更多择时策略：波动目标/金叉/RSI/通道/季节/网格/止盈', 'More timing rules: vol target, golden cross, RSI, breakout, seasonal, grid, take-profit'],
-    ['multi', '多资产：轮动 / 风险平价 / 最小方差 / 最大夏普 / 高夏普核心', 'Multi-asset: rotation, risk parity, min-variance, max-Sharpe, High-Sharpe core'],
+    ['multi', '多资产：轮动 / 风险平价 / 最小方差 / 最大夏普', 'Multi-asset: rotation, risk parity, min-variance, max-Sharpe'],
     ['soxl', 'SOXL：持有、定投、择时与仓位控制', 'SOXL: hold, DCA, timing and position sizing'],
     ['tqqq', 'TQQQ：持有、定投、择时与仓位控制', 'TQQQ: hold, DCA, timing and position sizing'],
-    ['sharpe50', '50 万美元：高夏普 1.0 / 2.0 vs 买入持有', '$500k: High-Sharpe 1.0 / 2.0 vs buy-and-hold'],
   ];
   for (const [k, zn, en] of SC2) add('sc.' + k, zn, en);
   add('k.turnover', '年换手率', 'Annual turnover');
@@ -589,20 +587,6 @@
   add('pp.ladder', '下跌档位（距前高跌幅 → 投入当时现金的比例）', 'Steps (fall from high → share of cash invested)');
   add('pp.addTier', '＋ 档位', '+ Step');
   add('pp.ladderNote', '每档在一轮下跌中只触发一次；创新高后重新生效。最后一档建议设 100%。', 'Each step fires once per decline and re-arms after a new high. Setting the last step to 100% is recommended.');
-  add('pp.weighting', '基础权重', 'Base weights');
-  add('pp.wIV', '风险平价（逆波动）', 'Risk parity (inverse vol)');
-  add('pp.wEq', '等权', 'Equal weight');
-  add('pp.wFixed', '自定义比例', 'Custom mix');
-  add('pp.vt', '组合波动目标', 'Portfolio vol target');
-  add('pp.trendType', '趋势信号', 'Trend signal');
-  add('pp.trendSma', '单条均线', 'Single MA');
-  add('pp.trendEns', '多均线投票（50–250 日）', 'MA vote (50–250 days)');
-  add('pp.below', '跌破均线后仓位（%，>100 = 加仓）', 'Weight below MA (%, >100 = add)');
-  add('pp.capTot', '总仓位(%,>100=融资)', 'Total exposure (%, >100 = margin)');
-  add('pp.ddX', '回撤加仓：距52周高点跌(%)', 'Dip add: % below 52w high');
-  add('pp.ddMult', '回撤时仓位倍数(%)', 'Weight when dipped (%)');
-  add('pp.vix', 'VIX 过滤：高于(0=不用)', 'VIX filter: above (0 = off)');
-  add('pp.vixMult', 'VIX 高时仓位(%)', 'Weight when VIX high (%)');
   add('lab.comboNote', '组合策略的子策略都用同一标的；信号叠加模式下，每个子策略先在“影子账户”里单独运行，取其每日仓位后再合并。', 'Combo parts all use the same instrument; in signal modes each part first runs in a shadow account and its daily exposure is merged.');
   add('lab.ddTitle', '跌幅买点分析：跌多少再买？', 'Dip analysis: how far should it fall before you buy?');
   add('lab.ddSub', '默认标的 · 实验室当前区间与资金计划', 'Default instrument · the Lab\'s current window and funding plan');

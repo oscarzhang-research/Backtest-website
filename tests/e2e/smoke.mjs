@@ -4,22 +4,23 @@
 // Run with: npm run test:e2e   (needs: npx playwright install chromium)
 import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
+import { readFileSync } from 'fs';
 
-const TABS = { overview: 4, compare: 4, lab: 4, sharpe: 10, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, compare: 4, lab: 4, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
-    sharpe: ['Are Treasuries and gold still diversifying?', 'D3 · Where does the edge come from?', 'F6 · Where does the edge come from?', 'Verdict'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
     levcmp: ['Today’s signals', 'Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', '③ Every way of holding side by side', 'When to sell', 'Take profit × stop loss', 'SOXL ahead'],
     research: ['Inflation regimes: what held up when prices rose?', 'What the research says'],
+    method: ['Data health: how current the data are and how the daily updates went', 'The last 8 data-update runs on GitHub'],
   },
   zh: {
-    sharpe: ['国债和黄金还在分散风险吗？', 'D3 · 优势从何而来？', 'F6 · 优势从何而来？', '结论'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
     levcmp: ['今日信号', '核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', '③ 全部持有方式一起比', '什么时候卖', '止盈 × 止损', 'SOXL 跑赢'],
     research: ['通胀环境：物价上涨时什么扛得住？', '权威研究怎么说'],
+    method: ['数据健康：最新数据到哪天、每天的更新顺不顺利', 'GitHub 上最近 8 次数据更新'],
   },
 };
 const server = await serve(0);
@@ -30,10 +31,21 @@ const report = (name, problems, extra) => {
   console.log((problems.length ? 'FAIL ' : 'ok   ') + name.padEnd(12) + (extra || '') + (problems.length ? ' — ' + problems.join('; ') : ''));
   if (problems.length) failed++;
 };
-async function open(lang, hash, live) {
+// GitHub's API as the data health panel reads it: fixed answers, so the test never depends on the network
+const GH_FIX = {
+  runs: { workflow_runs: [
+    { created_at: '2026-11-18T04:22:06Z', event: 'schedule', status: 'completed', conclusion: 'success', html_url: 'https://github.com/x/actions/runs/3' },
+    { created_at: '2026-11-17T19:50:40Z', event: 'schedule', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/x/actions/runs/2' },
+    { created_at: '2026-11-17T05:05:19Z', event: 'workflow_dispatch', status: 'in_progress', conclusion: null, html_url: 'https://github.com/x/actions/runs/1' }] },
+  commits: [{ html_url: 'https://github.com/x/commit/1', commit: { committer: { date: '2026-11-18T04:24:00Z' }, message: 'Update market data through 2026-11-17\n\nAdds 1 session.\n- Warnings: TLT: the download has no dividend on 2026-11-02' } }],
+};
+// opts.now: the clock the page's freshness check uses (window.__NOW__)
+async function open(lang, hash, live, opts) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (lang) await ctx.addInitScript((lg) => { try { localStorage.setItem('longrun.lang', JSON.stringify(lg)); } catch (e) { /* ignore */ } }, lang);
+  if (opts && opts.now) await ctx.addInitScript((t) => { window.__NOW__ = t; }, opts.now);
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort()); // keep the test offline and deterministic
+  await ctx.route(/api\.github\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(/\/commits/.test(r.request().url()) ? GH_FIX.commits : GH_FIX.runs) }));
   if (live) { // the deployed data as the intraday deployment builds them: the last session marked provisional
     await ctx.route(/data\/market-data\.js$/, async (r) => {
       const res = await r.fetch(); const body = (await res.text()).trimEnd().replace(/;$/, '');
@@ -100,6 +112,37 @@ for (const lang of ['en', 'zh']) {
   if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
   report('buttons', problems);
   await ctx.close();
+}
+// the "data stopped" banner and the data health panel: ten days after the last stored session the banner shows above
+// every tab and the panel lists what is missing; on the evening of that session nothing is missing
+{
+  const asOf = readFileSync(new URL('../../data/market-data.js', import.meta.url), 'utf8').match(/"asOf":"(\d{4}-\d\d-\d\d)"/)[1];
+  const late = new Date(Date.parse(asOf + 'T16:00:00Z') + 10 * 864e5).toISOString(), evening = asOf + 'T23:30:00Z';
+  for (const [lang, now, stale] of [['zh', late, true], [null, evening, false]]) {
+    const { ctx, page, errors } = await open(lang, 'method', null, { now });
+    let st = null;
+    for (let k = 0; k < 80; k++) {
+      await page.waitForTimeout(250);
+      st = await page.evaluate(() => {
+        const g = (id) => document.getElementById(id), tx = (id) => (g(id) ? g(id).innerText : '');
+        return { barHidden: g('staleBar').hidden, bar: tx('staleBar'), warn: !!(g('m-healthStatus') && g('m-healthStatus').classList.contains('warn')), status: tx('m-healthStatus'), runs: tx('m-healthRuns'), commits: tx('m-healthCommits') };
+      });
+      if (st.runs.includes(lang ? '失败' : 'Failed') && st.commits) break;
+    }
+    const problems = [];
+    if (stale) {
+      if (st.barHidden || !st.bar.includes(asOf) || !st.bar.includes('个交易日没有进来')) problems.push('no banner: ' + st.bar);
+      if (!st.warn || !st.status.includes('数据停在 ' + asOf)) problems.push('health status: ' + st.status.slice(0, 80));
+    } else {
+      if (!st.barHidden) problems.push('banner shows on the evening of the last session: ' + st.bar);
+      if (st.warn || !st.status.includes('The data are current')) problems.push('health status: ' + st.status.slice(0, 80));
+    }
+    for (const x of lang ? ['成功', '失败', '进行中', '定时', '手动'] : ['Succeeded', 'Failed', 'Running', 'Scheduled', 'Manual']) if (!st.runs.includes(x)) problems.push(`runs table lacks “${x}”`);
+    if (!st.commits.includes('Warnings: TLT')) problems.push('no warning from the data commits');
+    if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+    report(`health ${stale ? 'stale' : 'fresh'}`, problems);
+    await ctx.close();
+  }
 }
 // provisional data: a banner above every tab, and the SOXL page says "intraday" instead of "close"
 for (const [lang, live, must] of [
