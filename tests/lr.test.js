@@ -14,20 +14,6 @@ test('long-run monthly data starts in 1971 with finite returns', () => {
   for (const k of ['EQ', 'BL', 'B10', 'GOLD', 'CASH']) for (let q = 1; q < D.n; q++) assert.ok(Number.isFinite(D.R[k][q]), `${k} month ${LR.label(D.K0 + q)}`);
 });
 
-test('a static 100% equity run compounds the equity returns, less trading costs', () => {
-  const D = LR.data();
-  const r = LR.run({ cols: ['EQ'], static: [1], cost: 5 }, LR.keyOf('1980-01'), LR.keyOf('1999-12'));
-  let want = 1; for (let t = r.i0 + 1; t <= r.i1; t++) want *= 1 + D.R.EQ[t];
-  const gap = r.nav[r.n - 1] / want - 1; // the 5 bp entry cost plus tiny drift trades
-  assert.ok(gap < 0 && gap > -1e-3, 'gap ' + gap);
-});
-
-test('long-run metrics are sane for a 60/40 mix', () => {
-  const r = LR.run({ cols: ['EQ', 'B10'], static: [0.6, 0.4], cost: 5 }, LR.keyOf('1973-01'), null);
-  const m = LR.metrics(r, null, null);
-  assert.ok(m.cagr > 0.05 && m.cagr < 0.15 && m.vol > 0.05 && m.vol < 0.15 && m.mdd < 0 && m.mdd > -0.5, JSON.stringify(m));
-});
-
 test('inflation regimes: every month falls in exactly one bucket, and the "all months" real return matches a direct calculation', () => {
   const G = LR.regimes();
   const n = G.months.length;

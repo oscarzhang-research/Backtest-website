@@ -184,14 +184,14 @@
     }, 60);
   }
 
-  // promo cards for the two newest pages, with live numbers
+  // promo cards for four pages, with live numbers
   function newCard(kind, tk) {
     const zh = I18N.lang === 'zh';
     if (kind === 'goal') {
       return h('article', { class: 'asset-card promo', style: { '--c': tk.s[3] } },
         h('div', { class: 'top' }, h('span', { class: 'badge new' }, zh ? '新' : 'New'), h('span', { class: 'tk' }, t('nav.goal'))),
         h('div', { class: 'figrow' }, h('span', { class: 'fig' }, '50 / 75 / 90%'), h('span', { class: 'figcap' }, zh ? '想有这样的把握，每月要存多少？' : 'How much to save a month for this confidence?')),
-        h('p', { class: 'small ink2' }, zh ? '输入现有资金、每月存款、每年递增和目标年龄，看用 2.0、1.0、SPY、QQQ 各自达到目标的概率；可切换人民币视角；还会估算攒够之后每年能安心花多少。' : 'Enter savings, monthly saving, annual step-up and a target age to see the chance of reaching it with 2.0, 1.0, SPY or QQQ; switch to yuan if you like; and estimate how much you could safely spend each year afterwards.'),
+        h('p', { class: 'small ink2' }, zh ? '输入现有资金、每月存款、每年递增和目标年龄，看长期持有 SPY 或 QQQ 各自达到目标的概率；可切换人民币视角；还会估算攒够之后每年能安心花多少。' : 'Enter savings, monthly saving, annual step-up and a target age to see the chance of reaching it by holding SPY or QQQ; switch to yuan if you like; and estimate how much you could safely spend each year afterwards.'),
         h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => App.show('goal') }, zh ? '开始规划 →' : 'Start planning →')));
     }
     if (kind === 'chips') {
@@ -202,20 +202,14 @@
         h('p', { class: 'small ink2' }, zh ? '美光、西部数据、希捷、英伟达、AMD、博通、英特尔、应用材料、泛林、科磊：历次周期跌多深、多久修复、大跌后的前瞻收益与相关性；十只个股也已加入走势对比和回测实验室。' : 'Micron, Western Digital, Seagate, Nvidia, AMD, Broadcom, Intel, Applied Materials, Lam and KLA: how deep each cycle went, how long it took to heal, forward returns after big falls and correlations; all ten are also in Compare and the Lab.'),
         h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => App.show('chips') }, zh ? '查看专题 →' : 'Open the page →')));
     }
-    if (kind === 'sharpe') {
-      const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
-      const sp2 = { type: 'smc', universe: ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD'], params: Object.assign({ vt: false }, base) };
-      const sp1 = { type: 'smc', universe: ['SPY', 'QQQ', 'SOXX'], params: Object.assign({ T: 20 }, base) };
-      const i0 = Math.max(Engine.stratRange(sp2).s, Engine.stratRange(sp1).s);
-      const i1 = Math.min(Engine.stratRange(sp2).e, Core.N - 1);
-      const o = { i0, i1, fund: { initial: 500000, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5, cashYield: true };
-      const r2 = Engine.run(sp2, o), r1 = Engine.run(sp1, o);
-      const ms = Core.metrics(Core.S.SPY.v, r2.i0, r2.i1);
-      return h('article', { class: 'asset-card promo', style: { '--c': tk.s[1] } },
-        h('div', { class: 'top' }, h('span', { class: 'badge' }, '2.0'), h('span', { class: 'tk' }, t('nav.sharpe'))),
-        h('div', { class: 'figrow' }, h('span', { class: 'fig' }, U.num(r2.metrics.sharpe, 2)), h('span', { class: 'figcap' }, (zh ? '夏普比率 · 1.0 版 ' : 'Sharpe · 1.0 ') + U.num(r1.metrics.sharpe, 2) + (zh ? ' · SPY ' : ' · SPY ') + U.num(ms.sharpe, 2))),
-        h('p', { class: 'small ink2' }, zh ? `2.0 在 SPY / 纳指100 / SOXX 之外加入长期美债与黄金，按风险平价分配、跌破均线减半。${Core.iso(r2.i0).slice(0, 4)} 年起 $50 万 → ${U.moneyShort(r2.final)}，最大回撤 ${U.pct(r2.metrics.mdd, 0)}（SPY ${U.pct(ms.mdd, 0)}）。新增策略构建器：可改各 ETF 比例、杠杆、跌破均线后减仓还是加仓，并记录每次尝试。` : `2.0 adds long Treasuries and gold to SPY / Nasdaq-100 / SOXX, splits risk by volatility and halves anything below its moving average. $500k from ${Core.iso(r2.i0).slice(0, 4)} → ${U.moneyShort(r2.final)}, max drawdown ${U.pct(r2.metrics.mdd, 0)} (SPY ${U.pct(ms.mdd, 0)}). New strategy builder: change ETF weights, leverage, trimming or adding below the average — and log every try.`),
-        h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => App.show('sharpe') }, zh ? '查看方案 →' : 'Open the plan →')));
+    if (kind === 'levcmp') {
+      const i0 = Math.max(Core.S.SOXL.s, Core.S.TQQQ.s), i1 = Core.N - 1;
+      const ms = Core.metrics(Core.S.SOXL.v, i0, i1), mt = Core.metrics(Core.S.TQQQ.v, i0, i1);
+      return h('article', { class: 'asset-card promo', style: { '--c': U.assetColor('TQQQ', tk) } },
+        h('div', { class: 'top' }, h('span', { class: 'badge' }, 'C1–C6'), h('span', { class: 'tk' }, t('nav.levcmp'))),
+        h('div', { class: 'figrow' }, h('span', { class: 'fig' }, U.pct(ms.cagr, 0) + ' / ' + U.pct(mt.cagr, 0)), h('span', { class: 'figcap' }, zh ? `SOXL / TQQQ ${Core.iso(i0).slice(0, 4)} 年以来的年化` : `SOXL / TQQQ a year since ${Core.iso(i0).slice(0, 4)}`)),
+        h('p', { class: 'small ink2' }, zh ? `最大回撤 ${U.pct(ms.mdd, 0)} 对 ${U.pct(mt.mdd, 0)}。两只三倍 ETF 放在同样的区间和条件下比：大跌之后买入的结果、不同的持有方式，以及什么时候卖——止盈、止损、追踪止损……按长期复利比较，并分开看 2000–09 和 2010 年后。` : `Max drawdowns ${U.pct(ms.mdd, 0)} and ${U.pct(mt.mdd, 0)}. The two 3× ETFs side by side over the same spans and conditions: buying after big falls, ways to hold, and when to sell — take profit, stop loss, trailing stops… compared on long-run compound growth, with 2000–09 and the years since 2010 apart.`),
+        h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => App.show('levcmp') }, zh ? '查看对比 →' : 'Open the comparison →')));
     }
     const a = Core.S.SOXL, x = Core.S.SOXLX;
     const m1 = Core.metrics(a.v, a.s, a.e), m2 = Core.metrics(x.v, x.s, x.e);
@@ -262,7 +256,7 @@
     );
     el.appendChild(hero);
     requestAnimationFrame(() => heroChart(chartEl, tk));
-    el.appendChild(h('div', { class: 'grid-2 promo-row' }, newCard('goal', tk), newCard('chips', tk), newCard('sharpe', tk), newCard('soxl', tk)));
+    el.appendChild(h('div', { class: 'grid-2 promo-row' }, newCard('goal', tk), newCard('chips', tk), newCard('levcmp', tk), newCard('soxl', tk)));
     // count-up
     const target = Math.round(OV.real ? realEnd : trEnd);
     if (!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) && !OV._counted) {

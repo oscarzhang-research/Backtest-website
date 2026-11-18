@@ -669,35 +669,6 @@
     q = p - 0.5; r = q * q;
     return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
   };
-  // Daily excess-return statistics of a value array over (a, c]: per-period Sharpe, skewness, (non-excess) kurtosis
-  C.retStats = function (v, a, c) {
-    const rf = Core.rfDaily; const x = [];
-    for (let i = a + 1; i <= c; i++) { const r = v[i] / v[i - 1] - 1 - rf[i]; if (isFinite(r)) x.push(r); }
-    const n = x.length; if (n < 30) return null;
-    let m = 0; for (const r of x) m += r; m /= n;
-    let s2 = 0, s3 = 0, s4 = 0; for (const r of x) { const d = r - m; s2 += d * d; s3 += d * d * d; s4 += d * d * d * d; }
-    const sd = Math.sqrt(s2 / (n - 1)), mp2 = s2 / n;
-    return { n, mean: m, sd, sr: m / sd, skew: (s3 / n) / Math.pow(mp2, 1.5), kurt: (s4 / n) / (mp2 * mp2), years: n / 252 };
-  };
-  // Probabilistic Sharpe ratio (Bailey & López de Prado 2012): P(true SR > srStar), SRs per period
-  C.psr = function (sr, srStar, n, skew, kurt) {
-    const den = Math.sqrt(Math.max(1e-12, 1 - skew * sr + (kurt - 1) / 4 * sr * sr));
-    return C.normCdf((sr - srStar) * Math.sqrt(n - 1) / den);
-  };
-  // Expected maximum Sharpe among N independent trials whose SR estimates have variance srVar, under the null
-  // that every true SR is zero (Bailey & López de Prado 2014, "The Deflated Sharpe Ratio")
-  C.expMaxSR = function (srVar, N) {
-    const g = 0.5772156649;
-    if (N <= 1) return 0;
-    return Math.sqrt(srVar) * ((1 - g) * C.normInv(1 - 1 / N) + g * C.normInv(1 - 1 / (N * Math.E)));
-  };
-  C.dsr = function (st, srVar, N) { const sr0 = C.expMaxSR(srVar, N); return { sr0, dsr: C.psr(st.sr, sr0, st.n, st.skew, st.kurt) }; };
-  // Harvey & Liu (2015) style haircut with a Bonferroni adjustment for N tests (one-sided)
-  C.haircut = function (srAnn, years, N) {
-    const t = srAnn * Math.sqrt(years), p = 1 - C.normCdf(t), pAdj = Math.min(1, N * p);
-    const tAdj = pAdj >= 0.5 ? 0 : C.normInv(1 - pAdj);
-    return { t, p, pAdj, srAdj: tAdj / Math.sqrt(years), cut: srAnn > 0 ? 1 - tAdj / Math.sqrt(years) / srAnn : NaN };
-  };
   // Probability of backtest overfitting by combinatorially symmetric cross-validation
   // (Bailey, Borwein, López de Prado & Zhu 2017). navs: array of value arrays (one per candidate) on the Core
   // calendar; uses daily excess returns over (a, c], split into S equal blocks; every way of choosing S/2 blocks

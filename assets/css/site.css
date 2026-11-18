@@ -105,6 +105,9 @@ main { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 2
 .livebar { display: flex; gap: 9px; align-items: baseline; margin-bottom: 16px; padding: 8px 12px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: var(--radius-sm); font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
 .livebar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-line); flex: none; transform: translateY(-1px); animation: livepulse 2s ease-in-out infinite; }
 @keyframes livepulse { 50% { opacity: .35; } }
+.stalebar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 16px; padding: 9px 12px; border: 1px solid rgba(var(--red-fill), .5); background: rgba(var(--red-fill), .08); border-radius: var(--radius-sm); font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+.stalebar b { color: var(--red); }
+.stalebar .linkbtn { white-space: nowrap; }
 .view { display: grid; gap: 20px; }
 .view[hidden] { display: none !important; }
 .section-head { display: grid; gap: 6px; margin-top: 8px; }

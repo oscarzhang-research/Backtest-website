@@ -46,6 +46,8 @@
     else document.documentElement.removeAttribute('data-theme');
     U.$('#btnThemeTxt').textContent = t('theme.' + th);
   };
+  // the clock the freshness check uses (tests set window.__NOW__)
+  App.now = () => (root.__NOW__ ? new Date(root.__NOW__) : new Date());
   App.renderFooter = function () {
     const f = U.$('#footer'); U.clear(f);
     f.appendChild(U.h('div', null, t('footer1')));
@@ -53,6 +55,9 @@
     // the newest session is provisional (intraday, or closed but not yet final): say so above every tab
     const bar = U.$('#liveBar'), L = U.live();
     if (bar) { U.clear(bar); bar.hidden = !L; if (L) bar.append(U.h('span', { class: 'dot' }), U.h('span', null, t(L.closed ? 'live.closed' : 'live.open', { d: L.day, t: L.et }))); }
+    // sessions that should be in the data by now and are not: the daily update has stopped
+    const sb = U.$('#staleBar'); let F = null; try { F = Core.freshness(App.now()); } catch (e) { F = null; }
+    if (sb) { U.clear(sb); sb.hidden = !(F && F.behind > 0); if (!sb.hidden) sb.append(U.h('span', { html: t('stale.msg', { d: '<b>' + F.last + '</b>', n: '<b>' + F.behind + '</b>', f: F.due[0] }) }), U.h('button', { class: 'linkbtn', type: 'button', onclick: () => App.goHealth() }, t('stale.link'))); }
   };
 
   App.show = function (id, opts) {
@@ -80,6 +85,10 @@
     const cur = App.current;
     for (const id in App.rendered) { if (id !== cur) App.rendered[id] = false; }
     if (cur) App.renderView(cur);
+  };
+  App.goHealth = function () {
+    App.show('method', { noScroll: true });
+    setTimeout(() => { const el = document.getElementById('m-health'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
   };
   App.goStudy = function (sid) {
     App.show('research', { noScroll: true });

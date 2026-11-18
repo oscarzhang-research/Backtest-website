@@ -867,7 +867,7 @@
       const mom = p.mom || 0, momK = (p.momK == null ? 50 : p.momK) / 100;
       const vix = p.vix || 0, vixMult = (p.vixMult == null ? 50 : p.vixMult) / 100;
       const b = new Float64Array(K);
-      // fn.explain = true makes each call leave a breakdown in fn.info (used by the High-Sharpe page)
+      // fn.explain = true makes each call leave a breakdown in fn.info (for inspecting a target)
       const fn = (j) => {
         if (isNaN(RS.cov[j * K * K]) ) return null;
         if (weighting === 'iv') { if (isNaN(RS.b[j * K])) return null; for (let k = 0; k < K; k++) b[k] = RS.b[j * K + k]; }

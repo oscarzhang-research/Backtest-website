@@ -187,6 +187,48 @@
     return lo;
   };
   Core.iso = function (i) { return isoOf(Core.days[i]); };
+
+  // ---------- The NYSE calendar, and how fresh the stored data are ----------
+  // Full-day closures by the exchange's rules (weekends aside): New Year's Day (one falling on a Saturday is not made
+  // up), Martin Luther King Jr. Day, Washington's Birthday, Good Friday, Memorial Day, Juneteenth (from 2022),
+  // Independence Day, Labor Day, Thanksgiving and Christmas; a holiday on a Saturday closes the Friday before, one on a
+  // Sunday the Monday after. One-off closures (days of mourning, storms) cannot be foreseen. Day numbers count days
+  // since 1970-01-01 (a Thursday).
+  const dnOf = (y, m, d) => Math.round(Date.UTC(y, m, d) / DAY_MS);
+  const wdOf = (dn) => (((dn + 4) % 7) + 7) % 7; // 0 = Sunday
+  const nthWd = (y, m, wd, n) => { const f = dnOf(y, m, 1); return f + ((wd - wdOf(f) + 7) % 7) + 7 * (n - 1); };
+  const lastWd = (y, m, wd) => { const l = dnOf(y, m + 1, 0); return l - ((wdOf(l) - wd + 7) % 7); };
+  const observed = (dn) => (wdOf(dn) === 6 ? dn - 1 : wdOf(dn) === 0 ? dn + 1 : dn);
+  function easter(y) { // Anonymous Gregorian algorithm
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const x = h + l - 7 * m + 114; return dnOf(y, Math.floor(x / 31) - 1, (x % 31) + 1);
+  }
+  const HOL = new Map();
+  Core.nyseHolidays = function (y) {
+    if (HOL.has(y)) return HOL.get(y);
+    const ny = dnOf(y, 0, 1), s = new Set([nthWd(y, 0, 1, 3), nthWd(y, 1, 1, 3), easter(y) - 2, lastWd(y, 4, 1), observed(dnOf(y, 6, 4)), nthWd(y, 8, 1, 1), nthWd(y, 10, 4, 4), observed(dnOf(y, 11, 25))]);
+    if (wdOf(ny) !== 6) s.add(observed(ny));
+    if (y >= 2022) s.add(observed(dnOf(y, 5, 19)));
+    HOL.set(y, s); return s;
+  };
+  Core.isSession = (dn) => { const w = wdOf(dn); return w > 0 && w < 6 && !Core.nyseHolidays(new Date(dn * DAY_MS).getUTCFullYear()).has(dn); };
+  // The New York date (day number) and time of day (minutes after midnight) at `now`.
+  Core.nyClock = function (now) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+    const get = (x) => parts.find(p => p.type === x).value;
+    return { day: dnOf(+get('year'), +get('month') - 1, +get('day')), min: +get('hour') * 60 + +get('minute') };
+  };
+  // Sessions missing from the data at `now`. A session is due once it is 20:00 in New York on the next calendar day:
+  // the evening update runs after 18:00 and the catch-up before the next open, and GitHub often starts both hours
+  // late. A provisional newest session (added by an intraday deployment) does not count as stored.
+  Core.DUE_MIN = 20 * 60;
+  Core.freshness = function (now) {
+    const live = !!(Core.live && Core.live.day === Core.asOf && Core.N > 1);
+    const last = Core.days[Core.N - 1 - (live ? 1 : 0)], c = Core.nyClock(now || new Date()), due = [];
+    for (let d = last + 1; d < c.day; d++) if (Core.isSession(d) && (c.day > d + 1 || c.min >= Core.DUE_MIN)) due.push(isoOf(d));
+    return { last: isoOf(last), due, behind: due.length, live };
+  };
   Core.addYearsDay = function (dn, years) {
     const dt = new Date(dn * DAY_MS);
     const y = dt.getUTCFullYear() + Math.trunc(years);

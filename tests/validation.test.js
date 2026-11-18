@@ -43,11 +43,11 @@ test('ETF series match issuer-reported annualized returns', () => {
   }
 });
 
-test('High-Sharpe 2.0 and 1.0 on 2006–2025 (regression pins)', () => {
+test('Multi-asset risk-managed runner (smc) on 2006–2025: regression pins', () => {
   const base = { n: 200, below: 50, L: 20, band: 10, sched: 'D', cap: 100 };
   const o = { i0: idxAfter('2006-01-01'), i1: idx('2025-12-31'), fund: { initial: 1e6, amount: 0, freq: 'none', growth: 0 }, lag: 1, costBps: 5, cashYield: true };
   const x2 = Engine.run({ type: 'smc', universe: ['SPY', 'QQQ', 'SOXX', 'TLT', 'GLD'], params: Object.assign({ vt: false }, base) }, o).metrics;
   const x1 = Engine.run({ type: 'smc', universe: ['SPY', 'QQQ', 'SOXX'], params: Object.assign({ T: 20 }, base) }, o).metrics;
-  assert.ok(Math.abs(x2.sharpe - 0.992) < 0.005 && Math.abs(x2.mdd + 0.173) < 0.005, `2.0: Sharpe ${x2.sharpe}, MDD ${x2.mdd}`);
-  assert.ok(Math.abs(x1.sharpe - 0.737) < 0.005 && Math.abs(x1.mdd + 0.284) < 0.005, `1.0: Sharpe ${x1.sharpe}, MDD ${x1.mdd}`);
+  assert.ok(Math.abs(x2.sharpe - 0.992) < 0.005 && Math.abs(x2.mdd + 0.173) < 0.005, `cross-asset: Sharpe ${x2.sharpe}, MDD ${x2.mdd}`);
+  assert.ok(Math.abs(x1.sharpe - 0.737) < 0.005 && Math.abs(x1.mdd + 0.284) < 0.005, `equity-only: Sharpe ${x1.sharpe}, MDD ${x1.mdd}`);
 });

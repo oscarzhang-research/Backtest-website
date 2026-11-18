@@ -218,12 +218,18 @@ test('a session stored flat for every fund and stock (no bars yet) is filled in 
     // filled in, unless the day's move was within the tolerance anyway
     assert.ok(o.r[j] === o0.r[j] || (o.r[j] === 0 && Math.abs(o0.r[j]) <= 300), `${key} on ${at}: ${o.r[j]} vs ${o0.r[j]}`);
   }
-  assert.ok(report.revisions.some(x => x.startsWith(`SOXX ${at}: 0.00% → `) && x.endsWith('(filled in: no data when stored)')), report.revisions.join('; '));
+  // SOXX as in the incident, unless its move that day was too small to tell from flat: then the series that moved most
+  const rOn = (key) => DATA.etf[key].r[i - DATA.etf[key].s - 1];
+  const key0 = Math.abs(rOn('SOXX')) > 1000 ? 'SOXX' : keys.reduce((a, b) => (Math.abs(rOn(b)) > Math.abs(rOn(a)) ? b : a));
+  assert.ok(report.revisions.some(x => x.startsWith(`${key0} ${at}: 0.00% → `) && x.endsWith('(filled in: no data when stored)')), report.revisions.join('; '));
   validate(data);
 });
 
 test('a flat day further back is re-split with the session that caught up, and SOXL* follows', () => {
-  const k = 2, back = 9; // nine sessions before the old last one: outside the revision window
+  // about nine sessions before the old last one (outside the revision window), on a day both moved by more than 0.2%:
+  // a smaller move would be within the tolerance and never need filling in
+  const k = 2, rAt = (key, b) => { const r = DATA.etf[key].r; return r[r.length - 1 - k - b]; };
+  const back = [9, 10, 11, 12, 13, 14, 8, 7, 6].find(b => ['SOXL', 'AMD'].every(key => Math.abs(rAt(key, b)) > 2000));
   const t = flatDay(truncate(DATA, k), back, ['SOXL', 'AMD']);
   const { data, report } = applyUpdate(t, fixtures(N - 1 - k - 30, N - 1), { now: NOW });
   for (const key of ['SOXL', 'AMD', 'SOXLX']) assert.deepEqual(data.etf[key].r, DATA.etf[key].r, key);

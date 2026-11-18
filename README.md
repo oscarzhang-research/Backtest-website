@@ -2,7 +2,7 @@
 
 **A century of market data and backtests, computed live in your browser.**
 
-The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, stress-test a cross-asset "High-Sharpe" portfolio and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest close, plus the current session while the market is open); nothing is pre-rendered.
+The Long Run is a static research site about long-term investing in US equities, the Nasdaq-100 and semiconductors. It starts from one dollar put into the S&P 500 at the end of 1927 and follows it through every crash since, then lets you compare instruments, backtest more than 30 investment rules, study the 3× ETFs SOXL and TQQQ in depth and plan towards a savings goal. Every number on the site is recomputed in the browser from daily data (1927-12-30 to the latest close, plus the current session while the market is open); nothing is pre-rendered.
 
 The site opens in English; the **中文** button in the header switches it to Chinese (and back), and a separate button switches the up/down colors between green-up (US) and red-up (China). Both choices are remembered in the browser.
 
@@ -15,19 +15,18 @@ The site opens in English; the **中文** button in the header switches it to Ch
 | **Overview** | $1 in the S&P 500 since 1927 (total return, nominal or real), cards for each instrument, six data-driven findings, a September 2026 market snapshot and a 2025–26 timeline. |
 | **Compare** | Any mix of S&P 500, Nasdaq-100 (QQQ), SMH, SOXX, VGT, SPY, SOXL, TLT/IEF/GLD and ten chip stocks over any window: growth, drawdowns, rolling returns and volatility, relative strength, 24 risk/return statistics, calendar and monthly heatmaps, correlation matrix, drawdown episodes. |
 | **Backtest Lab** | One funding plan, up to eight strategies side by side: lump sum, DCA at any cadence, staged entry, buy-the-dip and dip ladders, smart DCA, value averaging, moving-average and golden-cross timing, trailing stops, volatility targeting, RSI mean reversion, Donchian breakouts, seasonality, grids, take-profit, absolute momentum, custom rule sets, combos of rules, leverage, and multi-asset rotation / risk parity / minimum variance / max-Sharpe portfolios. Includes an in-sample/out-of-sample check with the probability of backtest overfitting, a dip analysis, rolling-start robustness tests and a Monte Carlo of future paths. |
-| **High-Sharpe Plan** | A cross-asset portfolio (SPY, QQQ, SOXX, long Treasuries, gold) built with inverse-volatility weights and a 200-day trend filter, with a full strategy builder, today's target allocation, a live check on whether Treasuries and gold are still diversifying, parameter plateaus, an attribution ladder (how much of the edge comes from the asset mix and how much from the rules, against the Permanent Portfolio and other static mixes), walk-forward tests, a 1929–2026 equity test, a 50-year monthly stress test, crisis tables, a 32-strategy tournament and an overfitting check (deflated Sharpe, multiple-testing haircut, PBO). |
-| **Goal Planner** | The chance of reaching a savings target with the High-Sharpe plans, SPY or QQQ; the monthly saving needed for 50/75/90% confidence; safe withdrawal rates afterwards. USD or CNY, nominal or real. |
+| **Goal Planner** | The chance of reaching a savings target by holding SPY or QQQ; the monthly saving needed for 50/75/90% confidence; safe withdrawal rates afterwards. USD or CNY, nominal or real. |
 | **SOXL Deep Dive** | What "3×" really delivers: a calibrated simulation back to 2001, year-by-year decay, holding-period odds, the growth-optimal leverage, drawdowns, what came after a fall from the high under any combination of conditions (the fall, the rebound from the low, VIX or volatility, the trend, the broad market; measured on SOXL or SOXX) with mean, median and any percentiles over horizons you choose (from one trading day to 30 years), the worst fall while holding, SOXX on the same days and a side-by-side comparison of combinations, and eight ways to hold it. |
 | **TQQQ Deep Dive** | The same eight studies for the 3× Nasdaq-100 fund, with a simulation on QQQ back to 1999 (through the dot-com bust). In both deep dives the whole history, the holding-period odds, the leverage study and the eight approaches each take their own start and end dates. |
 | **SOXL vs TQQQ** | The two 3× funds side by side, each section with its own dates: today's signal for every rule on the page; growth, drawdowns, risk and year-by-year winners; holding periods and entry dates; mixes with rebalancing, rolling correlation and relative strength; returns after big falls under the same combined conditions (fall, rebound, fear, trend, market), each fund on its own days or both on one fund's days, with a comparison of combinations and an out-of-sample check; a plan — a first amount plus regular purchases, optionally boosted when C4's conditions hold — under one of six ways of holding, as one backtest from your start to your end (with the time below the money put in), as the spread of results from every start date (any start can be loaded into the backtest), and with all six ways side by side; and when to sell: ten selling rules plus the hindsight best for the same purchases over the same period, with every take-profit, stop-loss and trailing-stop level and a take-profit × stop-loss heat map. Every rule is explained on hover and in full. |
 | **Chip Stocks** | Micron, Western Digital, Seagate, Nvidia, AMD, Broadcom, Intel, Applied Materials, Lam Research and KLA: memory-cycle depth and recovery times, forward returns after big falls, correlations, where each stands today. |
 | **Research** | Seventeen studies: holding periods, missing the best days, the value of market timing, lump sum vs staging, buying after drawdowns, seasonality, leverage decay, the semiconductor cycle, crisis recoveries, dividends and inflation, inflation regimes since 1973, decades, VIX, CAPE, concentration, the Nasdaq-100 since 1985 and the literature. |
 | **Fund Profiles** | Index methodology, fees, assets, holdings and structure of each fund, with this site's returns checked against the issuers' official figures. |
-| **Methodology** | Data sources, how each series is built, validation results, metric definitions, backtest assumptions, how the High-Sharpe plan was chosen, and limitations. |
+| **Methodology** | Data health (how current each series is, the latest update runs and their warnings), data sources, how each series is built, validation results, metric definitions, backtest assumptions and limitations. |
 
 <p>
 <img src="docs/screenshots/backtest-lab.jpg" width="49%" alt="Backtest Lab">
-<img src="docs/screenshots/high-sharpe.jpg" width="49%" alt="High-Sharpe Plan">
+<img src="docs/screenshots/levcmp.jpg" width="49%" alt="SOXL vs TQQQ">
 </p>
 
 ## How the numbers are built
@@ -35,7 +34,7 @@ The site opens in English; the **中文** button in the header switches it to Ch
 - **Total return everywhere.** ETF series compound raw closes and per-share dividends; the S&P 500 is rebuilt from the daily price index plus Shiller dividends (SPY-implied yield after mid-2023). Against S&P Dow Jones Indices' official annual total returns (1988–2025) the mean gap is 0.08 percentage points a year.
 - **No look-ahead.** Price signals use the previous close and trade at today's close by default; cash earns the T-bill rate; costs are charged per trade. A test rewrites every price after a cut-off date and checks that 26 strategies produce identical results up to that date (strategies that use hindsight on purpose are labelled as such and are excluded from rankings).
 - **Validated against published studies.** The test suite reproduces J.P. Morgan's "missing the best days" (11.0% → 6.6%, 2006–2025), Vanguard's lump-sum win rate (two-thirds), Schwab's market-timing study (2005–2024, within 6%) and the issuers' 1/3/5/10-year returns for SMH and SOXX (within 0.1 pp).
-- **Honest about overfitting.** The High-Sharpe page discounts its own backtest for the number of variants tried and replays the rules over 1973–2026 on data never used in research.
+- **Honest about overfitting.** The Lab's in-sample/out-of-sample check reports the probability of backtest overfitting, and the leveraged-ETF studies report the number of separate falls behind every conditional result, not just the number of days.
 
 Full details are on the Methodology tab.
 
@@ -64,7 +63,7 @@ After every US market close (23:17 UTC: 19:17 in New York in summer, 18:17 in wi
 3. appends the new sessions to `data/market-data.js` and rebuilds values that were provisional (the latest T-bill rate and exchange rate, the S&P 500 dividend of the current month);
 4. runs the unit tests and the browser smoke test on the result, commits it to `main` and redeploys the site.
 
-A session counts once it is 18:00 in New York, two hours after the close. If any step fails, nothing is committed and the site keeps the previous data; GitHub emails a notice of the failed run. To run it by hand: **Actions → Update market data → Run workflow** (tick *check only* to download and verify without committing). Locally: `node scripts/update-data.js --check`.
+A session counts once it is 18:00 in New York, two hours after the close. If any step fails, nothing is committed and the site keeps the previous data. A failed scheduled or manual run opens an issue labelled `data-update-failure` (mentioning the repository owner, so GitHub sends an e-mail) or adds the failure to the one already open, quoting the failing step's log; the next successful run closes it. Independently, every page shows a red banner once a session is missing from the data at 20:00 New York time the next day, and the Methodology tab's *Data health* card lists each series' last date, the last eight update runs and the warnings of the latest data commits (read from GitHub's public API in the visitor's browser). To run it by hand: **Actions → Update market data → Run workflow** (tick *check only* to download and verify without committing). Locally: `node scripts/update-data.js --check`.
 
 ### Intraday prices
 
@@ -80,7 +79,7 @@ The site has no build step and no runtime dependencies (ECharts is bundled in `a
 # open index.html directly, or serve the folder:
 npm run serve            # http://127.0.0.1:8080/
 
-npm test                 # 54 unit tests: data, metrics, engine, no-look-ahead, replications, data updater
+npm test                 # unit tests: data, calendar, metrics, engine, no-look-ahead, replications, data updater
 npx playwright install chromium && npm run test:e2e   # renders every tab in a headless browser
 ```
 
@@ -99,8 +98,8 @@ assets/css/site.css      design tokens (light/dark), layout, components
 assets/js/i18n.js        UI strings in English and Chinese, and the t()/L() helpers
 assets/js/core.js        data decoding, calendar, total-return series, metrics
 assets/js/engine.js      backtest engine: funding plans, 30+ rules, multi-asset runner, XIRR, Monte Carlo
-assets/js/calc.js        research statistics (holding periods, best days, PSR/DSR/PBO, ...)
-assets/js/lr.js          monthly 1971–today engine for the 50-year stress test
+assets/js/calc.js        research statistics (holding periods, best days, PBO, selling rules, ...)
+assets/js/lr.js          monthly 1971–today data and inflation regimes (Research R11)
 assets/js/facts.js       sourced fund facts, market snapshot, timeline, literature
 assets/js/ui.js, app.js  DOM and chart helpers, routing, theme
 assets/js/views/*.js     one module per tab
