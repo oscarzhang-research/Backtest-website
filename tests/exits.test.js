@@ -62,3 +62,48 @@ test('selling rules: every purchase against a scan forward, day by day', () => {
   const tp = Calc.exitStudy(o, at, { type: 'tp', x: 0.5 }), sl = Calc.exitStudy(o, at, { type: 'sl', y: 0.3 });
   at.forEach((i, q) => { if (tp.hit[q]) assert.ok(v[tp.x[q]] >= v[i] * 1.5); if (sl.hit[q]) assert.ok(v[sl.x[q]] <= v[i] * 0.7); });
 });
+
+test('selling into the 1× index: the sale buys the index until the horizon, paying the cost on both legs', () => {
+  const tab = Calc.rangeTab(v, s, e), ctx = Calc.dipContext(v, s, e, [12]), ends = ctx.ends[0], ix = Core.S.SOXXU ? Core.S.SOXXU.v : Core.S.SOXX.v;
+  const at = []; for (let i = s + 300; i <= e; i += 37) if (ends[i - s] > 0) at.push(i);
+  for (const rule of [{ type: 'hold' }, { type: 'tp', x: 0.5 }, { type: 'sl', y: 0.3 }, { type: 'scale', x: 0.8 }]) {
+    const cashR = Calc.exitStudy({ v, s, ends, tab, c }, at, rule), idx = Calc.exitStudy({ v, s, ends, tab, c, dest: ix }, at, rule);
+    at.forEach((i, q) => {
+      const j = ends[i - s], x = idx.x[q], tag = `${rule.type} from ${Core.iso(i)}`;
+      assert.equal(x, cashR.x[q], tag + ': the sale does not depend on where the money goes');
+      const leg = (y) => (1 - c) * (v[y] / v[i]) * (1 - c) * (y < j ? (ix[j] / ix[y]) * (1 - c) * (1 - c) : 1) - 1;
+      close(idx.rH[q], rule.type === 'scale' ? (leg(x) + leg(j)) / 2 : leg(x), 1e-12, tag);
+      if (x === j) close(idx.rH[q], cashR.rH[q], 1e-12, tag + ': no sale, no difference');
+    });
+  }
+});
+
+test('the geometric mean in Calc.summary, weighted and not', () => {
+  const r = [0.5, -0.2, 0.1, -0.6, 1.4], w = [1, 2, 1, 0.5, 0.5];
+  const g0 = Math.exp(r.reduce((p, x) => p + Math.log(1 + x), 0) / r.length) - 1;
+  close(Calc.summary(r).geo, g0, 1e-12);
+  const W = w.reduce((p, x) => p + x, 0), g1 = Math.exp(r.reduce((p, x, k) => p + w[k] * Math.log(1 + x), 0) / W) - 1;
+  close(Calc.summary(r, w).geo, g1, 1e-12);
+  assert.ok(Calc.summary(r).geo < Calc.summary(r).mean, 'below the arithmetic mean when returns vary');
+  assert.ok(Number.isNaN(Calc.summary([]).geo));
+});
+
+test('cluster bootstrap of a difference in geometric means', () => {
+  let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const b = [], cl = []; for (let k = 0; k < 600; k++) { b.push(rnd() * 1.2 - 0.4); cl.push(Math.floor(k / 30)); } // 20 clusters
+  // the same outcomes: no difference and a zero-width interval
+  const same = Calc.geoDiffCI(b, b, cl, null, 300, 5);
+  assert.equal(same.k, 20); close(same.d, 0, 1e-15); close(same.lo, 0, 1e-15); close(same.hi, 0, 1e-15);
+  // every outcome 10% better in growth terms: the difference is exact and the interval holds it
+  const a = b.map(x => (1 + x) * 1.1 - 1), up = Calc.geoDiffCI(a, b, cl, null, 300, 5), gb = Calc.summary(b).geo;
+  close(up.d, 0.1 * (1 + gb), 1e-12); assert.ok(up.lo <= up.d && up.d <= up.hi);
+  // noise in one cluster widens the interval; the same seed gives the same interval
+  const a2 = a.slice(); for (let k = 0; k < 30; k++) a2[k] = -0.9;
+  const wide = Calc.geoDiffCI(a2, b, cl, null, 300, 5), again = Calc.geoDiffCI(a2, b, cl, null, 300, 5);
+  assert.ok(wide.hi - wide.lo > up.hi - up.lo); assert.deepEqual(wide, again);
+  // weights count inside the clusters; one cluster cannot be resampled
+  const w = b.map((_, k) => (k % 2 ? 2 : 1)), ww = Calc.geoDiffCI(a, b, cl, w, 300, 5);
+  close(ww.d, Calc.summary(a, w).geo - Calc.summary(b, w).geo, 1e-12);
+  const one = Calc.geoDiffCI(a, b, b.map(() => 0), null, 300, 5);
+  assert.equal(one.k, 1); assert.ok(Number.isNaN(one.lo) && Number.isNaN(one.hi));
+});
