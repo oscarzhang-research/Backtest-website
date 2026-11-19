@@ -480,6 +480,59 @@
     return { code, dd, dd52: x.dd52[i], alerts: al, i };
   };
 
+  // ---------- position: where an index stands in its current fall ----------
+  // The phase, by the usual conventions: 'bull' (less than the correction line below the high, above the 200-day
+  // average), 'weak' (the same but below the 200-day), 'edge' (between the correction and the bear line), 'bear' (this
+  // fall has crossed the bear line and not yet risen 20% from its low), 'newbull' (crossed it, then rose 20% from the
+  // low, without a new high yet). up: above the 200-day (null: unknown, taken as above).
+  R.phaseOf = function (dd, mdd, reb, up, Ln) {
+    if (mdd <= -Ln.bear) return reb >= 0.2 ? 'newbull' : 'bear';
+    if (dd <= -Ln.corr) return 'edge';
+    return up === false ? 'weak' : 'bull';
+  };
+  R.POS_FROM = { SPX: '1950-01-03' }; // the S&P 500's falls are compared from 1950, like its bear markets elsewhere
+  R.POS_MIN = 0.05; // falls are compared at this depth at least
+  const quant = (a, p) => { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); const k = (s.length - 1) * p, lo = Math.floor(k), hi = Math.ceil(k); return s[lo] + (s[hi] - s[lo]) * (k - lo); };
+  R.quant = quant;
+  // Day i (default: the last): the high, the low of this fall so far, the phase, and every earlier fall that went at
+  // least as deep as this one has (peak to a new high, recovered by day i, so nothing after day i is used): how deep it
+  // finally went, how long from the peak to the low, and what the index (total return) and the 3× fund did over the
+  // 12 months after the day it reached this depth. Groups: all, without and with an NBER recession (known only later),
+  // and by the structural-bear alerts lit that day (known at the time; from the 1970s).
+  R.position = function (key, i) {
+    const a = R.A[key], x = R.measures(key); if (!a || !x) return null;
+    if (i == null) i = x.e; if (i < x.s || i > x.e) return null;
+    return memo('pos:' + key + ':' + i, () => {
+      const v = a.sig, Ln = R.LINES[key];
+      let pk = x.s; for (let k = x.s; k <= i; k++) if (fin(v[k]) && v[k] >= v[pk]) pk = k;
+      let lo = pk; for (let k = pk; k <= i; k++) if (fin(v[k]) && v[k] < v[lo]) lo = k;
+      const dd = v[i] / v[pk] - 1, mdd = v[lo] / v[pk] - 1, reb = v[i] / v[lo] - 1, up = fin(x.sma[i]) ? v[i] > x.sma[i] : null;
+      const depth = Math.max(-mdd, R.POS_MIN), from = R.POS_FROM[key] ? Core.idxOnOrAfter(Core.parseISO(R.POS_FROM[key])) : x.s;
+      const ac = R.alertCount(), f3 = R.A[key === 'NDX' ? 'TQ3' : key === 'SOX' ? 'SX3' : ''] || null;
+      const ret12 = (S, at) => (S && at >= S.s && at + 252 <= Math.min(S.e, i) ? S.out[at + 252] / S.out[at] - 1 : NaN);
+      const eps = [];
+      for (const z of R.episodes(key, depth, Infinity)) {
+        if (z.ongoing || z.pk < from || z.rec < 0 || z.rec > i) continue;
+        let at = -1; for (let k = z.pk + 1; k <= z.tr; k++) if (v[k] <= v[z.pk] * (1 - depth)) { at = k; break; }
+        if (at < 0) continue;
+        eps.push({ pk: z.pk, at, tr: z.tr, rec: z.rec, final: z.depth, more: v[z.tr] / v[at] - 1, days: Core.days[z.tr] - Core.days[z.pk], recession: z.recession, ac: ac[at], r12: ret12(a, at), r3: ret12(f3, at) });
+      }
+      const grp = (f) => {
+        const zs = eps.filter(f), F = zs.map(z => z.final), R12 = zs.map(z => z.r12).filter(fin), R3 = zs.map(z => z.r3).filter(fin);
+        return { n: zs.length, eps: zs, med: quant(F, 0.5), shallow: quant(F, 0.75), deep: quant(F, 0.25), worst: F.length ? Math.min(...F) : NaN,
+          stop: zs.length ? zs.filter(z => z.final > -Ln.bear).length / zs.length : NaN, days: quant(zs.map(z => z.days), 0.5),
+          n12: R12.length, up12: R12.length ? R12.filter(r => r > 0).length / R12.length : NaN, r12: quant(R12, 0.5), r3: quant(R3, 0.5), r3min: R3.length ? Math.min(...R3) : NaN, n3: R3.length };
+      };
+      const g = { all: grp(() => true), norec: grp(z => !z.recession), rec: grp(z => z.recession), a01: grp(z => z.ac >= 0 && z.ac <= 1), a2: grp(z => z.ac >= 2) };
+      const al = R.alertsAt(i);
+      return { key, i, pk, lo, dd, mdd, reb, up, Ln, phase: R.phaseOf(dd, mdd, reb, up, Ln), depth, from: Math.max(from, x.s), days: Core.days[i] - Core.days[pk],
+        toBear: dd > -Ln.bear ? (1 - Ln.bear) / (1 + dd) - 1 : NaN, toHigh: 1 / (1 + dd) - 1, to200: fin(x.sma[i]) ? x.sma[i] / v[i] - 1 : NaN, toNewBull: 1.2 / (1 + reb) - 1,
+        alerts: al, eps, g, f3: f3 ? (key === 'NDX' ? 'TQ3' : 'SX3') : null };
+    });
+  };
+  // what today's price would have to do to reach a group's median final depth
+  R.impliedFromToday = (P, depth) => (fin(depth) ? (1 + depth) / (1 + P.dd) - 1 : NaN);
+
   // ---------- leverage ----------
   // the vol switch of a fund: 3 while the index's 20-day volatility is below lo, 1 once above hi, else as before
   R.volGear = function (fund) {

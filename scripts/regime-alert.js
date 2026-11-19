@@ -24,8 +24,11 @@ function currentState() {
   const sb = { window: {} }; vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'data/manual.js'), 'utf8'), sb);
   R.init(REG, sb.window.__MANUAL__ || null, DATA);
   const i = Core.N - 1, al = R.alertsAt(i);
-  const st = { asOf: Core.asOf, alerts: { lit: al.lit, known: al.known, level: al.level, on: al.list.filter(z => z.on === 1).map(z => z.id) }, tpl: {}, dd: {}, gear: {}, vol: {} };
-  for (const k of ['SPX', 'NDX', 'SOX']) { const T = R.template(k); if (T) { st.tpl[k] = T.code; st.dd[k] = Math.round(T.dd * 1000) / 1000; } }
+  const st = { asOf: Core.asOf, alerts: { lit: al.lit, known: al.known, level: al.level, on: al.list.filter(z => z.on === 1).map(z => z.id) }, tpl: {}, dd: {}, phase: {}, reb: {}, gear: {}, vol: {} };
+  for (const k of ['SPX', 'NDX', 'SOX']) {
+    const T = R.template(k); if (T) { st.tpl[k] = T.code; st.dd[k] = Math.round(T.dd * 1000) / 1000; }
+    const P = R.position(k); if (P) { st.phase[k] = P.phase; st.reb[k] = Math.round(P.reb * 1000) / 1000; }
+  }
   for (const f of ['TQ3', 'SX3']) { const d = R.dial(f), x = R.measures(R.VOL_RULE[f].idx); if (d && x) { st.gear[f] = d.g[x.e]; st.vol[f] = Math.round(x.vol[x.e] * 1000) / 1000; } }
   return st;
 }
@@ -33,6 +36,7 @@ function currentState() {
 const NAMES = { unemp: '失业率上行 / unemployment rising', claims: '初请激增 / claims surging', credit: '信用利差走阔 / credit spreads widening', nfci: '金融条件偏紧 / tight financial conditions', curveInv18: '曲线曾倒挂 / curve inverted within 18 months' };
 const TPL = { none: '无明显回撤 / no meaningful fall', T0: 'T0 回调 / correction', T1: 'T1 估值或政策型熊市 / valuation or policy bear', T2: 'T2 半导体行业下行 / semiconductor downturn', T3: 'T3 衰退与信用型熊市 / recession and credit bear' };
 const GEAR = { 3: '3×', 2: '2×', 1: '1×', 0: 'T-bills / 国库券' };
+const PHASE = { bull: '牛市 / bull market', weak: '牛市，趋势转弱 / bull market, trend weakening', edge: '牛熊边界 / bull/bear boundary', bear: '熊市 / bear market', newbull: '新牛市（距低点涨 20%）/ new bull market (20% off the low)' };
 const IDX = { SPX: 'S&P 500', NDX: 'Nasdaq-100', SOX: 'PHLX Semiconductor' };
 const FUND = { TQ3: 'TQQQ', SX3: 'SOXL' };
 
@@ -44,6 +48,9 @@ function diff(prev, cur) {
   // templates: only changes into or out of T1–T3 (a fall flickering around the 10% line is not news)
   const big = (c) => /^T[123]$/.test(c || '');
   for (const k of Object.keys(cur.tpl)) if (prev.tpl[k] !== cur.tpl[k] && (big(prev.tpl[k]) || big(cur.tpl[k]))) out.push(`- ${IDX[k]}: ${TPL[prev.tpl[k]] || prev.tpl[k] || '—'} → **${TPL[cur.tpl[k]]}** (${(cur.dd[k] * 100).toFixed(1)}% from the high)`);
+  // phases: only a new bull market by the usual definition (20% off a bear market's low), or losing it again; crossing
+  // the bear line is already a template change
+  for (const k of Object.keys(cur.phase || {})) { const a = (prev.phase || {})[k], c = cur.phase[k]; if (a && a !== c && (a === 'newbull' || c === 'newbull')) out.push(`- ${IDX[k]}: ${PHASE[a] || a} → **${PHASE[c]}** (${(cur.reb[k] * 100).toFixed(1)}% from this fall's low)`); }
   for (const f of Object.keys(cur.gear)) if (prev.gear[f] !== cur.gear[f]) out.push(`- ${FUND[f]} 档位 / gear: ${GEAR[prev.gear[f]] || '—'} → **${GEAR[cur.gear[f]]}** (20-day volatility ${(cur.vol[f] * 100).toFixed(0)}%)`);
   return out;
 }

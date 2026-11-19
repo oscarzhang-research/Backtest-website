@@ -11,7 +11,7 @@
   const t = (k, v) => I18N.t(k, v); const L = (o) => (o && typeof o === 'object' && ('zh' in o || 'en' in o) ? I18N.L(o) : o);
   const h = U.h; const zh = () => I18N.lang === 'zh';
   const fin = (x) => typeof x === 'number' && isFinite(x);
-  const RS = Object.assign({ h: 252, tpl: 'NDX', fall: 0.2, dialFund: 'TQ3', dialPer: 'all', g: 'since2010', f3: 'TQ3', f3px: '', semiH: 252 }, U.store.get('regime', {}));
+  const RS = Object.assign({ pos: 'NDX', h: 252, tpl: 'NDX', fall: 0.2, dialFund: 'TQ3', dialPer: 'all', g: 'since2010', f3: 'TQ3', f3px: '', semiH: 252 }, U.store.get('regime', {}));
   const save = () => U.store.set('regime', RS);
   const OPEN = new Set(); // indicator cards left open, kept across re-renders
   const V = {};
@@ -251,7 +251,65 @@
     return h('div', null, ...parts);
   }
 
-  // ---------- 1. today ----------
+  // ---------- 1. today: where each index stands ----------
+  const PHASE = {
+    bull: { zh: '牛市', en: 'Bull market' },
+    weak: { zh: '牛市，趋势转弱', en: 'Bull market, trend weakening' },
+    edge: { zh: '牛熊边界（回调区）', en: 'Bull/bear boundary (a correction)' },
+    bear: { zh: '熊市', en: 'Bear market' },
+    newbull: { zh: '新牛市（按常用定义）', en: 'New bull market (usual definition)' },
+  };
+  const phaseWhy = (P) => {
+    const c = pct(P.Ln.corr, 0), bl = pct(P.Ln.bear, 0);
+    return L({
+      bull: { zh: `距高点不到 ${c}，在 200 日线上方。`, en: `Less than ${c} below the high and above the 200-day average.` },
+      weak: { zh: `距高点不到 ${c}，但已跌破 200 日线。`, en: `Less than ${c} below the high, but below the 200-day average.` },
+      edge: { zh: `已跌 ${c} 以上、未到 ${bl}：再跌是熊市，涨回去就只是一次回调。`, en: `Down more than ${c} but not ${bl}: further, and it is a bear market; back up, and it was a correction.` },
+      bear: { zh: `这一轮跌破了 ${bl} 的熊市线，还没从低点涨回 20%。`, en: `This fall crossed the ${bl} bear line and has not risen 20% from its low.` },
+      newbull: { zh: `跌破熊市线后已从低点涨了 20% 以上，还没回到前高。`, en: `It crossed the bear line, then rose 20% or more from its low; no new high yet.` },
+    }[P.phase]);
+  };
+  const sinceYr = (P) => Core.year[P.from];
+  // a group of past falls in a few words: each value when there are three or fewer, else the median and middle half
+  const grpDepth = (g, compact) => {
+    if (!g || !g.n) return zh() ? '（没有先例）' : '(no precedent)';
+    if (g.n <= 3) return g.eps.map(z => z.final).sort((p, q) => q - p).map(z => pct(z, 0)).join(zh() ? '、' : ', ');
+    return (zh() ? '中位 ' : 'a median of ') + pct(g.med, 0) + (compact ? '' : zh() ? `（中间一半 ${pct(g.shallow, 0)} 至 ${pct(g.deep, 0)}）` : ` (middle half ${pct(g.shallow, 0)} to ${pct(g.deep, 0)})`);
+  };
+  // the same in a sentence: "分别为 a、b、c" / "at a, b and c" for three or fewer
+  const grpWords = (g, compact) => (g && g.n && g.n <= 3 ? (zh() ? (g.n === 1 ? '为 ' : '分别为 ') : 'at ') + grpDepth(g) : (zh() ? '' : 'at ') + grpDepth(g, compact));
+  // the group known at the time: falls that reached this depth with as many alerts lit as today (0–1, or 2 and more)
+  const rtGroup = (P) => (P.alerts.known < 4 ? null : P.alerts.lit <= 1 ? 'a01' : 'a2');
+  const rtTxt = (P) => {
+    const id = rtGroup(P), al = P.alerts;
+    if (!id) return zh() ? '警报数据不全，无法按当时的警报分组。' : 'Too few alerts known to group the falls by the alerts at the time.';
+    const G = P.g[id], imp = G.n >= 4 ? R.impliedFromToday(P, G.med) : NaN;
+    return zh() ? `现在警报 ${al.lit}/${al.known}；当时警报同样${id === 'a01' ? '只有 0–1 项' : '有 2 项以上'}的 ${G.n} 次：${grpDepth(G)}${fin(imp) ? `，中位数相当于从今天再跌约 ${pct(-imp, 0)}` : ''}。`
+      : `Alerts now ${al.lit} of ${al.known}; the ${G.n} falls with ${id === 'a01' ? 'only 0–1' : '2 or more'} alerts at the time ended ${grpWords(G)}${fin(imp) ? `, at the median about ${pct(-imp, 0)} more from today` : ''}.`;
+  };
+  function posShort(P) {
+    const g = P.g, crossed = P.mdd <= -P.Ln.bear;
+    if (P.mdd > -R.POS_MIN) return zh() ? `离历史高点不到 ${pct(R.POS_MIN, 0)}，没有在进行中的下跌；这时更该看下面的顶部迹象。` : `Within ${pct(R.POS_MIN, 0)} of the high, with no fall under way: the signs of a top below matter more now.`;
+    if (!g.all.n) return (zh() ? `${sinceYr(P)} 年以来没有跌到本轮这么深（${pct(P.mdd, 1)}）、又收复了前高的先例。` : `Since ${sinceYr(P)}, no fall that went as deep as this one (${pct(P.mdd, 1)}) has recovered its high. `) + rtTxt(P);
+    return zh()
+      ? `${sinceYr(P)} 年以来跌到本轮这么深（${pct(P.mdd, 1)}）的 ${g.all.n} 次下跌，最终${grpWords(g.all)}${crossed ? '' : `，${Math.round(g.all.stop * g.all.n)} 次没跌破熊市线`}。没有衰退的 ${g.norec.n} 次${grpWords(g.norec, true)}，伴随衰退的 ${g.rec.n} 次${grpWords(g.rec, true)}。${rtTxt(P)}`
+      : `Since ${sinceYr(P)}, ${g.all.n} falls went as deep as this one (${pct(P.mdd, 1)}) and ended ${grpWords(g.all)}${crossed ? '' : `; ${Math.round(g.all.stop * g.all.n)} stopped before the bear line`}. Without a recession (${g.norec.n}): ${grpDepth(g.norec, true)}; with one (${g.rec.n}): ${grpDepth(g.rec, true)}. ${rtTxt(P)}`;
+  }
+  // the fall so far against where past falls of the same depth ended (middle half and median of each group)
+  function ruler(P) {
+    const g = P.g, deep = (G) => (G.n ? (G.n <= 3 ? G.worst : G.deep) : 0);
+    const scale = Math.min(0.9, Math.max(0.3, Math.ceil((-Math.min(P.mdd, deep(g.norec), deep(g.rec), -P.Ln.bear) + 0.04) * 10) / 10));
+    const X = (d) => Math.max(0, Math.min(100, (-d / scale) * 100)) + '%';
+    const lines = () => [P.Ln.corr, P.Ln.bear].map(l => h('i', { class: 'ln', style: { left: X(-l) } }));
+    const grpRow = (G, cls, lab) => h('div', { class: 'row' }, h('span', null, lab), h('div', { class: 'trk' }, ...lines(),
+      ...(!G.n ? [] : G.n <= 3 ? G.eps.map(z => h('i', { class: 'dot ' + cls, style: { left: X(z.final) }, title: iso(z.pk) + ' → ' + pct(z.final, 0) }))
+        : [h('i', { class: 'band ' + cls, style: { left: X(G.shallow), width: `calc(${X(G.deep)} - ${X(G.shallow)})` }, title: (zh() ? '中间一半 ' : 'middle half ') + pct(G.shallow, 0) + ' … ' + pct(G.deep, 0) }), h('i', { class: 'med', style: { left: X(G.med) }, title: (zh() ? '中位 ' : 'median ') + pct(G.med, 0) })])));
+    const ticks = []; const step = scale > 0.6 ? 0.2 : 0.1; for (let t0 = 0; t0 <= scale + 1e-9; t0 += step) ticks.push(h('span', { style: { left: X(-t0) } }, t0 ? pct(-t0, 0) : '0'));
+    return h('div', { class: 'rg-ruler', 'aria-hidden': 'true' },
+      h('div', { class: 'row' }, h('span', null, zh() ? '本轮' : 'This fall'), h('div', { class: 'trk' }, ...lines(), h('i', { class: 'fill', style: { width: X(P.mdd) }, title: (zh() ? '本轮最深 ' : 'deepest so far ') + pct(P.mdd, 1) }), h('i', { class: 'now', style: { left: X(P.dd) }, title: (zh() ? '今天 ' : 'today ') + pct(P.dd, 1) }))),
+      grpRow(g.norec, 'nr', zh() ? '无衰退' : 'No rec.'), grpRow(g.rec, 'r', zh() ? '伴随衰退' : 'Recession'),
+      h('div', { class: 'ax' }, ticks));
+  }
   function nowSection(host) {
     const wrap = h('div', { class: 'grid-3' });
     const desc = {
@@ -261,31 +319,138 @@
       T2: { zh: 'T2 半导体行业下行', en: 'T2 semiconductor downturn' },
       T3: { zh: 'T3 衰退与信用型结构性熊市', en: 'T3 recession and credit bear' },
     };
-    const hist = {
-      SPX: { T0: { zh: '跌幅多在 10%–20% 之间结束。', en: 'Usually ends between 10% and 20% down.' }, T1: { zh: '非衰退熊市中位数 −27%、约 7 个月。', en: 'Non-recession bears: −27% and about 7 months at the median.' }, T3: { zh: '衰退熊市中位数 −36%、约 18 个月。', en: 'Recession bears: −36% and about 18 months at the median.' } },
-      NDX: { T0: { zh: '10% 以上的回调有 65% 停在 20% 以内。', en: '65% of falls past 10% stopped short of 20%.' }, T1: { zh: '−23% 至 −40%，多在 1–4 个月内见底（2022 年除外）。', en: '−23% to −40%, mostly over in 1–4 months (2022 aside).' }, T3: { zh: '2000–02 年 −83%、2007–08 年 −54%，收复要 3–15 年。', en: '2000–02: −83%; 2007–08: −54%; 3–15 years to recover.' } },
-      SOX: { T0: { zh: '20%–30% 的跌幅在费半很常见。', en: 'Falls of 20–30% are common for semiconductors.' }, T1: { zh: '销售额不转负时中位数约 −35%。', en: 'About −35% at the median while sales keep growing.' }, T2: { zh: '销售额转负、无衰退：−25% 至 −47%，6–10 个月。', en: 'Sales shrinking without a recession: −25% to −47%, 6–10 months.' }, T3: { zh: '叠加衰退：−50% 至 −69%。', en: 'With a recession: −50% to −69%.' } },
-    };
     for (const k of ['SPX', 'NDX', 'SOX']) {
-      const x = R.measures(k); if (!x) continue; const i = x.e, T = R.template(k, i);
+      const x = R.measures(k), P = R.position(k); if (!x || !P) continue; const i = P.i, T = R.template(k, i);
       const lvl = k === 'SPX' ? Core.spxPrice[i] : x.v[i], vp = volPctl(k, x.vol[i]);
-      const al = T.alerts;
-      const change = [];
-      if (T.code !== 'T3') change.push(zh() ? `结构性熊市警报现在 ${al.lit}/${al.known} 项；亮到 3 项会升级为 T3。` : `Structural-bear alerts: ${al.lit} of ${al.known}; three would make it T3.`);
-      if (k === 'SOX' && T.code !== 'T2' && T.code !== 'T3') { const s = R.semiLatest(); if (s) change.push(zh() ? `全球销售额同比 ${pct(s.yoy, 0, true)}（${s.m}）；转负会转入 T2。` : `Worldwide sales ${pct(s.yoy, 0, true)} y/y (${s.m}); turning negative would make it T2.`); }
-      if (T.code === 'T0' || T.code === 'none') change.push(zh() ? `再跌到距高点 ${pct(-R.LINES[k].bear, 0)} 就到 T1。` : `A fall to ${pct(-R.LINES[k].bear, 0)} from the high would make it T1.`);
       wrap.appendChild(h('div', { class: 'card rg-idx' },
         h('div', { class: 'card-head' }, h('h3', null, nm(k)), h('span', { class: 'sub' }, iso(i))),
-        h('div', { class: 'rg-big ' + U.signCls(x.ddAll[i]) }, pct(x.ddAll[i], 1), h('small', null, zh() ? '距历史高点' : 'from the all-time high')),
-        h('div', { class: 'rg-tpl t-' + T.code }, L(desc[T.code])),
-        hist[k][T.code] ? h('p', { class: 'small ink2' }, L(hist[k][T.code])) : null,
+        h('div', { class: 'rg-big ' + U.signCls(P.dd) }, pct(P.dd, 1), h('small', null, zh() ? `距 ${iso(P.pk)} 的历史高点` : `from the ${iso(P.pk)} high`)),
+        h('div', { class: 'rg-chips' }, h('span', { class: 'rg-phase p-' + P.phase }, L(PHASE[P.phase])), h('span', { class: 'rg-tpl t-' + T.code }, L(desc[T.code]))),
+        h('p', { class: 'small ink2' }, phaseWhy(P)),
+        ruler(P),
+        h('div', { class: 'kv' },
+          h('div', null, h('span', null, zh() ? '本轮最深' : 'Deepest so far'), h('b', { class: U.signCls(P.mdd) }, pct(P.mdd, 1)), h('span', null, iso(P.lo) + (P.reb > 0.0005 ? (zh() ? '，之后 ' : ', since ') + pct(P.reb, 1, true) : ''))),
+          h('div', null, h('span', null, zh() ? '到熊市线' : 'To the bear line'), h('b', null, fin(P.toBear) ? pct(P.toBear, 1) : (zh() ? '已越过' : 'crossed'))),
+          h('div', null, h('span', null, zh() ? '回到新高' : 'To a new high'), h('b', null, pct(P.toHigh, 1, true)))),
         h('div', { class: 'kv' },
           h('div', null, h('span', null, zh() ? '点位' : 'Level'), h('b', null, U.num(lvl, lvl > 1000 ? 0 : 2))),
           h('div', null, h('span', null, zh() ? '相对 200 日线' : 'vs 200-day'), h('b', { class: U.signCls(x.v[i] / x.sma[i] - 1) }, pct(x.v[i] / x.sma[i] - 1, 1, true))),
           h('div', null, h('span', null, zh() ? '20 日波动' : '20-day volatility'), h('b', null, pct(x.vol[i], 0)), h('span', null, fin(vp) ? (zh() ? `百分位 ${Math.round(vp * 100)}（2010 年起）` : `${Math.round(vp * 100)}th pct. since 2010`) : ''))),
-        h('ul', { class: 'rg-list small' }, change.map(s => h('li', null, s)))));
+        h('p', { class: 'small rg-verdict' }, posShort(P))));
     }
-    host.appendChild(card('rg-now', { zh: '今天的读数', en: 'Today’s readings' }, { zh: '三个指数所处的熊市模板（规则见下文）', en: 'Which bear-market template each index is in (rules below)' }, wrap));
+    host.appendChild(card('rg-now', { zh: '今天的位置：离底部近，还是离顶部近？', en: 'Where each index stands: nearer the bottom or the top?' }, { zh: '牛熊阶段、这一轮下跌，以及历史上跌到同样深度的下跌最后停在哪里', en: 'The phase, this fall, and where past falls of the same depth ended' }, wrap,
+      h('p', { class: 'note rg-legend' }, h('i', { class: 'lg fill' }), zh() ? ' 本轮已跌到的深度（竖线是今天）  ' : ' this fall so far (the tick is today)  ', h('i', { class: 'lg nr' }), zh() ? ' 无衰退：历史同等跌幅最终停在哪里（色块为中间一半，竖线为中位）  ' : ' no recession: where past falls of this depth ended (band: middle half; tick: median)  ', h('i', { class: 'lg r' }), zh() ? ' 伴随衰退（3 次及以下时逐个画点）。虚线：回调线和熊市线。' : ' with a recession (three or fewer: each one a dot). Dashed: the correction and bear lines.'),
+      noteP({ zh: '阶段按常用约定划分（回调线：标普和纳指 10%、费半 15%；熊市线：20%、费半 30%；从低点涨 20% 视为新牛市），模板见下文。历史比较只用到今天为止已经收复前高的下跌；衰退按 NBER 事后认定，当时并不知道——所以下一节另按当时的警报分组。', en: 'Phases follow the usual conventions (correction line: 10% for the S&P 500 and the Nasdaq-100, 15% for semiconductors; bear line: 20%, 30% for semiconductors; a 20% rise from the low counts as a new bull market); templates are below. The comparison uses only falls that had recovered their high by today; recessions are NBER’s dates, known only later — so the next section also groups the falls by the alerts lit at the time.' })));
+  }
+
+  // ---------- 1b. how far to the bottom: past falls of the same depth ----------
+  function posChart(el, P) {
+    const c = U.chart(el); if (!c) return; const tk = U.tokens();
+    const rows = [zh() ? '本轮' : 'This fall', zh() ? '无衰退' : 'No recession', zh() ? '伴随衰退' : 'Recession'];
+    const jit = (k) => (((k * 0.6180339) % 1) - 0.5) * 0.44;
+    const pts = (rec, row) => P.eps.filter(z => z.recession === rec).map((z, k) => ({ value: [z.final, row + jit(k)], z }));
+    const minX = Math.floor(Math.min(-P.Ln.bear - 0.05, P.mdd, ...P.eps.map(z => z.final)) * 10) / 10;
+    const meds = []; if (P.g.norec.n) meds.push([P.g.norec.med, 1]); if (P.g.rec.n) meds.push([P.g.rec.med, 2]);
+    const fmtZ = (z) => `${iso(z.pk)} ${zh() ? '高点' : 'peak'}<br>${zh() ? '最终' : 'final'} <b>${pct(z.final, 0)}</b> (${iso(z.tr)})<br>${zh() ? '跌到本轮深度之后又跌' : 'further after this depth'} ${pct(z.more, 0)}<br>${zh() ? '当时警报' : 'alerts then'} ${z.ac >= 0 ? z.ac : '—'}${fin(z.r12) ? `<br>${zh() ? '12 个月后' : '12 months on'} ${pct(z.r12, 0, true)}` : ''}`;
+    c.setOption(U.baseOpt(tk, {
+      grid: { left: 8, right: 18, top: 26, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'item', confine: true, backgroundColor: tk.surface, borderColor: tk.rule, textStyle: { color: tk.ink, fontSize: 12.5 }, formatter: (p) => (p.data && p.data.z ? fmtZ(p.data.z) : p.data && p.data.tip ? p.data.tip : '') },
+      xAxis: { type: 'value', min: minX, max: 0, inverse: true, axisLabel: { color: tk.muted, fontSize: 11.5, formatter: (v) => (v ? pct(v, 0) : '0') }, splitLine: { lineStyle: { color: tk.rule } } },
+      yAxis: { type: 'value', min: -0.5, max: 2.5, interval: 0.5, inverse: true, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { color: tk.ink2, fontSize: 12, formatter: (v) => (Number.isInteger(v) ? rows[v] || '' : '') } },
+      series: [
+        { name: rows[1], type: 'scatter', symbolSize: 9, itemStyle: { color: tk.s[1], opacity: 0.75 }, data: pts(false, 1),
+          markLine: { silent: true, symbol: 'none', lineStyle: { color: tk.ruleStrong, type: 'dashed' }, label: { color: tk.muted, fontSize: 11, position: 'start', formatter: (p) => p.name }, data: [{ xAxis: -P.Ln.corr, name: (root.innerWidth || 1200) < 640 ? '' : zh() ? '回调线' : 'correction' }, { xAxis: -P.Ln.bear, name: zh() ? '熊市线' : 'bear line' }] } },
+        { name: rows[2], type: 'scatter', symbolSize: 9, itemStyle: { color: tk.s[2], opacity: 0.8 }, data: pts(true, 2) },
+        { name: zh() ? '中位' : 'median', type: 'scatter', symbol: 'rect', symbolSize: [3, 26], itemStyle: { color: tk.ink }, data: meds.map(m => ({ value: m, tip: (zh() ? '中位 ' : 'median ') + pct(m[0], 0) })) },
+        { name: rows[0], type: 'line', symbol: 'none', lineStyle: { width: 8, color: tk.ink2, opacity: 0.3, cap: 'round' }, data: [[0, 0], [P.mdd, 0]], silent: true },
+        { name: rows[0], type: 'scatter', data: [{ value: [P.mdd, 0], symbol: 'circle', symbolSize: 10, itemStyle: { color: tk.ink2 }, tip: (zh() ? '本轮最深 ' : 'deepest so far ') + pct(P.mdd, 1) + ' (' + iso(P.lo) + ')' }, { value: [P.dd, 0], symbol: 'triangle', symbolRotate: 180, symbolSize: 13, itemStyle: { color: tk.accent }, tip: (zh() ? '今天 ' : 'today ') + pct(P.dd, 1) }] },
+      ],
+    }), true);
+  }
+  function posSection(host) {
+    const k = RS.pos, P = R.position(k);
+    const ctl = h('div', { class: 'controls' }, U.ctl(zh() ? '指数' : 'Index', U.seg('rgPos', [['SPX', nm('SPX')], ['NDX', nm('NDX')], ['SOX', nm('SOX')]], k, (v) => { RS.pos = v; save(); App.renderView('regime'); })));
+    const title = { zh: '离底部还有多远：历史上跌到同样深度之后', en: 'How far to the bottom: after past falls of the same depth' };
+    if (!P) { host.appendChild(card('rg-pos', title, null, ctl, h('p', { class: 'note' }, zh() ? '没有这个指数的数据。' : 'No data for this index.'))); return; }
+    const g = P.g, chartEl = h('div', { class: 'chart short' });
+    const rowDef = [['all', { zh: '全部', en: 'All' }], ['norec', { zh: '没有衰退', en: 'Without a recession' }], ['rec', { zh: '伴随衰退（NBER，事后才知道）', en: 'With a recession (NBER, known only later)' }], ['a01', { zh: '当时警报 0–1 项', en: '0–1 alerts at the time' }], ['a2', { zh: '当时警报 ≥ 2 项', en: '2 or more alerts at the time' }]];
+    const curRow = rtGroup(P);
+    const finCell = (G) => (!G.n ? '—' : G.n <= 3 ? grpDepth(G) : h('span', null, h('b', null, pct(G.med, 0)), h('span', { class: 'muted small' }, ` [${pct(G.shallow, 0)}, ${pct(G.deep, 0)}]`)));
+    const tbl = h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', null, h('tr', null, ...[[zh() ? '这些下跌' : 'These falls'], [zh() ? '次数' : 'Count'], [zh() ? '最终跌幅 [中间一半]' : 'Final fall [middle half]'], [zh() ? '从今天再跌' : 'From today'], [zh() ? `未破 ${pct(-P.Ln.bear, 0)}` : `Held ${pct(-P.Ln.bear, 0)}`], [zh() ? '到最低点' : 'Peak to low'], [zh() ? '12 个月后更高' : 'Higher in 12 mo.'], [zh() ? '12 个月后中位' : '12 mo., median'], [P.f3 ? (zh() ? `${FUND[P.f3]}* 12 个月后（最差）` : `${FUND[P.f3]}* 12 mo. (worst)`) : null]].filter(z => z[0]).map(z => h('th', null, z[0])))),
+      h('tbody', null, rowDef.map(([id, lab]) => { const G = g[id]; const imp = G.n >= 4 ? R.impliedFromToday(P, G.med) : NaN; return h('tr', { class: id === curRow ? 'rg-cur' : '' },
+        h('td', null, L(lab), id === curRow ? h('span', { class: 'rg-state on', style: { marginLeft: '6px' } }, zh() ? '现在' : 'now') : null),
+        h('td', null, G.n), h('td', null, finCell(G)), h('td', { class: U.signCls(imp) }, fin(imp) ? pct(imp, 0) : '—'),
+        h('td', null, G.n ? `${Math.round(G.stop * G.n)}/${G.n}` : '—'), h('td', null, G.n ? U.dur(G.days) : '—'),
+        h('td', null, G.n12 ? `${Math.round(G.up12 * G.n12)}/${G.n12}` : '—'), h('td', { class: U.signCls(G.r12) }, G.n12 ? pct(G.r12, 0, true) : '—'),
+        P.f3 ? h('td', { class: U.signCls(G.r3) }, G.n3 ? pct(G.r3, 0, true) + ` (${pct(G.r3min, 0, true)})` : '—') : null); }))));
+    // the falls one by one
+    const epRows = P.eps.slice().reverse().map(z => h('tr', null, h('td', null, iso(z.pk)), h('td', null, iso(z.at)), h('td', null, iso(z.tr)), h('td', { class: 'neg' }, pct(z.final, 0)), h('td', { class: 'neg' }, pct(z.more, 0)), h('td', null, iso(z.rec)),
+      h('td', null, z.recession ? (zh() ? '是' : 'yes') : (zh() ? '否' : 'no')), h('td', null, z.ac >= 0 ? z.ac : '—'), h('td', { class: U.signCls(z.r12) }, pct(z.r12, 0, true)), P.f3 ? h('td', { class: U.signCls(z.r3) }, pct(z.r3, 0, true)) : null));
+    const list = h('details', { class: 'rg-eps' }, h('summary', null, zh() ? `逐次列出这 ${P.eps.length} 次下跌` : `The ${P.eps.length} falls one by one`),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'data' }, h('thead', null, h('tr', null, ...[zh() ? '高点' : 'Peak', zh() ? `跌到 ${pct(-P.depth, 1)} 的日子` : `Reached ${pct(-P.depth, 1)}`, zh() ? '最低点' : 'Low', zh() ? '最终跌幅' : 'Final fall', zh() ? '之后又跌' : 'Further fall', zh() ? '收复前高' : 'Back to the high', zh() ? '衰退' : 'Recession', zh() ? '当时警报' : 'Alerts then', zh() ? '12 个月后' : '12 months on', P.f3 ? FUND[P.f3] + '*' : null].filter(Boolean).map(s => h('th', null, s)))), h('tbody', null, epRows))));
+    // the read, in words
+    const caught = P.eps.filter(z => z.ac >= 0 && z.ac <= 1 && z.final <= -P.Ln.bear).map(z => `${Core.year[z.pk]}（${pct(z.final, 0)}）`);
+    const caughtEn = P.eps.filter(z => z.ac >= 0 && z.ac <= 1 && z.final <= -P.Ln.bear).map(z => `${Core.year[z.pk]} (${pct(z.final, 0)})`);
+    const crossed = P.mdd <= -P.Ln.bear, rid = rtGroup(P), RG = rid ? g[rid] : null, rimp = RG && RG.n >= 4 ? R.impliedFromToday(P, RG.med) : NaN;
+    const words = P.mdd > -R.POS_MIN || !g.all.n ? posShort(P) : zh()
+      ? `${b(nm(k))}：${b(L(PHASE[P.phase]))}。距高点 ${b(pct(P.dd, 1))}，本轮最深 ${pct(P.mdd, 1)}（${iso(P.lo)}），已持续 ${U.dur(P.days)}。<br>${sinceYr(P)} 年以来跌到这么深的 ${g.all.n} 次下跌，最终${grpWords(g.all)}${crossed ? '' : `，${Math.round(g.all.stop * g.all.n)} 次没跌破熊市线`}，从高点到最低点中位 ${U.dur(g.all.days)}${g.all.n12 ? `；跌到这个深度之后 12 个月，${Math.round(g.all.up12 * g.all.n12)}/${g.all.n12} 次更高` : ''}。<br>决定深浅的是有没有衰退：没有衰退的 ${g.norec.n} 次${grpWords(g.norec, true)}，伴随衰退的 ${g.rec.n} 次${grpWords(g.rec, true)}——但衰退往往事后才知道。<br>按现在能知道的：${RG ? `警报 ${P.alerts.lit}/${P.alerts.known}，当时警报同样${rid === 'a01' ? '只有 0–1 项' : '有 2 项以上'}的 ${RG.n} 次${grpWords(RG, true)}${fin(rimp) ? `，相当于从今天再跌约 ${b(pct(-rimp, 0))}` : ''}。` : '警报数据不全。'}${rid === 'a01' && caught.length ? `其中 ${caught.join('、')} 当时警报也不多，最后都跌破了熊市线：在下跌早期，警报区分不了深浅，它更适合确认衰退型熊市。` : ''}`
+      : `${b(nm(k))}: ${b(L(PHASE[P.phase]))}. ${b(pct(P.dd, 1))} from the high, ${pct(P.mdd, 1)} at the deepest (${iso(P.lo)}), ${U.dur(P.days)} so far.<br>Since ${sinceYr(P)}, ${g.all.n} falls went this deep and ended ${grpWords(g.all)}${crossed ? '' : `; ${Math.round(g.all.stop * g.all.n)} stopped before the bear line`}; peak to low took ${U.dur(g.all.days)} at the median${g.all.n12 ? `; twelve months after reaching this depth, ${Math.round(g.all.up12 * g.all.n12)} of ${g.all.n12} were higher` : ''}.<br>Recessions decide the depth: without one (${g.norec.n}) ${grpWords(g.norec, true)}, with one (${g.rec.n}) ${grpWords(g.rec, true)} — but a recession is often known only later.<br>With what is known now: ${RG ? `alerts ${P.alerts.lit} of ${P.alerts.known}; the ${RG.n} falls with ${rid === 'a01' ? 'only 0–1' : '2 or more'} alerts at the time ended ${grpWords(RG, true)}${fin(rimp) ? `, about ${b(pct(-rimp, 0))} more from today` : ''}.` : 'too few alerts known.'}${rid === 'a01' && caughtEn.length ? ` Of these, ${caughtEn.join(', ')} still went past the bear line: early in a fall the alerts cannot tell deep from shallow; they confirm recession bears.` : ''}`;
+    host.appendChild(card('rg-pos', title, { zh: `以本轮已经跌到的深度（${pct(P.mdd, 1)}）为条件，${sinceYr(P)} 年以来`, en: `Given the depth this fall has reached (${pct(P.mdd, 1)}), since ${sinceYr(P)}` }, ctl,
+      take(words), chartEl, tbl, list,
+      noteP({ zh: '每个点是一次历史下跌（从高点到重新创新高）的最终跌幅；只比较跌到至少和本轮一样深的下跌（不足 5% 按 5%）。“相当于从今天再跌”把各组的中位最终跌幅换算成从今天价格起的跌幅（4 次以下不算）。“当时警报”是跌到这个深度那天亮着的结构性熊市警报数，当时就能知道（1970 年代起有数据）；衰退分组是事后认定。12 个月后为含分红的总回报；3 倍基金上市前为模拟值。样本少（纳指 1985 年起、费半 1994 年起），这是历史分布，不是预测。', en: 'Each dot is the final fall of a past decline (peak to a new high); only falls at least as deep as this one count (5% at least). “From today’s price” turns each group’s median final fall into a fall from today’s price (not shown for fewer than four). “Alerts then” is the number of structural-bear alerts lit on the day the fall reached this depth, known at the time (data from the 1970s); the recession groups are known only later. Twelve-month figures are total returns; the 3× funds are simulated before launch. Few cases (the Nasdaq-100 from 1985, semiconductors from 1994): a past distribution, not a forecast.' })));
+    requestAnimationFrame(() => { try { posChart(chartEl, P); } catch (e) { console.error(e); } });
+  }
+
+  // ---------- 1c. what would change the read ----------
+  function trigSection(host) {
+    const i = last(), al = R.alertsAt(i), rows = [];
+    const row = (cond, now, dist, on, means) => rows.push(h('tr', null, h('td', { style: { whiteSpace: 'normal', minWidth: '200px' } }, cond), h('td', null, chip(on, { on: { zh: '已触发', en: 'Triggered' }, off: { zh: '未触发', en: 'Not yet' } })), h('td', null, now), h('td', null, dist), h('td', { class: 'small', style: { whiteSpace: 'normal', minWidth: '240px', textAlign: 'left' } }, means)));
+    row(zh() ? '结构性熊市警报亮到 2 项' : 'Structural-bear alerts reach two', `${al.lit}/${al.known}`, al.lit >= 2 ? '—' : (zh() ? `还差 ${2 - al.lit} 项` : `${2 - al.lit} more`), al.known >= 4 ? (al.lit >= 2 ? 1 : 0) : -1,
+      zh() ? '杠杆上限降到 2 倍；衰退型熊市的可能上升。' : 'Leverage capped at 2×; a recession bear becomes more likely.');
+    row(zh() ? '结构性熊市警报亮到 3 项' : 'Structural-bear alerts reach three', `${al.lit}/${al.known}`, al.lit >= 3 ? '—' : (zh() ? `还差 ${3 - al.lit} 项` : `${3 - al.lit} more`), al.known >= 4 ? (al.lit >= 3 ? 1 : 0) : -1,
+      zh() ? 'T3 衰退与信用型熊市：历史上最深、最久（看上一节“伴随衰退”一行）；刻度盘转到国库券。' : 'T3 recession and credit bear: historically the deepest and longest (the “with a recession” row above); the dial moves to T-bills.');
+    for (const k of ['SPX', 'NDX', 'SOX']) {
+      const P = R.position(k); if (!P) continue;
+      if (P.phase === 'bull' || P.phase === 'weak' || P.phase === 'edge') row(zh() ? `${nm(k)} 跌破熊市线（${pct(-P.Ln.bear, 0)}）` : `${nm(k)} crosses the bear line (${pct(-P.Ln.bear, 0)})`, pct(P.dd, 1), pct(P.toBear, 1), 0,
+        zh() ? '从回调变成熊市；警报少时是 T1 估值或政策型（如 2022 年）。' : 'A correction becomes a bear market; with few alerts, T1 valuation or policy (like 2022).');
+      if (P.phase === 'bear' || P.phase === 'newbull') row(zh() ? `${nm(k)} 从本轮低点反弹 20%` : `${nm(k)} rises 20% from this fall’s low`, (zh() ? '已反弹 ' : 'up ') + pct(P.reb, 1, true), P.reb >= 0.2 ? '—' : pct(P.toNewBull, 1, true), P.reb >= 0.2 ? 1 : 0,
+        zh() ? '常用的“熊市结束”定义；会有假信号：2000–02 年纳指出现过多次 20% 以上的反弹。' : 'The usual definition of the end of a bear market; it can mislead: the Nasdaq-100 had several 20%+ rallies in 2000–02.');
+      if (fin(P.to200)) row(zh() ? `${nm(k)} 回到 200 日线上方` : `${nm(k)} back above its 200-day average`, pct(-P.to200 / (1 + P.to200), 1, true), P.to200 <= 0 ? '—' : pct(P.to200, 1, true), P.to200 <= 0 ? 1 : 0,
+        zh() ? '趋势转好；在 200 日线下方时，历史上大跌多得多（见六层指标的趋势项）。' : 'The trend turns up; below the 200-day, large falls were far more common (see the trend items among the indicators).');
+    }
+    const s = R.semiLatest();
+    if (s) row(zh() ? '费半：全球芯片销售额同比转负' : 'Semiconductors: worldwide chip sales below a year earlier', pct(s.yoy, 0, true) + (zh() ? `（${s.m}）` : ` (${s.m})`), '—', s.yoy < 0 ? 1 : 0,
+      zh() ? 'T2 行业下行：历史上费半 −25% 至 −47%，6–10 个月；叠加衰退更深。' : 'T2 industry downturn: semiconductors −25% to −47% over 6–10 months; deeper with a recession.');
+    for (const f of ['TQ3', 'SX3']) {
+      const Pv = R.VOL_RULE[f], x = R.measures(Pv.idx), gr = R.volGear(f); if (!x || !gr) continue; const v = x.vol[x.e], g0 = gr[x.e];
+      if (g0 === 1) row(zh() ? `${FUND[f]} 回到 3 倍：${nm(Pv.idx)} 20 日波动降到 ${pct(Pv.lo, 0)} 以下` : `${FUND[f]} back to 3×: ${nm(Pv.idx)} 20-day volatility below ${pct(Pv.lo, 0)}`, pct(v, 0), (zh() ? '降 ' : 'down ') + pct(v - Pv.lo, 0), 0,
+        zh() ? '刻度盘的基础档位回到 3 倍（若警报不设上限）。' : 'The dial’s base gear returns to 3× (unless the alerts cap it).');
+      else if (g0 === 3) row(zh() ? `${FUND[f]} 降到 1 倍：${nm(Pv.idx)} 20 日波动升到 ${pct(Pv.hi, 0)} 以上` : `${FUND[f]} down to 1×: ${nm(Pv.idx)} 20-day volatility above ${pct(Pv.hi, 0)}`, pct(v, 0), (zh() ? '升 ' : 'up ') + pct(Pv.hi - v, 0), 0,
+        zh() ? '波动损耗超过 3 倍的收益优势，刻度盘换到 1 倍。' : 'The volatility drain outweighs the 3× gain: the dial moves to 1×.');
+    }
+    host.appendChild(card('rg-trig', { zh: '什么情况下判断要改', en: 'What would change the read' }, { zh: '与其猜底，不如盯住这些条件；每天随数据更新', en: 'Rather than guess the bottom, watch these; updated with the data' },
+      h('div', { class: 'table-wrap' }, h('table', { class: 'data rg-trig' }, h('thead', null, h('tr', null, ...[zh() ? '条件' : 'Condition', zh() ? '状态' : 'State', zh() ? '现在' : 'Now', zh() ? '距离' : 'Distance', zh() ? '触发后意味着' : 'What it means'].map((s, j) => h('th', j === 4 ? { style: { textAlign: 'left' } } : null, s)))), h('tbody', null, rows)))));
+  }
+
+  // ---------- 1d. signs of a top and of a bottom ----------
+  function signsSection(host) {
+    const i = last();
+    const ind = (id) => IND.find(d => d.id === id);
+    const item = (id) => { const d = ind(id); if (!d) return null; const s = R.state(id); let now = null; try { now = d.now(); } catch (e) { now = null; } return { id, name: L(d.name), st: s ? s[i] : -1, now: now ? now.text : '', link: true }; };
+    const manual = (id, name, test, txt) => { const m = R.man(id); if (!m || !fin(m.x)) return { id, name: L(name), st: -1, now: zh() ? '没有读数' : 'no reading' }; const old = R.ageDays(m.date) > (m.stale || 60); return { id, name: L(name), st: old ? -1 : test(m.x) ? 1 : 0, now: txt(m) + (zh() ? `（手工，${m.date}${m.verified ? '' : '，未核实'}）` : ` (by hand, ${m.date}${m.verified ? '' : ', unchecked'})`) }; };
+    const volHi = (k) => { const x = R.measures(k); if (!x) return null; const p = volPctl(k, x.vol[x.e]); return { id: 'vol' + k, name: zh() ? `${nm(k)} 20 日波动处在 2010 年以来最高的 10%` : `${nm(k)} 20-day volatility in its top 10% since 2010`, st: fin(p) ? (p >= 0.9 ? 1 : 0) : -1, now: pct(x.vol[x.e], 0) + (fin(p) ? (zh() ? `，百分位 ${Math.round(p * 100)}` : `, ${Math.round(p * 100)}th pct.`) : '') }; };
+    const TOP = [item('cape30'), item('realRise'), item('hike'), item('curveInv18'), item('soxMom80'), item('soxRel50'), item('semiHot'), item('rspWeak'), item('qqewWeak'), item('hygWeak'),
+      manual('bofaBB', { zh: '美银牛熊指标 ≥ 8（卖出区）', en: 'BofA Bull & Bear indicator at 8 or more (sell zone)' }, (x) => x >= 8, (m) => String(m.value))].filter(Boolean);
+    const BOT = [item('vix30'), item('vixInv'), manual('aaiiBears', { zh: 'AAII 看空比例 ≥ 50%（散户极度悲观）', en: 'AAII bears at 50% or more (extreme pessimism)' }, (x) => x >= 0.5, (m) => String(m.value)), volHi('NDX'), volHi('SOX')].filter(Boolean);
+    const open = (id) => (e) => { e.preventDefault(); const d = document.getElementById('rg-i-' + id); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } };
+    const list = (arr) => h('ul', { class: 'rg-signs' }, arr.map(z => h('li', null, chip(z.st), h('span', { class: 'nm' }, z.name), z.now ? h('span', { class: 'muted small' }, ' · ' + z.now) : null, z.link ? h('a', { href: '#regime', class: 'small', onclick: open(z.id) }, zh() ? ' 历史表现' : ' record') : null)));
+    const cnt = (arr) => { const k = arr.filter(z => z.st >= 0); return `${k.filter(z => z.st === 1).length}/${k.length}`; };
+    host.appendChild(card('rg-signs', { zh: '顶部迹象与恐慌迹象', en: 'Signs of a top, signs of panic' }, { zh: '逐项读数，不合成概率', en: 'Item by item, not a combined probability' },
+      h('div', { class: 'grid-2' },
+        h('div', null, h('h4', { class: 'sh-h4' }, (zh() ? '顶部与过热迹象：亮 ' : 'Top and overheating signs: ') + cnt(TOP) + (zh() ? '' : ' on')), h('p', { class: 'small muted' }, zh() ? '估值、利率、过热、广度变窄、信用转弱、情绪亢奋。多在高点之前很久就出现，说明风险偏高，不能用来择时。' : 'Valuations, rates, overheating, narrowing breadth, weakening credit, euphoria. They tend to appear long before a high: they say risk is high, not when.'), list(TOP)),
+        h('div', null, h('h4', { class: 'sh-h4' }, (zh() ? '恐慌迹象：亮 ' : 'Panic signs: ') + cnt(BOT) + (zh() ? '' : ' on')), h('p', { class: 'small muted' }, zh() ? '恐慌指数高、短期恐慌超过长期、散户极度悲观、波动极端。常见于阶段低点附近，但在真正的熊市里会反复出现。' : 'A high VIX, near-term fear above longer-term, extreme pessimism, extreme volatility. Common near interim lows, but they recur throughout a real bear market.'), list(BOT))),
+      noteP({ zh: '两张清单只是读数，没有合成“顶部概率”或“底部概率”——这类合成指标在样本外基本失效。每一项的历史表现（亮灯之后的收益和大跌概率）点“历史表现”看指标卡；手工项目来自观察清单。', en: 'The lists are readings only, with no combined “probability of a top” or “of a bottom” — such composites mostly fail out of sample. Each item’s record (returns and the odds of a large fall after days it was on) is on its indicator card (“record”); the hand-kept items come from the watchlist.' })));
   }
 
   // ---------- 2. structural-bear alerts ----------
@@ -583,11 +748,11 @@
     el.appendChild(h('div', { class: 'section-head' },
       h('div', { class: 'eyebrow' }, t('asOf', { d: Core.asOf }) + (zh() ? ' · 实验版' : ' · experimental')),
       h('h2', null, zh() ? '牛熊仪表盘：现在处在什么状态？' : 'Bull/bear dashboard: where are we now?'),
-      h('p', { class: 'lede' }, zh() ? '不预测顶底，只回答四个问题：这次下跌更像哪一类，现在的波动下 3 倍还划不划算，出现什么信号判断要改，历史上类似的状态之后发生了什么。所有统计都在本站数据上计算，附区间和样本数。' : 'No calls on tops and bottoms. Four questions instead: which kind of fall this resembles, whether 3× still pays at today’s volatility, which signals would change the call, and what followed similar states in the past. Every statistic is computed on this site’s data, with intervals and sample sizes.')));
+      h('p', { class: 'lede' }, zh() ? '不猜哪一天是顶、哪一天是底，而是回答：每个指数现在处在牛熊周期的哪个阶段，离历史上同等跌幅的底部还有多远，什么信号会改变判断，以及现在的波动下 3 倍还划不划算。所有统计都在本站数据上计算，附样本数和区间。' : 'No calls on the day of a top or a bottom. Instead: which phase of the bull/bear cycle each index is in, how far past falls of the same depth went, which signals would change the read, and whether 3× pays at today’s volatility. Every statistic is computed on this site’s data, with sample sizes and intervals.')));
     if (!R.REG) el.appendChild(h('div', { class: 'callout warn' }, zh() ? '牛熊数据（data/regime-data.js）没有加载：宏观层和扩展历史暂缺，下面只显示能用本站行情计算的部分。' : 'The regime data (data/regime-data.js) did not load: the macro layers and the longer histories are missing; only what the site’s prices allow is shown.'));
-    const toc = [['rg-now', { zh: '今天', en: 'Today' }], ['rg-alerts', { zh: '结构性熊市警报', en: 'Structural-bear alerts' }], ['rg-dial-now', { zh: '杠杆刻度盘', en: 'Leverage dial' }], ['rg-layers', { zh: '六层指标', en: 'Six layers' }], ['rg-tpl', { zh: '熊市模板', en: 'Templates' }], ['rg-dial', { zh: '刻度盘回测', en: 'Dial backtests' }], ['rg-f3', { zh: '持有还是换', en: 'Keep or switch' }], ['rg-semi', { zh: '半导体周期', en: 'Semiconductor cycle' }], ['rg-watch', { zh: '观察清单', en: 'Watchlist' }], ['rg-method', { zh: '方法与数据', en: 'Methods and data' }]];
+    const toc = [['rg-now', { zh: '今天的位置', en: 'Where we are' }], ['rg-pos', { zh: '离底部多远', en: 'How far to the bottom' }], ['rg-trig', { zh: '判断要改的条件', en: 'What would change it' }], ['rg-signs', { zh: '顶部与恐慌迹象', en: 'Top and panic signs' }], ['rg-alerts', { zh: '结构性熊市警报', en: 'Structural-bear alerts' }], ['rg-dial-now', { zh: '杠杆刻度盘', en: 'Leverage dial' }], ['rg-layers', { zh: '六层指标', en: 'Six layers' }], ['rg-tpl', { zh: '熊市模板', en: 'Templates' }], ['rg-dial', { zh: '刻度盘回测', en: 'Dial backtests' }], ['rg-f3', { zh: '持有还是换', en: 'Keep or switch' }], ['rg-semi', { zh: '半导体周期', en: 'Semiconductor cycle' }], ['rg-watch', { zh: '观察清单', en: 'Watchlist' }], ['rg-method', { zh: '方法与数据', en: 'Methods and data' }]];
     el.appendChild(h('nav', { class: 'toc', 'aria-label': 'Contents' }, toc.map(([id, n]) => h('a', { href: '#regime', onclick: (e) => { e.preventDefault(); const x = document.getElementById(id); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, L(n)))));
-    for (const f of [nowSection, alertsSection, dialSummary, layersSection, templatesSection, dialSection, f3Section, semiSection, watchSection, methodSection]) {
+    for (const f of [nowSection, posSection, trigSection, signsSection, alertsSection, dialSummary, layersSection, templatesSection, dialSection, f3Section, semiSection, watchSection, methodSection]) {
       try { f(el); } catch (e) { console.error(e); el.appendChild(h('div', { class: 'card empty' }, 'Error: ' + e.message)); }
     }
   };

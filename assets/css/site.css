@@ -556,3 +556,37 @@ table.data.lc-today td .hint { white-space: nowrap; }
 table.data tr.rg-cur td { background: var(--surface-2); }
 tr.rg-stale td { opacity: 0.55; }
 #rgF3px { width: 110px; }
+
+/* ---------- Bull/Bear: where each index stands ---------- */
+.rg-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 2px; }
+.rg-chips .rg-tpl { margin: 0; font-size: 12.5px; padding: 2px 8px; font-weight: 600; }
+.rg-phase { display: inline-block; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 14px; background: var(--surface-3); color: var(--ink); }
+.rg-phase.p-bull { background: rgba(var(--green-fill), 0.16); }
+.rg-phase.p-weak { background: rgba(237, 161, 0, 0.14); }
+.rg-phase.p-edge { background: rgba(237, 161, 0, 0.26); }
+.rg-phase.p-bear { background: rgba(var(--red-fill), 0.20); }
+.rg-phase.p-newbull { background: rgba(var(--green-fill), 0.24); }
+.rg-idx .rg-verdict { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--ink-2); }
+.rg-ruler { margin: 10px 0 6px; font-size: 11px; color: var(--muted); }
+.rg-ruler .row { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 6px; height: 18px; }
+.rg-ruler .row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-ruler .trk { position: relative; height: 8px; background: var(--surface-3); border-radius: 4px; }
+.rg-ruler .trk i { position: absolute; top: 0; bottom: 0; display: block; }
+.rg-ruler .fill { left: 0; background: var(--ink-2); opacity: 0.32; border-radius: 4px; }
+.rg-ruler .now { width: 3px; margin-left: -1.5px; top: -5px; bottom: -5px; background: var(--accent); border-radius: 2px; }
+.rg-ruler .band { border-radius: 4px; opacity: 0.55; min-width: 3px; }
+.rg-ruler .band.nr, .rg-ruler .dot.nr { background: var(--s1); }
+.rg-ruler .band.r, .rg-ruler .dot.r { background: var(--s2); }
+.rg-ruler .med { width: 2px; margin-left: -1px; top: -4px; bottom: -4px; background: var(--ink); }
+.rg-ruler .dot { width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; opacity: 0.85; }
+.rg-ruler .ln { width: 0; top: -4px; bottom: -4px; border-left: 1px dashed var(--rule-strong); }
+.rg-ruler .ax { position: relative; height: 14px; margin: 2px 0 0 62px; font-variant-numeric: tabular-nums; }
+.rg-ruler .ax span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.rg-ruler .ax span:first-child { transform: none; }
+.rg-legend .lg { display: inline-block; width: 14px; height: 8px; border-radius: 3px; vertical-align: middle; }
+.rg-legend .lg.fill { background: var(--ink-2); opacity: 0.32; } .rg-legend .lg.nr { background: var(--s1); opacity: 0.55; } .rg-legend .lg.r { background: var(--s2); opacity: 0.55; }
+.rg-eps { margin-top: 10px; } .rg-eps > summary { cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+ul.rg-signs { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+ul.rg-signs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+ul.rg-signs .nm { font-weight: 500; }
+table.rg-trig td { vertical-align: top; }

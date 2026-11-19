@@ -185,3 +185,40 @@ test('data/manual.js: every hand-kept figure has a name in both languages, a dat
     if (x.note) assert.ok(x.note.zh && x.note.en, x.id + ' note');
   }
 });
+
+test('position: the phase follows the usual conventions', () => {
+  const Ln = { corr: 0.1, bear: 0.2 };
+  assert.equal(R.phaseOf(-0.05, -0.05, 0, true, Ln), 'bull');
+  assert.equal(R.phaseOf(-0.05, -0.05, 0, null, Ln), 'bull', 'no 200-day yet counts as above');
+  assert.equal(R.phaseOf(-0.05, -0.05, 0, false, Ln), 'weak');
+  assert.equal(R.phaseOf(-0.05, -0.15, 0.12, true, Ln), 'bull', 'a correction that has recovered');
+  assert.equal(R.phaseOf(-0.12, -0.15, 0.035, false, Ln), 'edge');
+  assert.equal(R.phaseOf(-0.12, -0.21, 0.114, false, Ln), 'bear', 'crossed the bear line, not 20% off the low');
+  assert.equal(R.phaseOf(-0.10, -0.30, 0.286, true, Ln), 'newbull');
+  near(R.impliedFromToday({ dd: -0.1 }, -0.2), 0.8 / 0.9 - 1, 1e-12, 'from today to a final fall of 20%');
+});
+
+test('position on past days: the current fall, and earlier falls as deep that had recovered by then', { skip: !REG }, () => {
+  const at = (k, d) => R.position(k, iso(d));
+  const P = at('NDX', '2022-06-16');
+  assert.equal(P.phase, 'bear'); assert.equal(Core.iso(P.pk), '2021-11-19');
+  assert.ok(P.mdd <= -0.3 && P.mdd > -0.4, 'about a third down by mid-June 2022');
+  assert.ok(P.eps.length >= 2, 'earlier falls as deep');
+  for (const z of P.eps) {
+    assert.ok(z.rec <= P.i, 'recovered by the day');
+    assert.ok(z.final <= -P.depth + 1e-12, 'at least as deep');
+    assert.ok(z.at > z.pk && z.at <= z.tr, 'reached the depth between peak and low');
+    if (Number.isFinite(z.r12)) assert.ok(z.at + 252 <= P.i, 'no return after the day');
+  }
+  assert.ok(P.eps.some(z => Core.year[z.pk] === 2000 && z.final < -0.8), 'the dot-com fall is among them');
+  assert.equal(P.g.norec.n + P.g.rec.n, P.g.all.n);
+  assert.ok(P.g.a01.n + P.g.a2.n <= P.g.all.n);
+  assert.equal(at('NDX', '2023-06-30').phase, 'newbull'); assert.equal(Core.iso(at('NDX', '2023-06-30').lo), '2022-12-28');
+  assert.equal(at('NDX', '2024-01-31').phase, 'bull');
+  const S = at('SPX', '2008-10-10');
+  assert.equal(S.phase, 'bear'); assert.equal(Core.iso(S.pk), '2007-10-09');
+  assert.ok(S.eps.every(z => Core.year[z.pk] >= 1950), 'the S&P 500 is compared from 1950');
+  assert.equal(at('SOX', '2022-10-14').phase, 'bear');
+  // a day near the high compares with falls of 5%
+  const B = at('NDX', '2024-01-31'); assert.equal(B.depth, R.POS_MIN); assert.ok(B.g.all.n > 20);
+});

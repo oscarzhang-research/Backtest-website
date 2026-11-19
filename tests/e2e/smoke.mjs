@@ -6,10 +6,10 @@ import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 import { readFileSync } from 'fs';
 
-const TABS = { overview: 4, regime: 3, compare: 4, lab: 4, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, regime: 4, compare: 4, lab: 4, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
-    regime: ['Bull/bear dashboard: where are we now?', 'Today’s readings', 'Structural-bear alerts', 'Leverage dial', 'Six layers of indicators and their record', 'Bear-market templates and history', 'The leverage dial: rule, evidence and backtests', 'Holding: keep 3×, switch to 1×, or T-bills?', 'Semiconductor cycle', 'Watchlist (kept by hand)', 'Methods, limits and data'],
+    regime: ['Bull/bear dashboard: where are we now?', 'Where each index stands: nearer the bottom or the top?', 'How far to the bottom: after past falls of the same depth', 'What would change the read', 'Signs of a top, signs of panic', 'Structural-bear alerts', 'Leverage dial', 'Six layers of indicators and their record', 'Bear-market templates and history', 'The leverage dial: rule, evidence and backtests', 'Holding: keep 3×, switch to 1×, or T-bills?', 'Semiconductor cycle', 'Watchlist (kept by hand)', 'Methods, limits and data'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
     levcmp: ['Today’s signals', 'Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', '③ Every way of holding side by side', 'When to sell', 'Take profit × stop loss', 'SOXL ahead'],
@@ -17,7 +17,7 @@ const MUST = { // text that must appear once a tab has finished rendering
     method: ['Data health: how current the data are and how the daily updates went', 'The last 8 data-update runs on GitHub'],
   },
   zh: {
-    regime: ['牛熊仪表盘：现在处在什么状态？', '今天的读数', '结构性熊市警报', '杠杆刻度盘', '六层指标与它们的历史', '熊市模板与历史', '杠杆刻度盘：规则、证据与回测', '持有中：继续 3 倍、换 1 倍，还是国库券？', '半导体周期', '观察清单（手工记录）', '方法、局限与数据'],
+    regime: ['牛熊仪表盘：现在处在什么状态？', '今天的位置：离底部近，还是离顶部近？', '离底部还有多远：历史上跌到同样深度之后', '什么情况下判断要改', '顶部迹象与恐慌迹象', '结构性熊市警报', '杠杆刻度盘', '六层指标与它们的历史', '熊市模板与历史', '杠杆刻度盘：规则、证据与回测', '持有中：继续 3 倍、换 1 倍，还是国库券？', '半导体周期', '观察清单（手工记录）', '方法、局限与数据'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
     levcmp: ['今日信号', '核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', '③ 全部持有方式一起比', '什么时候卖', '止盈 × 止损', 'SOXL 跑赢'],
@@ -108,6 +108,19 @@ for (const [lang, missing] of [['zh', false], [null, true]]) {
     if (ind.charts < 1) problems.push('the opened indicator has no chart');
     if (ind.rows < (missing ? 1 : 5)) problems.push(`the opened indicator's table has ${ind.rows} rows`);
     if (ind.peaks < (missing ? 1 : 30)) problems.push(`only ${ind.peaks} bear-market peaks marked`);
+  }
+  // where each index stands: three cards with a phase and a ruler; the detail has a chart, five groups and the falls
+  const pos = await page.evaluate(() => ({ phases: document.querySelectorAll('#rg-now .rg-phase').length, rulers: document.querySelectorAll('#rg-now .rg-ruler').length,
+    chart: document.querySelectorAll('#rg-pos .chart canvas').length, rows: document.querySelectorAll('#rg-pos table.data tbody tr').length, trig: document.querySelectorAll('#rg-trig tbody tr').length, signs: document.querySelectorAll('#rg-signs ul.rg-signs li').length }));
+  if (pos.phases !== 3 || pos.rulers !== 3) problems.push(`position cards: ${pos.phases} phases, ${pos.rulers} rulers`);
+  if (!pos.chart) problems.push('no chart of past falls');
+  if (pos.rows < 5) problems.push(`the falls table has ${pos.rows} rows`);
+  if (pos.trig < 5) problems.push(`only ${pos.trig} conditions that would change the read`);
+  if (pos.signs < 10) problems.push(`only ${pos.signs} signs of a top or of panic`);
+  if (!missing) {
+    await page.click('#rgPos button[data-v="SOX"]'); await page.waitForTimeout(1500);
+    const sox = await page.evaluate(() => document.getElementById('rg-pos').innerText);
+    if (!/1994/.test(sox)) problems.push('the semiconductor falls are not compared from 1994');
   }
   await page.click('#rgH button[data-v="63"]'); await page.waitForTimeout(1500);
   const kept = await page.evaluate(() => { const d = document.getElementById('rg-i-curveInv18'); return d && d.open && d.querySelectorAll('table.rg-cond tbody tr').length; });
