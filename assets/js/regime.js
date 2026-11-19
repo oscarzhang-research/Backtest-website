@@ -38,7 +38,7 @@
 
   // ---------- calendar helpers ----------
   const mkOf = (i) => Core.year[i] * 12 + Core.month[i];
-  const mkIso = (k) => Math.floor(k / 12) + '-' + String(k % 12 + 1).padStart(2, '0');
+  const mkIso = (k) => (k >= 0 ? Math.floor(k / 12) + '-' + String(k % 12 + 1).padStart(2, '0') : '—');
   const isoMk = (s) => +s.slice(0, 4) * 12 + (+s.slice(5, 7) - 1);
   const monthStartDay = (k) => Math.round(Date.UTC(Math.floor(k / 12), k % 12, 1) / DAY);
   R.mkOf = mkOf; R.mkIso = mkIso; R.isoMk = isoMk;
@@ -250,8 +250,8 @@
       return { u, sahm: S3, trend: T3, KS, KT, KU, st, sahmSt };
     });
   };
-  // Initial jobless claims (weekly, released the Thursday after the week ends: known 5 days after its date): the 4-week
-  // average against a year earlier
+  // Initial jobless claims by state, summed (weekly; the state file follows the national release by about a week: known
+  // 12 days after the week's Saturday): the 4-week average against a year earlier
   R.claims = function () {
     return memo('claims', () => {
       const W = R.w.ICNSA; if (!W) return null;
@@ -262,7 +262,7 @@
         const b = j - 52; if (b < 3) continue; const b4 = (p[b][1] + p[b - 1][1] + p[b - 2][1] + p[b - 3][1]) / 4;
         if (p[j][0] - p[b][0] === 364) yoy.push([p[j][0], a4 / b4 - 1, a4]);
       }
-      const K = weeklyKnown({ pts: yoy.map(x => [x[0], x[1]]) }, 5);
+      const K = weeklyKnown({ pts: yoy.map(x => [x[0], x[1]]) }, 12, 30);
       const st = new Int8Array(Core.N).fill(-1); for (let i = 0; i < Core.N; i++) if (fin(K.v[i])) st[i] = K.v[i] >= 0.15 ? 1 : 0;
       return { yoy, K, st };
     });
@@ -352,6 +352,8 @@
         case 'vixInv': { const v3 = R.d.VIX3M; return v3 && st(i => (i >= v3.s && i <= v3.e && fin(v3.v[i]) && fin(Core.vix[i]) ? Core.vix[i] > v3.v[i] : null)); }
         case 'soxMom80': { const x = m('SOX'); return x && st(i => (fin(x.mom[i]) ? x.mom[i] >= 0.8 : null)); }
         case 'soxRel50': { const a = m('SOX'), b = m('SPX'); return a && st(i => (fin(a.mom[i]) && fin(b.mom[i]) ? (1 + a.mom[i]) / (1 + b.mom[i]) - 1 >= 0.5 : null)); }
+        case 'semiNeg': { const c = R.semi(); return c && c.neg; }
+        case 'semiHot': { const c = R.semi(); return c && c.hot; }
         case 'hygWeak': { const r = R.ratioChange('HYG', 'IEF', 63); return r && st(i => (fin(r.v[i]) ? r.v[i] <= -0.05 : null)); }
         case 'rspWeak': { const r = R.ratioChange('RSP', 'SPY', 126); return r && st(i => (fin(r.v[i]) ? r.v[i] <= -0.05 : null)); }
         case 'qqewWeak': { const r = R.ratioChange('QQEW', 'QQQ', 126); return r && st(i => (fin(r.v[i]) ? r.v[i] <= -0.05 : null)); }
@@ -404,16 +406,20 @@
   // A fall of D from the running high starts a bear market; its low is confirmed once the index rises R from it (or
   // makes a new high). Recession: an NBER recession overlaps the peak-to-low span.
   R.bears = function (key) {
-    return memo('bears:' + key, () => {
-      const a = R.A[key], P = (R.ASSETS[key] || {}).bear; if (!a || !P) return [];
+    return memo('bears:' + key, () => { const P = (R.ASSETS[key] || {}).bear; return P ? R.episodes(key, P.D, P.R) : []; });
+  };
+  // falls of at least D from the running high, each low confirmed by a rise of Rr from it (or a new high)
+  R.episodes = function (key, D, Rr) {
+    return memo('ep:' + key + ':' + D + ':' + Rr, () => {
+      const a = R.A[key]; if (!a) return [];
       const v = a.sig, s = a.s, e = a.e, out = [];
       let mode = 0, pk = s, tr = s;
       for (let i = s + 1; i <= e; i++) {
         if (!fin(v[i])) continue;
-        if (mode === 0) { if (v[i] > v[pk]) pk = i; else if (v[i] <= v[pk] * (1 - P.D)) { mode = 1; tr = i; } }
+        if (mode === 0) { if (v[i] > v[pk]) pk = i; else if (v[i] <= v[pk] * (1 - D)) { mode = 1; tr = i; } }
         else {
           if (v[i] < v[tr]) tr = i;
-          if (v[i] >= v[tr] * (1 + P.R) || v[i] > v[pk]) { out.push(bear(v, pk, tr, e)); mode = 0; pk = i; }
+          if (v[i] >= v[tr] * (1 + Rr) || v[i] > v[pk]) { out.push(bear(v, pk, tr, e)); mode = 0; pk = i; }
         }
       }
       if (mode === 1) { const b = bear(v, pk, tr, e); b.ongoing = true; out.push(b); }
@@ -426,19 +432,20 @@
     const recession = R.NBER.some(([a, b]) => monthStartDay(isoMk(a)) <= t && monthStartDay(isoMk(b) + 1) > p);
     return { pk, tr, rec, depth: v[tr] / v[pk] - 1, days: t - p, recession };
   }
-  // the first close at least x below the high, in each bear market or correction of at least x, and what followed
+  // The first close at least x below the high in each fall of at least x, and what followed (outKey: the series whose
+  // returns are shown, e.g. the 3× fund). Falls of 20% or more are the index's bear-market cycles (their lows confirmed
+  // as in R.ASSETS); smaller ones are corrections whose lows are confirmed by a rise of 1.5 x.
   R.afterFall = function (key, x, outKey) {
     return memo('after:' + key + ':' + x + ':' + (outKey || key), () => {
-      const a = R.A[key]; if (!a) return [];
-      const v = a.sig, s = a.s, e = a.e, o = R.A[outKey || key]; const rows = [];
-      let pk = s, armed = true;
-      for (let i = s + 1; i <= e; i++) {
-        if (v[i] > v[pk]) { pk = i; armed = true; continue; }
-        if (armed && v[i] <= v[pk] * (1 - x)) {
-          armed = false; let tr = i; let j = i + 1; for (; j <= e; j++) { if (v[j] < v[tr]) tr = j; if (v[j] > v[pk]) break; }
-          const f = (hh) => (o && i + hh <= o.e && i >= o.s ? o.out[i + hh] / o.out[i] - 1 : NaN);
-          rows.push({ pk, at: i, tr, more: v[tr] / v[i] - 1, toLow: Core.days[tr] - Core.days[i], depth: v[tr] / v[pk] - 1, r6: f(126), r12: f(252), done: j <= e });
-        }
+      const a = R.A[key], P = (R.ASSETS[key] || {}).bear; if (!a || !P) return [];
+      const eps = x >= P.D ? R.episodes(key, P.D, P.R) : R.episodes(key, x, 1.5 * x);
+      const v = a.sig, o = R.A[outKey || key], rows = [];
+      for (const z of eps) {
+        if (z.depth > -x + 1e-12) continue;
+        let at = -1; for (let i = z.pk + 1; i <= z.tr; i++) if (v[i] <= v[z.pk] * (1 - x)) { at = i; break; }
+        if (at < 0) continue;
+        const f = (hh) => (o && at + hh <= o.e && at >= o.s ? o.out[at + hh] / o.out[at] - 1 : NaN);
+        rows.push({ pk: z.pk, at, tr: z.tr, more: v[z.tr] / v[at] - 1, toLow: Core.days[z.tr] - Core.days[at], depth: z.depth, r6: f(126), r12: f(252), done: !z.ongoing, recession: z.recession });
       }
       return rows;
     });
@@ -459,12 +466,12 @@
       return out;
     });
   };
-  // Which template the index is in today (or on day i): T3 needs three alerts; T2 (semiconductors) global chip sales
-  // shrinking from a year earlier (the hand-kept figures); T1 a fall of at least the bear line; T0 a correction.
+  // Which template the index is in today (or on day i): T3 needs three alerts; T2 (semiconductors) worldwide chip sales
+  // below a year earlier (WSTS, as published); T1 a fall of at least the bear line; T0 a correction.
   R.LINES = { SPX: { corr: 0.10, bear: 0.20 }, NDX: { corr: 0.10, bear: 0.20 }, SOX: { corr: 0.15, bear: 0.30 } };
   R.template = function (key, i) {
     const x = R.measures(key); if (!x) return null; if (i == null) i = x.e;
-    const dd = x.ddAll[i], al = R.alertsAt(i), Ln = R.LINES[key], sales = key === 'SOX' ? R.siaLatest() : null;
+    const dd = x.ddAll[i], al = R.alertsAt(i), Ln = R.LINES[key], sales = key === 'SOX' ? R.semiLatest(i) : null;
     let code = 'none';
     if (al.lit >= 3) code = 'T3';
     else if (sales && sales.yoy < 0 && dd <= -Ln.corr) code = 'T2';
@@ -598,12 +605,41 @@
     return { lvl, n: at.length, rows };
   };
 
+  // ---------- semiconductor cycle: WSTS worldwide sales ----------
+  // Three-month moving average (what SIA announces), in $ billions. A month is published early in the month after next
+  // (September's around November 3): known 40 days after the month ends. yoy: against the same month a year earlier;
+  // accel: yoy less its value three months earlier (the reports' four states: rising or falling, faster or slower).
+  R.SEMI_LAG = 40;
+  R.semi = function () {
+    return memo('semi', () => {
+      const S3 = R.m.SEMI3; if (!S3) return null;
+      const yoy = S3.v.map((x, j) => (j >= 12 && fin(x) && fin(S3.v[j - 12]) ? x / S3.v[j - 12] - 1 : null));
+      const acc = yoy.map((y, j) => (y != null && j >= 3 && yoy[j - 3] != null ? y - yoy[j - 3] : null));
+      const m0 = mkIso(S3.k0); const Y = decodeMonthly({ m0, v: yoy }), A = decodeMonthly({ m0, v: acc });
+      const KY = monthlyKnown(Y, R.SEMI_LAG), KA = monthlyKnown(A, R.SEMI_LAG);
+      const neg = new Int8Array(Core.N).fill(-1), hot = new Int8Array(Core.N).fill(-1), quad = new Int8Array(Core.N).fill(-1);
+      for (let i = 0; i < Core.N; i++) {
+        if (!fin(KY.v[i])) continue; neg[i] = KY.v[i] < 0 ? 1 : 0; hot[i] = KY.v[i] > 0.3 ? 1 : 0;
+        if (fin(KA.v[i])) quad[i] = KY.v[i] >= 0 ? (KA.v[i] >= 0 ? 0 : 1) : (KA.v[i] < 0 ? 2 : 3); // 0 up & faster, 1 up & slower, 2 down & worse, 3 down & better
+      }
+      return { S3, Y, A, KY, KA, neg, hot, quad };
+    });
+  };
+  // the latest published month: {m, sales, yoy, acc}
+  R.semiLatest = function (i) {
+    const x = R.semi(); if (!x) return null; if (i == null) i = Core.N - 1;
+    const k = x.KY.mk[i]; if (k < 0) return null;
+    return { m: mkIso(k), mk: k, sales: x.S3.get(k), yoy: x.Y.get(k), acc: x.A.get(k) };
+  };
+  // If sales stayed at the latest month's level, the year-on-year change in each of the next n months (base effect)
+  R.semiFlat = function (n) {
+    const L = R.semiLatest(), x = R.semi(); if (!L) return [];
+    const out = []; for (let q = 1; q <= (n || 12); q++) { const base = x.S3.get(L.mk + q - 12); out.push({ m: mkIso(L.mk + q), yoy: fin(base) ? L.sales / base - 1 : NaN }); }
+    return out;
+  };
+
   // ---------- hand-kept figures (data/manual.js) ----------
   R.man = (id) => (R.MAN && Array.isArray(R.MAN.items) ? R.MAN.items.find(x => x.id === id) || null : null);
-  R.siaLatest = function () {
-    const a = R.MAN && Array.isArray(R.MAN.sia) ? R.MAN.sia.filter(x => fin(x.yoy)) : []; if (!a.length) return null;
-    return a.reduce((p, x) => (x.m > p.m ? x : p));
-  };
   // days since a hand-kept figure's date, against the site's last session
   R.ageDays = (iso) => (iso ? Core.days[Core.N - 1] - Core.parseISO(iso.length === 7 ? iso + '-28' : iso) : NaN);
 

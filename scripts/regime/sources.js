@@ -2,7 +2,7 @@
 // that fails leaves its stored series as they were (scripts/update-regime.js says which). The parsers are pure and
 // tested offline (tests/update-regime.test.js).
 'use strict';
-const { yahoo, treasury } = require('../data/sources.js');
+const { yahoo } = require('../data/sources.js');
 const { dayNum, isoOf } = require('../data/codec.js');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -106,7 +106,14 @@ function parseWsts(buf, sheetName) {
     if (!row || !row.length) continue;
     if (typeof row[0] === 'number' && row[0] >= 1980 && row[0] <= 2100) { year = row[0]; continue; }
     if (year && typeof row[0] === 'string' && row[0].trim().toLowerCase() === 'worldwide') {
-      for (let m = 1; m <= 12; m++) { const x = row[m]; if (typeof x === 'number' && x > 0) out.set(year + '-' + String(m).padStart(2, '0'), x / 1e6); }
+      // in the running year the year-to-date total follows the last month in the next column: stop at a value that is
+      // the sum of the months before it (or far above all of them)
+      let sum = 0, max = 0;
+      for (let m = 1; m <= 12; m++) {
+        const x = row[m]; if (!(typeof x === 'number' && x > 0)) continue;
+        if (m > 2 && (Math.abs(x - sum) <= 0.005 * sum || x > 2.5 * max)) break;
+        out.set(year + '-' + String(m).padStart(2, '0'), x / 1e6); sum += x; max = Math.max(max, x);
+      }
     }
   }
   if (out.size < 300) throw new Error(`WSTS workbook: only ${out.size} months of worldwide sales`);
@@ -130,6 +137,27 @@ function parseAr539(txt) {
 }
 
 // ---------- downloads ----------
+// The Treasury's daily rate files, one CSV per year, several columns at once: Map('YYYY-MM-DD' -> {column: number|null})
+function parseTreasuryCsv(txt, cols) {
+  const lines = String(txt).trim().split(/\r?\n/); const head = splitCsvLine(lines.shift()).map(x => x.replace(/"/g, '').trim().toUpperCase());
+  const idx = cols.map(c => head.indexOf(c.toUpperCase()));
+  const out = new Map();
+  for (const ln of lines) {
+    const f = splitCsvLine(ln); const d = normDate((f[0] || '').replace(/"/g, '')); if (!d) continue;
+    const o = {}; cols.forEach((c, j) => { o[c] = idx[j] >= 0 ? num(f[idx[j]]) : null; }); out.set(d, o);
+  }
+  return out;
+}
+async function treasuryCols(type, cols, years) {
+  const out = new Map();
+  for (const y of years) {
+    const txt = await getText(`https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=${type}&field_tdr_date_value=${y}&page&_format=csv`);
+    for (const [d, o] of parseTreasuryCsv(txt, cols)) out.set(d, o);
+    await sleep(200);
+  }
+  if (!out.size) throw new Error(`Treasury ${type}: no observations`);
+  return new Map([...out].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+}
 async function fetchRegime(prev, opts = {}) {
   const log = opts.log || (() => {});
   const now = opts.now || new Date();
@@ -149,15 +177,9 @@ async function fetchRegime(prev, opts = {}) {
   const lastYear = (m) => (m && m.m0 ? +m.m0.slice(0, 4) + Math.floor((+m.m0.slice(5, 7) - 1 + m.v.length - 1) / 12) : null);
   const curveFrom = prev && prev.m && prev.m.Y2 ? Math.max(1990, lastYear(prev.m.Y2) - 1) : 1990;
   log(`Treasury yield curve ${curveFrom}–:`);
-  dl.curve = await optional('Treasury yield curve', async () => {
-    const out = new Map();
-    for (const y of years(curveFrom)) {
-      for (const col of ['3 Mo', '1 Yr', '2 Yr']) { const m = await treasury('daily_treasury_yield_curve', col, [y]); for (const [d, v] of m) { const o = out.get(d) || {}; o[col] = v; out.set(d, o); } }
-    }
-    return out;
-  });
+  dl.curve = await optional('Treasury yield curve', () => treasuryCols('daily_treasury_yield_curve', ['3 Mo', '1 Yr', '2 Yr', '10 Yr'], years(curveFrom)));
   const realFrom = prev && prev.m && prev.m.RY10 ? Math.max(2003, lastYear(prev.m.RY10) - 1) : 2003;
-  dl.real = await optional('Treasury real yields', async () => { const out = new Map(); for (const y of years(realFrom)) { const m = await treasury('daily_treasury_real_yield_curve', '10 YR', [y]).catch(() => treasury('daily_treasury_real_yield_curve', '10 Yr', [y])); for (const [d, v] of m) out.set(d, v); } return out; });
+  dl.real = await optional('Treasury real yields', async () => { const m = await treasuryCols('daily_treasury_real_yield_curve', ['10 YR'], years(realFrom)); return new Map([...m].map(([d, o]) => [d, o['10 YR']])); });
 
   // Unemployment rate (BLS LNS14000000): the last three years, and once the whole history in ten-year requests
   log('BLS unemployment rate:');
@@ -197,4 +219,4 @@ async function fetchRegime(prev, opts = {}) {
   return dl;
 }
 
-module.exports = { YAHOO, fetchRegime, parseEbp, parseNfci, parseBls, parseMultpl, parseClaimsCsv, parseWsts, parseAr539, normDate, csvRows };
+module.exports = { YAHOO, fetchRegime, parseEbp, parseNfci, parseBls, parseMultpl, parseClaimsCsv, parseWsts, parseAr539, parseTreasuryCsv, normDate, csvRows };

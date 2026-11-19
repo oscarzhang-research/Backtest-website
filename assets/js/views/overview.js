@@ -284,20 +284,50 @@
     findings(fwrap);
 
     // ---------- Snapshot + timeline ----------
+    // Built from the daily data (prices, CPI, Treasury yields, WSTS chip sales, CAPE) and the hand-kept figures of
+    // data/manual.js, each with its own date; the hand-written table in facts.js is the fallback without them.
     const snap = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('ov.snapTitle'))));
-    const tbl = h('table', { class: 'data' }, h('tbody', null, FACTS.snapshot.map(r => h('tr', null,
-      h('td', { style: { whiteSpace: 'normal', minWidth: '120px' } }, L(r.k)),
+    const rows = liveSnapshot() || FACTS.snapshot.map(r => ({ k: L(r.k), v: r.v, d: L(r.d), src: r.src }));
+    const tbl = h('table', { class: 'data' }, h('tbody', null, rows.map(r => h('tr', { class: r.stale ? 'rg-stale' : '' },
+      h('td', { style: { whiteSpace: 'normal', minWidth: '120px' } }, r.k),
       h('td', { style: { fontWeight: 700 } }, r.v),
-      h('td', { style: { whiteSpace: 'normal', textAlign: 'left', color: 'var(--ink-2)', fontSize: '12.5px', minWidth: '220px' } }, L(r.d), ' ', h('a', { href: r.src, target: '_blank', rel: 'noopener' }, t('source')))))));
+      h('td', { style: { whiteSpace: 'normal', textAlign: 'left', color: 'var(--ink-2)', fontSize: '12.5px', minWidth: '220px' } }, r.d, ' ', r.src ? h('a', { href: r.src, target: '_blank', rel: 'noopener' }, t('source')) : null)))));
     snap.appendChild(h('div', { class: 'table-wrap' }, tbl));
-    const stale = Core.asOf > FACTS.snapshotAsOf;
     snap.appendChild(h('p', { class: 'note', style: { marginTop: '8px' } }, I18N.lang === 'zh'
-      ? '估值与宏观数据来自第三方，发布时点各不相同；不同机构的市盈率口径（远期/历史）不可直接比较。' + (stale ? `此表写于 ${FACTS.snapshotAsOf}；本站其他地方的价格、图表和统计每个交易日自动更新（数据截至 ${Core.asOf}）。` : '')
-      : 'Valuation and macro figures come from third parties with different release dates; forward and trailing P/Es from different providers are not directly comparable.' + (stale ? ` This table was written on ${FACTS.snapshotAsOf}; prices, charts and statistics elsewhere on the site are updated every trading day (data through ${Core.asOf}).` : '')));
+      ? '价格、CPI、国债收益率、全球芯片销售额和 CAPE 每天自动更新；远期市盈率和联邦基金利率是手工记录（日期见每行，过期的一行变灰）。不同机构的市盈率口径不可直接比较。更多读数见“牛熊”标签页。'
+      : 'Prices, CPI, Treasury yields, worldwide chip sales and CAPE update daily; forward P/Es and the Fed funds rate are kept by hand (dated on each row; out-of-date rows are greyed). P/Es from different providers are not directly comparable. More readings on the Bull/Bear tab.'));
     const tl = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, t('ov.eventsTitle')), h('span', { class: 'sub' }, t('ov.eventsLede'))),
       h('div', { class: 'timeline' }, FACTS.timeline.map(([d, txt]) => h('div', { class: 'tl-item' }, h('div', { class: 'tl-date' }, d), h('div', null, L(txt))))));
     el.appendChild(h('div', { class: 'grid-2' }, snap, tl));
   };
+
+
+  // the overview's market snapshot from the site's data and data/manual.js (null without the regime module)
+  function liveSnapshot() {
+    const R = root.Regime; if (!R || !R.ready) return null;
+    const zhL = I18N.lang === 'zh', rows = [], i = Core.N - 1;
+    const pctS = (x, sign) => U.pct(x, 1, sign);
+    const ytd = (v, e) => { let y0 = -1; for (const k of Core.yearEnds) if (k < e) y0 = k; return y0 >= 0 && isFinite(v[y0]) ? v[e] / v[y0] - 1 : NaN; };
+    const idxRow = (key, name, src) => {
+      const x = R.measures(key); if (!x) return;
+      let hi = x.s; for (let k = x.s; k <= x.e; k++) if (x.v[k] > x.v[hi]) hi = k;
+      const lv = key === 'SPX' ? Core.spxPrice[x.e] : x.v[x.e];
+      rows.push({ k: name, v: lv.toLocaleString('en-US', { maximumFractionDigits: lv > 1000 ? 2 : 2, minimumFractionDigits: 2 }),
+        d: zhL ? `${Core.iso(x.e)} 收盘；距 ${Core.iso(hi)} 历史高点 ${pctS(x.ddAll[x.e])}；年内 ${pctS(ytd(x.v, x.e), true)}` : `${Core.iso(x.e)} close; ${pctS(x.ddAll[x.e])} from the ${Core.iso(hi)} high; ${pctS(ytd(x.v, x.e), true)} this year`, src });
+    };
+    const man = (id, name) => { const m = R.man(id); if (!m) return; const age = R.ageDays(m.date); rows.push({ k: name, v: I18N.L(typeof m.value === 'object' ? m.value : { zh: m.value, en: m.value }), d: (zhL ? '手工记录，' : 'By hand, ') + m.date + (m.src ? (zhL ? '；' : '; ') + I18N.L(typeof m.src.name === 'object' ? m.src.name : { zh: m.src.name, en: m.src.name }) : '') + (m.verified ? '' : (zhL ? '（未独立核实）' : ' (not checked)')), src: m.src && m.src.url, stale: isFinite(age) && age > (m.stale || 45) }); };
+    idxRow('SPX', zhL ? '标普500' : 'S&P 500', 'https://finance.yahoo.com/quote/%5EGSPC');
+    idxRow('NDX', zhL ? '纳斯达克100' : 'Nasdaq-100', 'https://finance.yahoo.com/quote/%5ENDX');
+    idxRow('SOX', zhL ? '费城半导体指数' : 'PHLX Semiconductor (SOX)', 'https://finance.yahoo.com/quote/%5ESOX');
+    man('spxFwdPE', zhL ? '标普500 远期市盈率' : 'S&P 500 forward P/E');
+    const v = R.valuation(); if (v && isFinite(v.KC.v[i])) rows.push({ k: zhL ? 'Shiller 周期调整市盈率' : 'Shiller CAPE', v: v.KC.v[i].toFixed(1), d: (zhL ? `${R.mkIso(v.KC.mk[i])} 月值；超额 CAPE 收益率 ${U.pct(v.KE.v[i], 2)}；历史最高 44.2（1999-12）` : `${R.mkIso(v.KC.mk[i])}; excess CAPE yield ${U.pct(v.KE.v[i], 2)}; record 44.2 (1999-12)`), src: 'https://www.multpl.com/shiller-pe/table/by-month' });
+    man('ndxFwdPE', zhL ? '纳指100 远期市盈率' : 'Nasdaq-100 forward P/E');
+    man('fedFunds', zhL ? '联邦基金利率' : 'Fed funds target');
+    const cp = Core.cpiRaw; if (cp && cp.v.length > 12) { const n = cp.v.length - 1; const y = cp.v[n] / cp.v[n - 12] - 1; rows.push({ k: zhL ? '通胀（CPI 同比）' : 'Inflation (CPI y/y)', v: U.pct(y, 1), d: (zhL ? `${Core.cpiLastMonth}，CPI-U 未季调` : `${Core.cpiLastMonth}, CPI-U, not seasonally adjusted`), src: 'https://data.bls.gov/timeseries/CUUR0000SA0' }); }
+    const cl = R.REG && R.REG.curveLast; if (cl) rows.push({ k: zhL ? '10年期美债收益率' : '10-year Treasury', v: cl.y10.toFixed(2) + '%', d: (zhL ? `${cl.d}；3 个月 ${cl.y3m.toFixed(2)}%、2 年 ${cl.y2.toFixed(2)}%` : `${cl.d}; 3-month ${cl.y3m.toFixed(2)}%, 2-year ${cl.y2.toFixed(2)}%`) + (R.REG.realLast ? (zhL ? `；实际利率 ${R.REG.realLast.r10.toFixed(2)}%` : `; real ${R.REG.realLast.r10.toFixed(2)}%`) : ''), src: 'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?type=daily_treasury_yield_curve' });
+    const sl = R.semiLatest(); if (sl) rows.push({ k: zhL ? '全球半导体销售额（WSTS）' : 'Worldwide chip sales (WSTS)', v: zhL ? Math.round(sl.sales * 10).toLocaleString('en-US') + ' 亿美元' : '$' + sl.sales.toFixed(1) + 'B', d: zhL ? `${sl.m}，三个月均值；同比 ${U.pct(sl.yoy, 1, true)}` : `${sl.m}, three-month average; ${U.pct(sl.yoy, 1, true)} y/y`, src: 'https://www.wsts.org/67/Historical-Billings-Report' });
+    return rows.length >= 5 ? rows : null;
+  }
 
   App.register('overview', OV);
 })(window);

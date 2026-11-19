@@ -10,6 +10,8 @@
   add('brand', '长跑实验室', 'The Long Run');
   add('brandSub', '标普500 · 纳指100 · SMH · SOXX · VGT', 'S&P 500 · Nasdaq-100 · SMH · SOXX · VGT');
   add('nav.overview', '总览', 'Overview');
+  add('nav.regime', '牛熊', 'Bull/Bear');
+  add('beta.msg', '<b>实验版</b>：这里是尚未上线的预览（新增“牛熊”标签页等），数据可能比正式网站旧几天。正式网站：<a href="../">返回</a>。', '<b>Preview</b>: a version not yet released (with the new Bull/Bear tab), whose data may lag the live site by a few days. The live site: <a href="../">go back</a>.');
   add('nav.compare', '走势对比', 'Compare');
   add('nav.lab', '回测实验室', 'Backtest Lab');
   add('nav.research', '深度研究', 'Research');

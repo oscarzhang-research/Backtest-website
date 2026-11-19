@@ -69,6 +69,14 @@ jobs:
           set -o pipefail
           node scripts/update-regime.js --summary "$GITHUB_STEP_SUMMARY" 2>&1 | tee "$RUNNER_TEMP/regime.log"
 
+      # Only for the live site: compare the dashboard's state (alerts, templates, leverage gears) with the last update's
+      # (data/regime-state.json, committed with the data); a change opens an issue below, which e-mails the owner.
+      - name: Bull/bear dashboard state
+        id: regimestate
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        continue-on-error: true
+        run: node scripts/regime-alert.js --out "$RUNNER_TEMP/regime-alert.md" --outputs "$GITHUB_OUTPUT"
+
       - name: Unit tests on the updated data
         id: unit
         run: |
@@ -89,15 +97,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           exec > >(tee "$RUNNER_TEMP/commit.log") 2>&1
-          if git diff --quiet -- data/market-data.js data/regime-data.js && [ -z "$(git ls-files --others --exclude-standard data/regime-data.js)" ]; then echo "No new data."; exit 0; fi
+          if git diff --quiet -- data/market-data.js data/regime-data.js data/regime-state.json && [ -z "$(git ls-files --others --exclude-standard data/regime-data.js data/regime-state.json)" ]; then echo "No new data."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/market-data.js; if [ -f data/regime-data.js ]; then git add data/regime-data.js; fi
+          git add data/market-data.js; for f in data/regime-data.js data/regime-state.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           [ -s "$RUNNER_TEMP/commit-message.txt" ] || printf 'Update the bull/bear dashboard data\n\nNo new market sessions; the regime series (data/regime-data.js) changed.\n' > "$RUNNER_TEMP/commit-message.txt"
           git commit -F "$RUNNER_TEMP/commit-message.txt"
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
           if [ "$GITHUB_REF_NAME" = "main" ]; then gh workflow run pages.yml --ref main; fi
+
+      - name: Report a change in the bull/bear dashboard's state
+        if: steps.regimestate.outputs.changed == 'true' && steps.commit.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh label create regime-alert --color FBCA04 --description "The bull/bear dashboard's state changed" 2>/dev/null || true
+          printf '\n@%s\n' "$OWNER" >> "$RUNNER_TEMP/regime-alert.md"
+          url=$(gh issue create --title "牛熊仪表盘状态变化 / Bull/bear dashboard changed ($(date -u +%F))" --label regime-alert --body-file "$RUNNER_TEMP/regime-alert.md")
+          echo "Opened $url"
+          # one open report at a time: the new one supersedes the older ones
+          for n in $(gh issue list --label regime-alert --state open --json number --jq '.[].number'); do
+            if [ "$n" != "${url##*/}" ]; then gh issue close "$n" --comment "Superseded by $url" || true; fi
+          done
 
       # Alerts: one issue stays open (and e-mails the owner) while scheduled or manual updates fail; the next
       # successful update closes it. Pull-request check runs never alert.

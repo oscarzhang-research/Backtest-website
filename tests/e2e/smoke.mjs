@@ -6,9 +6,10 @@ import { chromium } from 'playwright';
 import { serve } from '../../scripts/serve.mjs';
 import { readFileSync } from 'fs';
 
-const TABS = { overview: 4, compare: 4, lab: 4, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
+const TABS = { overview: 4, regime: 3, compare: 4, lab: 4, goal: 2, soxl: 8, tqqq: 8, levcmp: 14, chips: 3, research: 10, funds: 0, method: 0 }; // minimum chart canvases
 const MUST = { // text that must appear once a tab has finished rendering
   en: {
+    regime: ['Bull/bear dashboard: where are we now?', 'Today’s readings', 'Structural-bear alerts', 'Leverage dial', 'Six layers of indicators and their record', 'Bear-market templates and history', 'The leverage dial: rule, evidence and backtests', 'Holding: keep 3×, switch to 1×, or T-bills?', 'Semiconductor cycle', 'Watchlist (kept by hand)', 'Methods, limits and data'],
     soxl: ['What happened after SOXL fell from its high?', 'Separate falls', 'How to read the table', 'How much further did it fall after buying?', 'Comparing combinations of conditions', 'The falls one by one'],
     tqqq: ['TQQQ: the truth about 3× the Nasdaq-100', 'The whole history: TQQQ vs QQQ', 'What happened after TQQQ fell from its high?', 'Comparing combinations of conditions', 'If you must use TQQQ: eight approaches'],
     levcmp: ['Today’s signals', 'Head to head: growth, drawdowns and risk', 'Holding periods and entry dates', 'Mixes and correlation', 'After a big fall', 'Comparing combinations of conditions: SOXL and TQQQ', 'Ways of holding and investment plans', '① One backtest', 'Why are there percentiles?', '③ Every way of holding side by side', 'When to sell', 'Take profit × stop loss', 'SOXL ahead'],
@@ -16,6 +17,7 @@ const MUST = { // text that must appear once a tab has finished rendering
     method: ['Data health: how current the data are and how the daily updates went', 'The last 8 data-update runs on GitHub'],
   },
   zh: {
+    regime: ['牛熊仪表盘：现在处在什么状态？', '今天的读数', '结构性熊市警报', '杠杆刻度盘', '六层指标与它们的历史', '熊市模板与历史', '杠杆刻度盘：规则、证据与回测', '持有中：继续 3 倍、换 1 倍，还是国库券？', '半导体周期', '观察清单（手工记录）', '方法、局限与数据'],
     soxl: ['SOXL 从高点下跌之后发生了什么？', '独立下跌', '怎么读这张表', '买入后最多还会再跌多少？', '条件组合对比', '逐轮明细'],
     tqqq: ['TQQQ 专题：三倍纳指100 的真相', '全部历史：TQQQ vs QQQ', 'TQQQ 从高点下跌之后发生了什么？', '条件组合对比', '如果一定要用 TQQQ：8 种用法对比'],
     levcmp: ['今日信号', '核心对比：增长、回撤与风险', '持有期与入场时点', '组合与相关性', '大跌之后', '条件组合对比：SOXL 与 TQQQ', '不同持有方式与定投计划', '① 单次回测', '为什么会有不同的分位数？', '③ 全部持有方式一起比', '什么时候卖', '止盈 × 止损', 'SOXL 跑赢'],
@@ -44,6 +46,7 @@ async function open(lang, hash, live, opts) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (lang) await ctx.addInitScript((lg) => { try { localStorage.setItem('longrun.lang', JSON.stringify(lg)); } catch (e) { /* ignore */ } }, lang);
   if (opts && opts.now) await ctx.addInitScript((t) => { window.__NOW__ = t; }, opts.now);
+  if (opts && opts.block) await ctx.route(opts.block, (r) => r.abort()); // a data file that fails to load
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort()); // keep the test offline and deterministic
   await ctx.route(/api\.github\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(/\/commits/.test(r.request().url()) ? GH_FIX.commits : GH_FIX.runs) }));
   if (live) { // the deployed data as the intraday deployment builds them: the last session marked provisional
@@ -86,6 +89,51 @@ for (const lang of ['en', 'zh']) {
     report(`${lang} ${tab}`, problems, ` ${String(text.length).padStart(6)} chars, ${charts} charts`);
     await ctx.close();
   }
+}
+
+// the bull/bear tab: an indicator opens with its chart, its table and the bear-market peaks; the controls redraw; the
+// live-price box of the hold-or-switch study works; without data/regime-data.js the tab says so and still renders what
+// the site's prices allow, and the overview's snapshot falls back
+for (const [lang, missing] of [['zh', false], [null, true]]) {
+  const { ctx, page, errors } = await open(lang, 'regime', null, missing ? { block: /data\/regime-data\.js$/ } : null);
+  await page.waitForTimeout(2500);
+  const problems = [];
+  const warn = await page.evaluate(() => !!document.querySelector('#view-regime .callout.warn'));
+  if (missing !== warn) problems.push(missing ? 'no warning without the regime data' : 'a missing-data warning with the data present');
+  await page.evaluate(() => { const d = document.getElementById('rg-i-curveInv18'); if (d) d.open = true; });
+  await page.waitForTimeout(1500);
+  const ind = await page.evaluate(() => { const d = document.getElementById('rg-i-curveInv18'); return d ? { charts: d.querySelectorAll('.chart canvas').length, rows: d.querySelectorAll('table.rg-cond tbody tr').length, peaks: d.querySelectorAll('.rg-peak').length, text: d.innerText } : null; });
+  if (!ind) problems.push('no yield-curve indicator');
+  else {
+    if (ind.charts < 1) problems.push('the opened indicator has no chart');
+    if (ind.rows < (missing ? 1 : 5)) problems.push(`the opened indicator's table has ${ind.rows} rows`);
+    if (ind.peaks < (missing ? 1 : 30)) problems.push(`only ${ind.peaks} bear-market peaks marked`);
+  }
+  await page.click('#rgH button[data-v="63"]'); await page.waitForTimeout(1500);
+  const kept = await page.evaluate(() => { const d = document.getElementById('rg-i-curveInv18'); return d && d.open && d.querySelectorAll('table.rg-cond tbody tr').length; });
+  if (!kept) problems.push('changing the horizon closed or emptied the open indicator');
+  await page.click('#rgTpl button[data-v="SOX"]'); await page.waitForTimeout(1200);
+  const tpl = await page.evaluate(() => document.getElementById('rg-tpl').innerText);
+  if (!missing && !/2000-03-10|2000-06-21/.test(tpl)) problems.push('the semiconductor bear markets do not list 2000');
+  await page.fill('#rgF3px', '500'); await page.press('#rgF3px', 'Enter'); await page.waitForTimeout(1500);
+  const f3 = await page.evaluate(() => document.getElementById('rg-f3').innerText);
+  if (!/按输入的盘中价|at the typed price/.test(f3)) problems.push('the live price was not used');
+  const txt = await page.evaluate(() => document.getElementById('view-regime').innerText);
+  if (/\bNaN\b|undefined|\bnull\b/.test(txt)) problems.push('NaN/undefined/null in text');
+  await page.evaluate(() => { localStorage.removeItem('longrun.regime'); });
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report(`regime ${missing ? 'no data' : 'controls'}`, problems);
+  await ctx.close();
+}
+{
+  const { ctx, page, errors } = await open('zh', 'overview', null, { block: /data\/regime-data\.js$/ });
+  await page.waitForTimeout(2500);
+  const snap = await page.evaluate(() => [...document.querySelectorAll('#view-overview table.data')].map(t => t.innerText).join('\n'));
+  const problems = [];
+  if (!/标普500/.test(snap) || !/联邦基金利率/.test(snap)) problems.push('the market snapshot is incomplete without the regime data');
+  if (errors.length) problems.push('errors: ' + errors.slice(0, 3).join(' | '));
+  report('snapshot', problems);
+  await ctx.close();
 }
 
 // the buttons: language (English by default, remembered) and up/down colors (independent of the language)

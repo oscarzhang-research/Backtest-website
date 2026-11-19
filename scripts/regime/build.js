@@ -10,6 +10,7 @@
 //   w: weekly series {d0: 'YYYY-MM-DD' (first week's date), v: [...]} — NFCI, ANFCI (Fridays), ICNSA (Saturdays)
 //   m.SEMI3, m.SEMI1: WSTS worldwide semiconductor sales, $ billions (three-month moving average; single months)
 //   src: per series {name, url, first, last, n, filled?, at: when it was last refreshed}
+//   curveLast {d, y3m, y2, y10}, realLast {d, r10}: the latest daily Treasury yields (%), for the overview's snapshot
 //   issues: what could not be downloaded in the last run (its stored series were kept)
 'use strict';
 const { dayNum, isoOf } = require('../data/codec.js');
@@ -108,11 +109,16 @@ function buildRegime(prev, dl, cal, now) {
       const s = monthlySeries(mm, 3); if (!s) continue; check(k, s.v, RANGES.Y);
       out.m[k] = s; out.src[k] = { name: `U.S. Treasury par yield, ${col} (monthly average)`, url: URLS.curve, first: s.m0, last: monthIso(monthKey(s.m0) + s.v.length - 1), n: s.v.filter(x => x != null).length, at };
     }
-  } else ['Y3M', 'Y1', 'Y2'].forEach(k => keep('m', k));
+    // the latest day of the curve (for the overview's snapshot)
+    const ds = [...dl.curve.keys()].filter(d => dl.curve.get(d)['10 Yr'] != null).sort(); const ld = ds[ds.length - 1];
+    if (ld) { const o = dl.curve.get(ld); out.curveLast = { d: ld, y3m: o['3 Mo'], y2: o['2 Yr'], y10: o['10 Yr'] }; }
+  } else { ['Y3M', 'Y1', 'Y2'].forEach(k => keep('m', k)); if (old.curveLast) out.curveLast = old.curveLast; }
   if (dl.real) {
     const mm = monthlyMap(old.m.RY10); for (const [m, x] of monthlyMeans(dl.real, today)) mm.set(m, x);
     const s = monthlySeries(mm, 3); if (s) { check('RY10', s.v, RANGES.RY10); out.m.RY10 = s; out.src.RY10 = { name: 'U.S. Treasury real (TIPS) par yield, 10 years (monthly average)', url: URLS.real, first: s.m0, last: monthIso(monthKey(s.m0) + s.v.length - 1), n: s.v.filter(x => x != null).length, at }; }
-  } else keep('m', 'RY10');
+    const ds = [...dl.real.keys()].filter(d => dl.real.get(d) != null).sort(); const ld = ds[ds.length - 1];
+    if (ld) out.realLast = { d: ld, r10: dl.real.get(ld) };
+  } else { keep('m', 'RY10'); if (old.realLast) out.realLast = old.realLast; }
 
   // unemployment: stored months, overwritten by the download (the BLS revises seasonal factors each January)
   if (dl.unrate) {

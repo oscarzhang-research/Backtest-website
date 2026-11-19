@@ -14,6 +14,13 @@ What was added in this round, and what could come next. The next steps are order
 
 - **Data health (November 2026).** A red banner whenever a trading session is missing at 20:00 New York time the next day (NYSE calendar by rule, checked against every session since 2000); a Data health card on the method tab; a failed scheduled data update opens a `data-update-failure` issue that the next success closes.
 - **C6 ranked by the geometric mean (November 2026).** Every rule against holding with a cluster-bootstrap 90% interval; the money after a sale in T-bills or the 1× index; the same rules over 2000–09 (simulated) and since 2010, plus the dot-com, 2008 and 2022 bear markets; and an insurance chart of what each rule cost in good years against what it saved in bad ones. With one-year holds bought on any day, no rule beat holding by a clear margin since 2010 (the best came within the 90% interval of zero), while in 2000–09 a 30% trailing stop lifted the geometric mean by about 34 (SOXL) and 40 (TQQQ) percentage points.
+- **Bull/Bear tab (experimental, November 2026).** The bull/bear guidance plan, phases P0–P4, published first as a preview at `/beta/`:
+  - *P0, data.* `scripts/update-regime.js` downloads, without API keys, the Nasdaq-100 and PHLX Semiconductor indices (extending TQQQ\* to 1985 and SOXL\* to 1994), Treasury curve and real yields, unemployment, state-level jobless claims, the Fed's GZ spread and excess bond premium, the Chicago Fed NFCI, WSTS semiconductor sales and recent CAPE; each monthly or weekly series is used only after its publication lag. It runs in the daily update on a best-effort basis.
+  - *P1, the dashboard.* Today's fall from the high and template (T0–T3) for each index; five structural-bear alerts; 23 indicators in six layers, each with its history and what followed the days it was on (block-bootstrap 90% intervals, the number of separate stretches, the bear-market peaks it caught); all bear markets of the three indices and what followed the first 20% fall.
+  - *P2, the leverage dial.* 3×, 2×, 1× or T-bills from the index's 20-day volatility with a band (TQQQ 25%/30%, SOXL 35%/45%), capped at 2× with two alerts and T-bills with three, and at 1× for SOXL after a 12-month rise of 80%. The break-even volatility, Kelly leverage by volatility regime and six rules backtested with a yearly-cluster bootstrap and leave-one-bear-out ranges: on TQQQ\* since 1985 holding 3× compounded at 13.9% with a −100% worst fall, the volatility switch at 25.5% and the dial at 24.2% with −74%. Keep 3×, switch to 1× or hold T-bills for a fund already held, at a typed-in price.
+  - *P3, semiconductors and the watchlist.* The WSTS sales cycle (four growth states and what followed each), the base effect, the T2 confirmation checklist, and hand-kept forward P/Es, sentiment, memory prices and AI-capex figures with their dates and sources; the overview's market snapshot is now computed from the latest data.
+  - *P4, alerts.* After each update on `main`, a change in the alerts, a template into or out of T1–T3, or a leverage gear opens a `regime-alert` issue (e-mailed to the owner).
+  - Known gaps: the public NFCI file stops at 2026-04-24; the report-derived watchlist figures are marked unchecked until verified; revised macro series are today's vintages.
 
 ## Next steps
 
@@ -22,6 +29,8 @@ The leveraged-ETF research now leads. The order below follows the plan agreed in
 ### 1. The decision while holding (C6 → "keep or sell")
 
 For a position already held, compare what came next after days in the same state — the gain since buying, the fall from the latest high, the index against its moving averages, 20-day volatility, the VIX, time held — for three choices side by side: keep the 3× fund, switch to the 1× index, or hold T-bills. Hook it to the typed-in price so it can be judged at an overnight quote. Add volatility-based leverage switching (3× while the index's 20-day volatility is calm, 1× above a threshold, with a band) as a selling rule: early probes show it cost almost nothing after 2010 and cut losses in 2000–09.
+
+*Partly done on the Bull/Bear tab:* the three choices by the index's state (volatility band, trend, fall from the 52-week high) at a typed-in price, and the volatility switch as one of the dial's rules. Still to do: the holder's own gain and time held as conditions, and the volatility switch among C6's selling rules.
 
 ### 2. Realistic execution
 

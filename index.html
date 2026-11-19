@@ -34,6 +34,7 @@
     </div>
     <nav class="tabs" role="tablist" id="tabs">
       <button class="tab" role="tab" data-view="overview" data-i18n="nav.overview">Overview</button>
+      <button class="tab" role="tab" data-view="regime" data-i18n="nav.regime">Bull/Bear</button>
       <button class="tab" role="tab" data-view="compare" data-i18n="nav.compare">Compare</button>
       <button class="tab" role="tab" data-view="lab" data-i18n="nav.lab">Backtest Lab</button>
       <button class="tab" role="tab" data-view="goal" data-i18n="nav.goal">Goal Planner</button>
@@ -48,9 +49,11 @@
   </div>
 </header>
 <main id="main">
+  <div class="betabar" id="betaBar" role="note" hidden></div>
   <div class="stalebar" id="staleBar" role="alert" hidden></div>
   <div class="livebar" id="liveBar" role="status" hidden></div>
   <section class="view" id="view-overview" role="tabpanel"><div class="empty">Loading…</div></section>
+  <section class="view" id="view-regime" role="tabpanel" hidden></section>
   <section class="view" id="view-compare" role="tabpanel" hidden></section>
   <section class="view" id="view-lab" role="tabpanel" hidden></section>
   <section class="view" id="view-goal" role="tabpanel" hidden></section>
@@ -79,15 +82,19 @@
 })();
 </script>
 <script src="data/market-data.js"></script>
+<script src="data/regime-data.js"></script>
+<script src="data/manual.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/core.js"></script>
 <script src="assets/js/engine.js"></script>
 <script src="assets/js/calc.js"></script>
+<script src="assets/js/regime.js"></script>
 <script src="assets/js/lr.js"></script>
 <script src="assets/js/facts.js"></script>
 <script src="assets/js/ui.js"></script>
 <script src="assets/js/app.js"></script>
 <script src="assets/js/views/overview.js"></script>
+<script src="assets/js/views/regime.js"></script>
 <script src="assets/js/views/compare.js"></script>
 <script src="assets/js/views/lab.js"></script>
 <script src="assets/js/views/goal.js"></script>
