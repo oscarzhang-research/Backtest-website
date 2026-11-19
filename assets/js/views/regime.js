@@ -18,7 +18,7 @@
   const b = (s) => '<b>' + U.esc(String(s)) + '</b>';
   const take = (html) => h('div', { class: 'takeaway', html });
   const SEP = () => (zh() ? '；' : '; ');
-  const pp = (x, d = 2) => (fin(x) ? (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(d) : '—');
+  const pp = (x, d = 2) => { if (!fin(x)) return '—'; const r = +x.toFixed(d); return (r > 0 ? '+' : r < 0 ? '−' : '') + Math.abs(r).toFixed(d); }; // no "+0.00"
   const pct = (x, d = 1, sign) => { if (fin(x) && Math.abs(x) < 0.5 * Math.pow(10, -d - 2)) x = 0; return U.pct(x, d, sign); };
   const mddTxt = (x) => pct(x, x < -0.99 ? 1 : 0);
   const last = () => Core.N - 1;
@@ -494,7 +494,7 @@
       h('td', null, pct(rw.sc.geo, 1)),
       h('td', null, rw.d31 ? h('span', null, h('b', { class: U.signCls(rw.d31.d) }, pct(rw.d31.d, 1, true)), h('span', { class: 'muted small' }, fin(rw.d31.lo) ? ` [${pct(rw.d31.lo, 0, true)}, ${pct(rw.d31.hi, 0, true)}]` : '')) : '—'))) : [];
     const y12 = res && res.rows.find(z => z.h === 252);
-    const lvlTxt = res ? [zh() ? '只按波动区间匹配（同时匹配三项的日子太少）' : 'matched on volatility only (too few days matched all three)', zh() ? '按波动区间和趋势匹配' : 'matched on volatility and trend', zh() ? '按波动区间、趋势和跌幅三项匹配' : 'matched on volatility, trend and fall'][res.lvl] : '';
+    const lvlTxt = res ? [zh() ? '只按波动区间匹配（同时匹配三项的日子太少）' : 'Matched on volatility only (too few days matched all three)', zh() ? '按波动区间和趋势匹配' : 'Matched on volatility and trend', zh() ? '按波动区间、趋势和跌幅三项匹配' : 'Matched on volatility, trend and fall'][res.lvl] : '';
     host.appendChild(card('rg-f3', { zh: '持有中：继续 3 倍、换 1 倍，还是国库券？', en: 'Holding: keep 3×, switch to 1×, or T-bills?' }, { zh: '历史上和今天状态相同的日子之后发生了什么', en: 'What followed the days in the same state as today' }, ctl,
       h('p', { class: 'small', html: zh() ? `${b(nm(P.idx))} 今天：20 日波动 ${b(pct(st.vol, 0))}（区间 ${volBand(st.vb)}），${st.up ? b('在 200 日线上方') : b('在 200 日线下方')}，距 52 周高点 ${b(pct(-st.dd, 1))}（区间 ${ddBand(st.db)}）${L ? '（按输入的盘中价）' : ''}。${lvlTxt}：${res ? res.n : 0} 个交易日。` : `${b(nm(P.idx))} today: 20-day volatility ${b(pct(st.vol, 0))} (band ${volBand(st.vb)}), ${st.up ? b('above its 200-day') : b('below its 200-day')}, ${b(pct(-st.dd, 1))} from the 52-week high (band ${ddBand(st.db)})${L ? ' (at the typed price)' : ''}. ${lvlTxt}: ${res ? res.n : 0} sessions.` }),
       h('div', { class: 'table-wrap' }, h('table', { class: 'data' }, h('thead', null, h('tr', null, h('th', null, zh() ? '持有' : 'Hold for'), h('th', null, zh() ? '样本天数' : 'Days'), h('th', null, zh() ? '3 倍几何平均' : '3×, geo mean'), h('th', null, zh() ? '3 倍亏损概率' : '3×, chance of a loss'), h('th', null, zh() ? '3 倍亏一半以上' : '3×, loses half or more'), h('th', null, zh() ? '1 倍几何平均' : '1×, geo mean'), h('th', null, zh() ? '1 倍亏损概率' : '1×, chance of a loss'), h('th', null, zh() ? '国库券' : 'T-bills'), h('th', null, zh() ? '3 倍减 1 倍（90% 区间）' : '3× minus 1× (90% interval)'))), h('tbody', null, rows))),
