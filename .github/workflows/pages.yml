@@ -4,6 +4,8 @@ name: Deploy to GitHub Pages
 # session shows up as it trades. Every deployment adds the session that is still trading — or that closed but is not
 # final yet — to the deployed copy of data/market-data.js, marked provisional (the site says so on every tab);
 # nothing is committed. update-data.yml commits the official data after each close and then redeploys.
+# Each deployment also publishes the branch under review at /beta/ (see the step below); run this workflow by hand to
+# refresh it after that branch changes.
 # One-time setup: Settings → Pages → Source: "GitHub Actions".
 on:
   push:
@@ -38,6 +40,18 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html assets data _site/
+
+      # A preview of the next version, published as committed on its branch at /beta/ for review before it is merged.
+      # The site itself (everything outside /beta/) is untouched, and a failure here never stops the deployment.
+      - name: Add the preview under /beta/ (best effort)
+        continue-on-error: true
+        env:
+          BETA_REF: claude/great-johnson-rp3hbj
+        run: |
+          git fetch --no-tags --depth 1 origin "$BETA_REF"
+          mkdir -p _site/beta
+          git archive FETCH_HEAD index.html assets data | tar -x -C _site/beta
+          echo "Preview at /beta/: $BETA_REF @ $(git rev-parse --short FETCH_HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Add the session that is still trading (provisional, best effort)
         id: live
