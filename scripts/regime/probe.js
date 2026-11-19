@@ -1,53 +1,22 @@
 #!/usr/bin/env node
-// One-off: which candidate data sources answer from a GitHub-hosted runner? Prints status, size and a sample of each.
+// One-off, round 2: the NFCI file's last week, the claims form, the WSTS workbook's layout, multpl's table.
 'use strict';
-const { yahoo } = require('../data/sources.js');
+const { readXlsx } = require('./xlsx.js');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-const dn = (iso) => Math.round(Date.parse(iso + 'T00:00:00Z') / 864e5);
-async function get(name, url, init = {}) {
-  const t0 = Date.now();
-  try {
-    const r = await fetch(url, Object.assign({ headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(45000), redirect: 'follow' }, init));
-    const buf = Buffer.from(await r.arrayBuffer());
-    const txt = buf.toString('utf8');
-    const links = (txt.match(/href="[^"]+\.(?:xlsx?|csv)[^"]*"/gi) || []).slice(0, 12);
-    console.log(`\n### ${name}\n${r.status} ${r.headers.get('content-type')} ${buf.length} bytes ${Date.now() - t0} ms  ${r.url}`);
-    console.log(JSON.stringify(txt.slice(0, 400)));
-    if (txt.length > 400) console.log('… tail: ' + JSON.stringify(txt.slice(-300)));
-    if (links.length) console.log('links: ' + links.join(' | '));
-  } catch (e) { console.log(`\n### ${name}\nFAILED ${e.message} ${Date.now() - t0} ms  ${url}`); }
-}
+async function get(url, init = {}) { const r = await fetch(url, Object.assign({ headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(60000) }, init)); return { r, buf: Buffer.from(await r.arrayBuffer()) }; }
 (async () => {
-  for (const s of ['^NDX', '^SOX', '^VIX3M', 'HYG', 'RSP', 'QQEW', 'XSD', '^TNX', '^IRX']) {
-    try { const y = await yahoo(s, dn('1980-01-01'), dn(new Date().toISOString().slice(0, 10)) + 1); console.log(`\n### Yahoo ${s}: ${y.bars.length} bars ${y.bars[0] && y.bars[0].date} → ${y.bars[y.bars.length - 1].date}, last ${y.bars[y.bars.length - 1].close}`); }
-    catch (e) { console.log(`\n### Yahoo ${s}: FAILED ${e.message}`); }
+  for (const u of ['https://www.chicagofed.org/-/media/publications/nfci/nfci-data-series-csv.csv?sc_lang=en', 'https://www.chicagofed.org/-/media/publications/nfci/nfci-data-series-csv.csv?x=' + Date.now(), 'https://www.chicagofed.org/-/media/publications/nfci/nfci-indexes-csv.csv']) {
+    try { const { r, buf } = await get(u); const t = buf.toString('utf8').trim().split(/\r?\n/); console.log(`\n### ${u}\n${r.status} ${buf.length} bytes; last rows: ${JSON.stringify(t.slice(-2))}`); } catch (e) { console.log(`\n### ${u}\nFAILED ${e.message}`); }
   }
-  const tq = (type, y) => `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=${type}&field_tdr_date_value=${y}&page&_format=csv`;
-  await get('Treasury curve 1990', tq('daily_treasury_yield_curve', 1990));
-  await get('Treasury curve 2026', tq('daily_treasury_yield_curve', 2026));
-  await get('Treasury real 2003', tq('daily_treasury_real_yield_curve', 2003));
-  await get('Treasury real 2026', tq('daily_treasury_real_yield_curve', 2026));
-  await get('BLS LNS14000000 (GET)', 'https://api.bls.gov/publicAPI/v1/timeseries/data/LNS14000000');
-  await get('BLS LNS14000000 1948-1957 (POST)', 'https://api.bls.gov/publicAPI/v1/timeseries/data/', { method: 'POST', headers: { 'User-Agent': UA, 'Content-Type': 'application/json' }, body: JSON.stringify({ seriesid: ['LNS14000000'], startyear: '1948', endyear: '1957' }) });
-  await get('Fed EBP csv', 'https://www.federalreserve.gov/econres/notes/feds-notes/ebp_csv.csv');
-  await get('Fed EBP csv (2016 path)', 'https://www.federalreserve.gov/econresdata/notes/feds-notes/2016/files/ebp_csv.csv');
-  await get('Chicago Fed NFCI csv', 'https://www.chicagofed.org/-/media/publications/nfci/nfci-data-series-csv.csv');
-  await get('Chicago Fed NFCI page', 'https://www.chicagofed.org/research/data/nfci/current-data');
-  await get('DOL claims ar539 (head only)', 'https://oui.doleta.gov/unemploy/csv/ar539.csv', { headers: { 'User-Agent': UA, Range: 'bytes=0-2000' } });
-  await get('DOL claims national (claims.asp xml)', 'https://oui.doleta.gov/unemploy/claims.asp', { method: 'POST', headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data_type=xml&level=nation&final_yr=2026&strt_yr=2024' });
-  await get('FRED ICSA', 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=ICSA');
-  await get('NY Fed allmonth.xls', 'https://www.newyorkfed.org/medialibrary/media/research/capital_markets/allmonth.xls');
-  await get('multpl CAPE by month', 'https://www.multpl.com/shiller-pe/table/by-month');
-  await get('shillerdata.com', 'https://shillerdata.com/');
-  await get('Shiller ie_data.xls (Yale)', 'http://www.econ.yale.edu/~shiller/data/ie_data.xls');
-  await get('datasets/s-and-p-500 (GitHub raw)', 'https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv');
-  await get('datahub s-and-p-500', 'https://datahub.io/core/s-and-p-500/r/data.csv');
-  await get('WSTS historical billings page', 'https://www.wsts.org/67/Historical-Billings-Report');
-  await get('SIA data resources', 'https://www.semiconductors.org/data-resources/');
-  await get('SIA global sales report page', 'https://www.semiconductors.org/resources/global-billings-report-history/');
-  await get('OECD CLI USA', 'https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_CLI,4.1/USA.M.LI...AA...H?startPeriod=2024-01&format=csvfilewithlabels');
-  await get('NAAIM page', 'https://www.naaim.org/programs/naaim-exposure-index/');
-  await get('AAII sentiment xls', 'https://www.aaii.com/files/surveys/sentiment.xls');
-  await get('FINRA margin page', 'https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics');
-  await get('TSMC monthly revenue page', 'https://investor.tsmc.com/english/monthly-revenue');
+  try { const { buf } = await get('https://www.chicagofed.org/research/data/nfci/current-data'); const h = buf.toString('utf8'); console.log('\n### NFCI page hrefs with nfci/csv/xls:', [...new Set((h.match(/href="[^"]*"/g) || []).filter(x => /nfci|csv|xls|data/i.test(x)))].slice(0, 40).join(' | ')); } catch (e) { console.log('NFCI page failed ' + e.message); }
+  try { const { buf } = await get('https://oui.doleta.gov/unemploy/claims.asp'); const h = buf.toString('utf8'); const f = h.match(/<form[\s\S]*?<\/form>/i); console.log('\n### claims.asp form:\n' + (f ? f[0].replace(/\s+/g, ' ').slice(0, 3000) : 'no form')); } catch (e) { console.log('claims.asp failed ' + e.message); }
+  try { const r = await fetch('https://oui.doleta.gov/unemploy/csv/ar539.csv', { method: 'HEAD', headers: { 'User-Agent': UA } }); console.log(`\n### ar539.csv HEAD ${r.status} length ${r.headers.get('content-length')} modified ${r.headers.get('last-modified')}`); } catch (e) { console.log('ar539 HEAD failed ' + e.message); }
+  try {
+    const { r, buf } = await get('https://www.wsts.org/esraCMS/extension/media/f/WST/7849/WSTS-Historical-Billings-Report-Sep_2026.xlsx');
+    console.log(`\n### WSTS xlsx ${r.status} ${buf.length} bytes`);
+    const wb = readXlsx(buf);
+    for (const s of wb.sheets) { console.log(`--- sheet "${s.name}" rows ${s.rows.length}`); s.rows.slice(0, 14).forEach((row, i) => console.log(i + ': ' + JSON.stringify(row.slice(0, 16)))); console.log('… last: ' + JSON.stringify(s.rows.slice(-3).map(r => r.slice(0, 16)))); }
+  } catch (e) { console.log('WSTS failed ' + e.stack); }
+  try { const { buf } = await get('https://www.multpl.com/shiller-pe/table/by-month'); const h = buf.toString('utf8'); const i = h.indexOf('<table'); console.log('\n### multpl table snippet:\n' + h.slice(i, i + 1500)); } catch (e) { console.log('multpl failed ' + e.message); }
+  try { const { buf } = await get('https://www.wsts.org/67/Historical-Billings-Report'); const h = buf.toString('utf8'); console.log('\n### WSTS page links:', [...new Set((h.match(/href="[^"]*"/g) || []).filter(x => /xls|csv|Billing/i.test(x)))].join(' | ')); } catch (e) { console.log('WSTS page failed ' + e.message); }
 })();
