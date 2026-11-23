@@ -212,10 +212,16 @@
     if (y >= 2022) s.add(observed(dnOf(y, 5, 19)));
     HOL.set(y, s); return s;
   };
-  Core.isSession = (dn) => { const w = wdOf(dn); return w > 0 && w < 6 && !Core.nyseHolidays(new Date(dn * DAY_MS).getUTCFullYear()).has(dn); };
+  // Closures outside the rules: 9/11, the days of mourning for Presidents Reagan, Ford, Bush and Carter, Hurricane Sandy.
+  // Add a new one here when it happens; until then the site would count that day as a missing session.
+  Core.CLOSURES = new Set(['2001-09-11', '2001-09-12', '2001-09-13', '2001-09-14', '2004-06-11', '2007-01-02', '2012-10-29', '2012-10-30', '2018-12-05', '2025-01-09']
+    .map(s => dnOf(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10))));
+  Core.isSession = (dn) => { const w = wdOf(dn); return w > 0 && w < 6 && !Core.CLOSURES.has(dn) && !Core.nyseHolidays(new Date(dn * DAY_MS).getUTCFullYear()).has(dn); };
   // The New York date (day number) and time of day (minutes after midnight) at `now`.
+  let NYFMT = null;
   Core.nyClock = function (now) {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+    NYFMT = NYFMT || new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const parts = NYFMT.formatToParts(now);
     const get = (x) => parts.find(p => p.type === x).value;
     return { day: dnOf(+get('year'), +get('month') - 1, +get('day')), min: +get('hour') * 60 + +get('minute') };
   };
@@ -223,10 +229,15 @@
   // the evening update runs after 18:00 and the catch-up before the next open, and GitHub often starts both hours
   // late. A provisional newest session (added by an intraday deployment) does not count as stored.
   Core.DUE_MIN = 20 * 60;
+  // the sessions after day `last` that are due at `now` (ISO dates)
+  Core.dueSessions = function (last, now) {
+    const c = Core.nyClock(now || new Date()), due = [];
+    for (let d = last + 1; d < c.day; d++) if (Core.isSession(d) && (c.day > d + 1 || c.min >= Core.DUE_MIN)) due.push(isoOf(d));
+    return due;
+  };
   Core.freshness = function (now) {
     const live = !!(Core.live && Core.live.day === Core.asOf && Core.N > 1);
-    const last = Core.days[Core.N - 1 - (live ? 1 : 0)], c = Core.nyClock(now || new Date()), due = [];
-    for (let d = last + 1; d < c.day; d++) if (Core.isSession(d) && (c.day > d + 1 || c.min >= Core.DUE_MIN)) due.push(isoOf(d));
+    const last = Core.days[Core.N - 1 - (live ? 1 : 0)], due = Core.dueSessions(last, now);
     return { last: isoOf(last), due, behind: due.length, live };
   };
   Core.addYearsDay = function (dn, years) {

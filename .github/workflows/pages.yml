@@ -58,6 +58,12 @@ jobs:
         continue-on-error: true   # without it the committed data are deployed
         run: node scripts/update-data.js --live --out _site/data/market-data.js --summary "$GITHUB_STEP_SUMMARY" --outputs "$GITHUB_OUTPUT"
 
+      # The preview shows the site's own prices, with the session still trading, rather than the copy on its branch,
+      # which is only as recent as that branch's last data update.
+      - name: Give the preview the site's latest prices (best effort)
+        continue-on-error: true
+        run: if [ -f _site/beta/index.html ]; then cp _site/data/market-data.js _site/beta/data/market-data.js; fi
+
       - name: Decide whether to deploy
         id: decide
         env:
