@@ -26,38 +26,63 @@ test('NYSE holidays follow the exchange rules (2025–2028)', () => {
   assert.equal(Core.isSession(dn('2026-11-28')), false, 'a Saturday');
 });
 
-test('the rules match every stored trading day since 2000, apart from one-off closures', () => {
-  const special = new Set(['2001-09-11', '2001-09-12', '2001-09-13', '2001-09-14', '2004-06-11', '2007-01-02', '2012-10-29', '2012-10-30', '2018-12-05', '2025-01-09']);
+// Weekdays missing from the data are checked up to this date. A closure outside the rules after it (a day of mourning,
+// a storm) must not stop the daily update, which runs these tests on the new data: the updater's own check of the last
+// 20 sessions against the download already catches a session that is really missing.
+const REVIEWED = '2026-11-20';
+test('the rules match every stored trading day since 2000 (one-off closures included)', (t) => {
   const stored = new Set(); const i0 = Core.idxOnOrAfter(dn('2000-01-03')), live = Core.live && Core.live.day === Core.asOf;
   for (let i = i0; i < Core.N - (live ? 1 : 0); i++) stored.add(Core.days[i]);
-  const wrong = [];
+  const wrong = [], later = [];
   for (let d = Core.days[i0]; d <= Core.days[Core.N - 1]; d++) {
-    if (stored.has(d) !== Core.isSession(d) && !special.has(iso(d))) wrong.push(iso(d) + (stored.has(d) ? ' stored' : ' missing'));
+    if (stored.has(d) === Core.isSession(d)) continue;
+    if (stored.has(d)) wrong.push(iso(d) + ' stored'); // data on a weekend or a holiday: always an error
+    else if (d <= dn(REVIEWED)) wrong.push(iso(d) + ' missing');
+    else later.push(iso(d));
   }
   assert.deepEqual(wrong, []);
+  if (later.length) t.diagnostic('weekdays without data after ' + REVIEWED + ' (a new closure? add it to Core.CLOSURES): ' + later.join(', '));
+  for (const c of Core.CLOSURES) assert.equal(Core.isSession(c), false, iso(c));
 });
+
+// The freshness rules for a given newest stored session `last`. Run on the data's own newest session and on every
+// session from 2025 through 2028, so a week with a holiday cannot break it on the day the data reach it (the daily update
+// runs these tests and stops when they fail: on 2026-11-20 an assumption of five sessions a week did exactly that).
+function freshnessRules(last) {
+  const due = (now) => Core.dueSessions(last, now);
+  let next = last + 1; while (!Core.isSession(next)) next++;
+  let after = next + 1; while (!Core.isSession(after)) after++;
+  const at = (d, hh, mm) => nyAt(iso(d), hh, mm), tag = 'newest stored session ' + iso(last);
+  // the evening of the last stored session, and the next session's own day: nothing is missing
+  assert.deepEqual(due(at(last, 23, 0)), [], tag);
+  assert.deepEqual(due(at(next, 21, 0)), [], tag);
+  // the next calendar day at 19:59 the session is not due yet; at 20:00 it is
+  assert.deepEqual(due(at(next + 1, 19, 59)), [], tag);
+  assert.deepEqual(due(at(next + 1, 20, 0)), [iso(next)], tag);
+  // a week later every session in between is missing, and only sessions count (holidays and weekends do not)
+  const want = []; for (let d = last + 1; d < after + 6; d++) if (Core.isSession(d)) want.push(iso(d));
+  assert.deepEqual(due(at(after + 7, 12, 0)), want, tag);
+  assert.ok(want.length >= 3, tag + ': at least three sessions in any eight days');
+}
 
 test('freshness: a session is due at 20:00 in New York the next day; weekends and holidays are skipped', () => {
   const saved = Core.live; Core.live = null;
   try {
     const last = Core.days[Core.N - 1];
-    let next = last + 1; while (!Core.isSession(next)) next++;
-    let after = next + 1; while (!Core.isSession(after)) after++;
-    // the evening of the last stored session, and the next session's own day: nothing is missing
-    assert.equal(Core.freshness(nyAt(iso(last), 23, 0)).behind, 0);
-    assert.equal(Core.freshness(nyAt(iso(next), 21, 0)).behind, 0);
-    // the next calendar day at 19:59 the session is not due yet; at 20:00 it is
-    assert.equal(Core.freshness(nyAt(iso(next + 1), 19, 59)).behind, 0);
-    const f = Core.freshness(nyAt(iso(next + 1), 20, 0));
-    assert.equal(f.behind, 1); assert.deepEqual(f.due, [iso(next)]); assert.equal(f.last, iso(last));
-    // a week later every session in between is missing, and only sessions count
-    const g = Core.freshness(nyAt(iso(after + 7), 12, 0)), expect = [];
-    for (let d = last + 1; d < after + 6; d++) if (Core.isSession(d)) expect.push(iso(d));
-    assert.deepEqual(g.due, expect); assert.ok(g.behind >= 5);
+    freshnessRules(last);
+    const f = Core.freshness(nyAt(iso(last), 23, 0)); assert.equal(f.behind, 0); assert.equal(f.last, iso(last));
     // a provisional newest session (intraday deployment) does not count as stored
     Core.live = { day: Core.asOf, et: '15:00', closed: false };
     const h = Core.freshness(nyAt(iso(last), 15, 30));
     assert.equal(h.live, true); assert.equal(h.last, Core.iso(Core.N - 2)); assert.equal(h.behind, 0);
     assert.equal(Core.freshness(nyAt(iso(last + 1), 20, 30)).due[0], iso(last), 'the provisional day is due by the next evening');
   } finally { Core.live = saved; }
+});
+
+test('freshness on every possible newest session, 2025–2028 (holiday weeks included)', () => {
+  let n = 0;
+  for (let d = dn('2025-01-02'); d <= dn('2028-12-29'); d++) if (Core.isSession(d)) { freshnessRules(d); n++; }
+  assert.ok(n > 1000, n + ' sessions');
+  // the week of Thanksgiving 2026, which stopped the update: four sessions, not five
+  assert.deepEqual(Core.dueSessions(dn('2026-11-20'), nyAt('2026-12-01', 12, 0)), ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-27']);
 });

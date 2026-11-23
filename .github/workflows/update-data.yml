@@ -123,6 +123,32 @@ jobs:
             if [ "$n" != "${url##*/}" ]; then gh issue close "$n" --comment "Superseded by $url" || true; fi
           done
 
+      # The preview at /beta/ (pages.yml) is published from its own branch. Keep that branch's data current: the market
+      # data just committed here and, when the branch has the bull/bear updater, its series rebuilt on them; then
+      # redeploy. Best effort: the branch's own unit tests must pass, and nothing here touches main or the site.
+      - name: Bring the preview branch's data up to date (best effort)
+        id: preview
+        if: steps.commit.outcome == 'success' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BETA_REF: claude/great-johnson-rp3hbj
+        run: |
+          set -e
+          if ! git fetch --no-tags --depth 1 origin "$BETA_REF"; then echo "No preview branch."; exit 0; fi
+          wt="$RUNNER_TEMP/preview"
+          git worktree add --detach "$wt" FETCH_HEAD
+          cp data/market-data.js "$wt/data/market-data.js"
+          cd "$wt"
+          if [ -f scripts/update-regime.js ]; then node scripts/update-regime.js --summary "$GITHUB_STEP_SUMMARY" || echo "::warning::The preview's bull/bear data were not rebuilt."; fi
+          npm test > "$RUNNER_TEMP/preview-tests.log" 2>&1 || { tail -n 40 "$RUNNER_TEMP/preview-tests.log"; echo "::warning::The preview's tests fail on the new data; its branch is left as it is."; exit 0; }
+          if git diff --quiet -- data; then echo "The preview's data are current."; exit 0; fi
+          git add data
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Update the preview's data from main ($(date -u +%F))"
+          git push origin "HEAD:refs/heads/$BETA_REF"
+          echo "Preview branch $BETA_REF updated." | tee -a "$GITHUB_STEP_SUMMARY"
+          gh workflow run pages.yml --ref main
+
       # Alerts: one issue stays open (and e-mails the owner) while scheduled or manual updates fail; the next
       # successful update closes it. Pull-request check runs never alert.
       - name: Open or update the alert issue
